@@ -7,7 +7,7 @@ import { OnboardingSuccessModal } from "@/components/onboarding/OnboardingSucces
 import { StatusChip } from "@/components/painel/StatusChip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, RefreshCw, Loader2, Pencil, Trash2, LayoutGrid, List, User, Briefcase, Building2, FileText, DollarSign, Receipt, CheckCircle2, MoreHorizontal, AlertTriangle } from "lucide-react";
+import { Plus, RefreshCw, Loader2, Pencil, Trash2, LayoutGrid, List, User, Briefcase, Building2, FileText, DollarSign, Receipt, CheckCircle2, MoreHorizontal, AlertTriangle, Search, X, RotateCcw, ArrowLeft, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { ColaboradorService, EmpresaService } from "@/services/base.service";
 import { getColaboradorCompletudeDetailed } from "@/services/domain/core.service";
 import { EntityCompletenessPanel } from "@/components/ui/EntityCompletenessPanel";
@@ -144,6 +144,14 @@ const Colaboradores = () => {
     colaboradorNome?: string;
   } | null>(null);
   const [pendingEditId, setPendingEditId] = useState<string | null>(null);
+
+  // Paginação Oficial — Gestão Detalhada
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(15);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchText, selectedEmpresa, selectedRegime, selectedModelo]);
 
 
   const [form, setForm] = useState(getInitialColaboradorFormData());
@@ -533,25 +541,102 @@ const Colaboradores = () => {
 
   const formCompletudeDetailed = getColaboradorCompletudeDetailed(form);
 
+  const filteredList = useMemo(() => {
+    return (list || []).filter((c: any) => {
+      const matchesSearch =
+        (c.nome || "").toLowerCase().includes(searchText.toLowerCase()) ||
+        (c.matricula || "").toLowerCase().includes(searchText.toLowerCase());
+      const matchesEmpresa = selectedEmpresa === "all" || c.empresa_id === selectedEmpresa;
+      const matchesRegime = selectedRegime === "all" || c.regime_trabalho === selectedRegime;
+      const matchesModelo = selectedModelo === "all" || c.modelo_calculo === selectedModelo;
+      return matchesSearch && matchesEmpresa && matchesRegime && matchesModelo;
+    });
+  }, [list, searchText, selectedEmpresa, selectedRegime, selectedModelo]);
+
+  const totalCount = filteredList.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  const paginatedList = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredList.slice(start, start + pageSize);
+  }, [filteredList, currentPage, pageSize]);
+
   return (
     <AppShell title="Colaboradores" subtitle="Cadastro e configuração de equipe">
-      <div className="space-y-4">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex flex-1 items-center gap-3 w-full">
-            <div className="relative flex-1 max-w-sm">
+      <div className="space-y-4 pb-12 w-full max-w-[1560px] mx-auto pt-1 animate-in fade-in-50 duration-200">
+        {/* Cabeçalho Institucional da Gestão Detalhada */}
+        <section className="bg-card dark:bg-[#15191F] border border-border/80 dark:border-white/[0.06] rounded-xl p-4 md:p-5 shadow-xs">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
+                  Cadastros & Sistema
+                </span>
+                <span className="text-xs text-muted-foreground">·</span>
+                <span className="text-xs text-muted-foreground font-medium">Gestão Detalhada</span>
+              </div>
+              <h2 className="font-display font-bold text-lg text-foreground tracking-tight">
+                Gestão Detalhada de Colaboradores
+              </h2>
+              <p className="text-xs text-muted-foreground max-w-2xl">
+                Ambiente administrativo aprofundado com auditoria completa de vínculos, contratos e prontidão de governança (OPER, RH e Financeiro).
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs font-medium gap-1.5"
+                onClick={() => navigate("/cadastros?tab=colaboradores")}
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Central de Cadastros
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs font-medium gap-1.5"
+                onClick={() => queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] })}
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
+                Atualizar
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 text-xs font-medium gap-1.5 font-display font-semibold"
+                onClick={handleCreate}
+              >
+                <Plus className="h-3.5 w-3.5" /> Novo colaborador
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        {/* Barra Oficial de Filtros e Busca */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-card border border-border/80 rounded-xl p-3 shadow-xs">
+          <div className="flex flex-wrap items-center gap-2 flex-1">
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
               <Input
                 placeholder="Buscar por nome ou matrícula..."
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
-                className="pl-9 h-10 border-border"
+                className="pl-8 h-8 text-xs bg-background border-border/80"
               />
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
-              </div>
+              {searchText && (
+                <button
+                  type="button"
+                  onClick={() => setSearchText("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                  title="Limpar busca"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
             </div>
 
             <Select value={selectedEmpresa} onValueChange={setSelectedEmpresa}>
-              <SelectTrigger className="w-[200px] h-10">
+              <SelectTrigger className="w-[180px] sm:w-[220px] h-8 text-xs bg-background border-border/80">
                 <SelectValue placeholder="Empresa" />
               </SelectTrigger>
               <SelectContent>
@@ -563,7 +648,7 @@ const Colaboradores = () => {
             </Select>
 
             <Select value={selectedRegime} onValueChange={setSelectedRegime}>
-              <SelectTrigger className="w-[190px] h-10">
+              <SelectTrigger className="w-[140px] sm:w-[160px] h-8 text-xs bg-background border-border/80">
                 <SelectValue placeholder="Regime" />
               </SelectTrigger>
               <SelectContent>
@@ -577,7 +662,7 @@ const Colaboradores = () => {
             </Select>
 
             <Select value={selectedModelo} onValueChange={setSelectedModelo}>
-              <SelectTrigger className="w-[180px] h-10">
+              <SelectTrigger className="w-[140px] sm:w-[160px] h-8 text-xs bg-background border-border/80">
                 <SelectValue placeholder="Modelo" />
               </SelectTrigger>
               <SelectContent>
@@ -588,37 +673,30 @@ const Colaboradores = () => {
                 <SelectItem value="Produção">Produção</SelectItem>
               </SelectContent>
             </Select>
-          </div>
 
-          <div className="flex items-center gap-2 w-full md:w-auto">
-            <div className="flex border rounded-lg overflow-hidden mr-2 bg-background">
+            {(searchText || selectedEmpresa !== "all" || selectedRegime !== "all" || selectedModelo !== "all") && (
               <Button
+                type="button"
                 variant="ghost"
-                size="icon"
-                className={cn("h-10 w-10 rounded-none border-r transition-all", viewMode === 'grid' ? "bg-muted text-primary" : "text-muted-foreground hover:text-primary")}
-                onClick={() => setViewMode('grid')}
+                size="sm"
+                onClick={() => {
+                  setSearchText("");
+                  setSelectedEmpresa("all");
+                  setSelectedRegime("all");
+                  setSelectedModelo("all");
+                  setCurrentPage(1);
+                }}
+                className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
               >
-                <LayoutGrid className="h-4 w-4" />
+                <RotateCcw className="h-3 w-3" />
+                Limpar
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn("h-10 w-10 rounded-none transition-all", viewMode === 'table' ? "bg-muted text-primary" : "text-muted-foreground hover:text-primary")}
-                onClick={() => setViewMode('table')}
-              >
-                <List className="h-4 w-4" />
-              </Button>
-            </div>
-            <Button variant="outline" size="icon" className="h-10 w-10 flex-shrink-0" onClick={() => queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] })}>
-              <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
-            </Button>
-            <Button className="h-10 px-4 w-full md:w-auto font-display font-semibold" onClick={handleCreate}>
-              <Plus className="h-4 w-4 mr-2" /> Novo colaborador
-            </Button>
+            )}
           </div>
         </div>
 
-        <section className={cn(viewMode === 'table' ? "esc-card overflow-hidden" : "")}>
+        {/* Tabela Administrativa Oficial */}
+        <section className="esc-card overflow-hidden">
           {isLoading ? (
             <div className="flex items-center justify-center p-12">
               <div className="flex flex-col items-center gap-2">
@@ -627,7 +705,6 @@ const Colaboradores = () => {
               </div>
             </div>
           ) : isError ? (
-            /* ... (keeping existing error state logic but it might be duplicated in target content if I'm not careful) ... */
             <div className="flex flex-col items-center justify-center p-12 text-center esc-card">
               <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
                 <AlertTriangle className="h-6 w-6 text-destructive" />
@@ -640,187 +717,257 @@ const Colaboradores = () => {
                 Tentar novamente
               </Button>
             </div>
-          ) : viewMode === 'table' ? (
-            <table className="w-full text-sm">
-              <thead className="esc-table-header">
-                <tr className="text-left">
-                  <th className="px-5 h-11 font-medium"><span className="inline-flex items-center gap-1.5"><User className="h-3.5 w-3.5 text-muted-foreground" />Nome</span></th>
-                  <th className="px-3 h-11 font-medium"><span className="inline-flex items-center gap-1.5"><Briefcase className="h-3.5 w-3.5 text-muted-foreground" />Cargo</span></th>
-                  <th className="px-3 h-11 font-medium"><span className="inline-flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-muted-foreground" />Empresa</span></th>
-                  <th className="px-3 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-muted-foreground" />Tipo</span></th>
-                  <th className="px-3 h-11 font-medium text-right"><span className="inline-flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5 text-muted-foreground" />Valor base</span></th>
-                  <th className="px-3 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><Receipt className="h-3.5 w-3.5 text-muted-foreground" />Faturamento</span></th>
-                  <th className="px-3 h-11 font-medium text-center">Governança</th>
-                  <th className="px-5 h-11 font-medium text-center"><span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />Status</span></th>
-                  <th className="px-5 h-11 font-medium text-right"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {(list || []).filter((c: any) => {
-                  const matchesSearch = c.nome.toLowerCase().includes(searchText.toLowerCase()) ||
-                    (c.matricula || "").toLowerCase().includes(searchText.toLowerCase());
-                  const matchesEmpresa = selectedEmpresa === "all" || c.empresa_id === selectedEmpresa;
-                  const matchesRegime = selectedRegime === "all" || c.regime_trabalho === selectedRegime;
-                  const matchesModelo = selectedModelo === "all" || c.modelo_calculo === selectedModelo;
-                  return matchesSearch && matchesEmpresa && matchesRegime && matchesModelo;
-                }).map((c: any) => (
-                  <tr key={c.id} className="border-t border-muted hover:bg-background group">
-                    <td className="px-5 h-[52px]">
-                      <div className="font-medium text-foreground">{c.nome}</div>
-                      <div className="text-xs text-muted-foreground">Mat. {c.matricula}</div>
-                      {getColaboradorStatusMeta(c).label ? (
-                        <div className="mt-1 text-[11px] text-warning-strong">
-                          Completar cadastro para liberar processamento RH
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="px-3 text-muted-foreground">{c.cargo}</td>
-                    <td className="px-3 text-muted-foreground">{c.empresas?.nome || "-"}</td>
-                    <td className="px-3 text-center">
-                      <span className={cn(
-                        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-                        c.modelo_calculo === "Diária" ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" : "bg-muted text-muted-foreground"
-                      )}>
-                        {c.regime_trabalho ? `${c.regime_trabalho} - ${c.modelo_calculo}` : (c.tipo_colaborador || c.tipo_contrato || "-")}
-                      </span>
-                    </td>
-                    <td className="px-3 text-right font-display font-medium">
-                      R$ {(c.valor_base || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-3 text-center text-muted-foreground">{c.flag_faturamento ? "Sim" : "Não"}</td>
-                    <td className="px-3 text-center">
-                      <TooltipProvider delayDuration={150}>
-                        <div className="flex items-center justify-center gap-1.5">
-                          {/* Operacional */}
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className={cn("flex h-6 w-8 items-center justify-center rounded-md border text-[10px] font-semibold cursor-help", getColaboradorCompletudeDetailed(c).operacional.completo ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-rose-50 border-rose-200 text-rose-700")}>OPER</div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="text-xs font-semibold mb-1">Operacional: {getColaboradorCompletudeDetailed(c).operacional.completo ? "Apto" : "Pendente"}</p>
-                              {!getColaboradorCompletudeDetailed(c).operacional.completo && getColaboradorCompletudeDetailed(c).operacional.pendencias.length > 0 && (
-                                <div className="text-[10px] text-muted-foreground">
-                                  <p className="font-semibold mb-0.5">Pendências:</p>
-                                  <ul className="space-y-0.5 ml-1">
-                                    {getColaboradorCompletudeDetailed(c).operacional.pendencias.map((p: string) => <li key={p}>• {p}</li>)}
-                                  </ul>
-                                </div>
-                              )}
-                            </TooltipContent>
-                          </Tooltip>
-
-                          {/* RH */}
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className={cn("flex h-6 w-8 items-center justify-center rounded-md border text-[10px] font-semibold cursor-help", getColaboradorCompletudeDetailed(c).rh.completo ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-rose-50 border-rose-200 text-rose-700")}>RH</div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="text-xs font-semibold mb-1">RH: {getColaboradorCompletudeDetailed(c).rh.completo ? "Apto" : "Pendente"}</p>
-                              {!getColaboradorCompletudeDetailed(c).rh.completo && getColaboradorCompletudeDetailed(c).rh.pendencias.length > 0 && (
-                                <div className="text-[10px] text-muted-foreground">
-                                  <p className="font-semibold mb-0.5">Pendências:</p>
-                                  <ul className="space-y-0.5 ml-1">
-                                    {getColaboradorCompletudeDetailed(c).rh.pendencias.map((p: string) => <li key={p}>• {p}</li>)}
-                                  </ul>
-                                </div>
-                              )}
-                            </TooltipContent>
-                          </Tooltip>
-
-                          {/* Financeiro */}
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className={cn("flex h-6 w-8 items-center justify-center rounded-md border text-[10px] font-semibold cursor-help", getColaboradorCompletudeDetailed(c).financeiro.completo ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700")}>FIN</div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="text-xs font-semibold mb-1">Financeiro: {getColaboradorCompletudeDetailed(c).financeiro.completo ? "Apto" : "Pendente"}</p>
-                              {!getColaboradorCompletudeDetailed(c).financeiro.completo && getColaboradorCompletudeDetailed(c).financeiro.pendencias.length > 0 && (
-                                <div className="text-[10px] text-muted-foreground">
-                                  <p className="font-semibold mb-0.5">Pendências:</p>
-                                  <ul className="space-y-0.5 ml-1">
-                                    {getColaboradorCompletudeDetailed(c).financeiro.pendencias.map((p: string) => <li key={p}>• {p}</li>)}
-                                  </ul>
-                                </div>
-                              )}
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                      </TooltipProvider>
-                    </td>
-                    <td className="px-5 text-center">
-                      <StatusChip
-                        status={getColaboradorStatusMeta(c).status}
-                        label={getColaboradorStatusMeta(c).label}
-                      />
-                    </td>
-                    <td className="px-5 text-right">
-                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(c)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(c.id)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {(list || []).filter((c: any) => {
-                const matchesSearch = (c.nome || "").toLowerCase().includes(searchText.toLowerCase()) ||
-                  (c.matricula || "").toLowerCase().includes(searchText.toLowerCase());
-                const matchesEmpresa = selectedEmpresa === "all" || c.empresa_id === selectedEmpresa;
-                const matchesRegime = selectedRegime === "all" || c.regime_trabalho === selectedRegime;
-                const matchesModelo = selectedModelo === "all" || c.modelo_calculo === selectedModelo;
-                return matchesSearch && matchesEmpresa && matchesRegime && matchesModelo;
-              }).map((c: any) => (
-                <article key={c.id} className="esc-card p-5 group flex flex-col justify-between">
-                  <div>
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="h-10 w-10 rounded-full bg-primary-soft flex items-center justify-center text-primary font-bold">
-                        {c.nome.substring(0, 1).toUpperCase()}
-                      </div>
-                      <StatusChip
-                        status={getColaboradorStatusMeta(c).status}
-                        label={getColaboradorStatusMeta(c).label}
-                      />
-                    </div>
-                    <h3 className="font-display font-bold text-lg text-foreground mb-1">{c.nome}</h3>
-                    <div className="mb-3">
-                      <Badge className={cn("font-semibold", getColaboradorOrigemMeta(c).className)}>
-                        {getColaboradorOrigemMeta(c).label}
-                      </Badge>
-                    </div>
-                    <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-2"><User className="h-3 w-3" /> {c.cargo}</span>
-                      <span className="font-mono text-[10px]">MATRÍCULA {c.matricula}</span>
-                      {getColaboradorStatusMeta(c).label ? (
-                        <span className="text-warning-strong">
-                          Completar cadastro para liberar processamento RH
-                        </span>
-                      ) : null}
+            <>
+              <div className="max-h-[calc(100vh-320px)] min-h-[320px] overflow-auto scrollbar-thin">
+                <table className="w-full text-sm">
+                  <thead className="esc-table-header sticky top-0 bg-background z-10 shadow-2xs border-b border-border/80">
+                    <tr className="text-left">
+                      <th className="px-5 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">Nome</th>
+                      <th className="px-3 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">Cargo</th>
+                      <th className="px-3 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">Empresa</th>
+                      <th className="px-3 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground text-center">Tipo</th>
+                      <th className="px-3 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground text-right">Valor base</th>
+                      <th className="px-3 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground text-center">Faturamento</th>
+                      <th className="px-3 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground text-center">Governança</th>
+                      <th className="px-5 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground text-center">Status</th>
+                      <th className="px-5 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredList.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="px-5 py-8 text-center text-muted-foreground">
+                          Nenhum colaborador encontrado com os filtros atuais.
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedList.map((c: any) => {
+                        const statusMeta = getColaboradorStatusMeta(c);
+                        const isAtivo = statusMeta.status === "ativo";
+                        const isPendente = statusMeta.status === "pendente";
+                        const comp = getColaboradorCompletudeDetailed(c);
+
+                        // Modalidade simplificada sem poluição decorativa
+                        const regimeRaw = String(c.regime_trabalho || c.tipo_colaborador || "").toUpperCase();
+                        const modeloRaw = String(c.modelo_calculo || c.tipo_contrato || "").toUpperCase();
+                        let tipoExibicao = "CLT";
+                        if (regimeRaw === "DIARISTA" || modeloRaw.includes("DIÁRIA") || modeloRaw.includes("DIARIA")) {
+                          tipoExibicao = "Diarista";
+                        } else if (regimeRaw === "INTERMITENTE") {
+                          tipoExibicao = "Intermitente";
+                        } else if (regimeRaw === "TERCEIRIZADO") {
+                          tipoExibicao = "Terceirizado";
+                        } else if (regimeRaw.includes("PRODU") || modeloRaw.includes("OPERA")) {
+                          tipoExibicao = "Produção";
+                        } else if (regimeRaw === "CLT") {
+                          tipoExibicao = "CLT";
+                        }
+
+                        return (
+                          <tr key={c.id} className="border-t border-border/50 hover:bg-muted/30 transition-colors group">
+                            <td className="px-5 py-2.5">
+                              <div className="font-semibold text-foreground text-xs sm:text-sm leading-snug">{c.nome}</div>
+                              <div className="text-[11px] font-mono text-muted-foreground/80">Mat. {c.matricula || "S/N"}</div>
+                            </td>
+                            <td className="px-3 text-xs text-muted-foreground truncate max-w-[150px]">{c.cargo || "—"}</td>
+                            <td className="px-3 text-xs text-muted-foreground truncate max-w-[150px]">{c.empresas?.nome || "—"}</td>
+                            <td className="px-3 text-center">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium text-foreground/80 bg-muted/40 border border-border/40 whitespace-nowrap">
+                                {tipoExibicao}
+                              </span>
+                            </td>
+                            <td className="px-3 text-right font-mono tabular-nums text-xs font-semibold text-foreground">
+                              R$ {(c.valor_base || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-3 text-center text-xs text-muted-foreground font-medium">{c.flag_faturamento ? "Sim" : "Não"}</td>
+                            <td className="px-3 text-center">
+                              <TooltipProvider delayDuration={150}>
+                                <div className="flex items-center justify-center gap-1">
+                                  {/* Operacional */}
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className={cn(
+                                        "flex h-5 w-7 items-center justify-center rounded text-[9.5px] font-bold font-mono tracking-tight cursor-help border transition-colors",
+                                        comp.operacional.completo
+                                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
+                                          : "bg-muted/50 border-border/60 text-muted-foreground"
+                                      )}>
+                                        OPER
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs font-semibold mb-1">
+                                        Operacional: {comp.operacional.completo ? "Apto" : "Pendente"}
+                                      </p>
+                                      {!comp.operacional.completo && comp.operacional.pendencias.length > 0 && (
+                                        <div className="text-[10px] text-muted-foreground">
+                                          <p className="font-semibold mb-0.5">Pendências:</p>
+                                          <ul className="space-y-0.5 ml-1">
+                                            {comp.operacional.pendencias.map((p: string) => <li key={p}>• {p}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </TooltipContent>
+                                  </Tooltip>
+
+                                  {/* RH */}
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className={cn(
+                                        "flex h-5 w-7 items-center justify-center rounded text-[9.5px] font-bold font-mono tracking-tight cursor-help border transition-colors",
+                                        comp.rh.completo
+                                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
+                                          : "bg-muted/50 border-border/60 text-muted-foreground"
+                                      )}>
+                                        RH
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs font-semibold mb-1">
+                                        RH: {comp.rh.completo ? "Apto" : "Pendente"}
+                                      </p>
+                                      {!comp.rh.completo && comp.rh.pendencias.length > 0 && (
+                                        <div className="text-[10px] text-muted-foreground">
+                                          <p className="font-semibold mb-0.5">Pendências:</p>
+                                          <ul className="space-y-0.5 ml-1">
+                                            {comp.rh.pendencias.map((p: string) => <li key={p}>• {p}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </TooltipContent>
+                                  </Tooltip>
+
+                                  {/* Financeiro */}
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div className={cn(
+                                        "flex h-5 w-7 items-center justify-center rounded text-[9.5px] font-bold font-mono tracking-tight cursor-help border transition-colors",
+                                        comp.financeiro.completo
+                                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
+                                          : "bg-muted/50 border-border/60 text-muted-foreground"
+                                      )}>
+                                        FIN
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="text-xs font-semibold mb-1">
+                                        Financeiro: {comp.financeiro.completo ? "Apto" : "Pendente"}
+                                      </p>
+                                      {!comp.financeiro.completo && comp.financeiro.pendencias.length > 0 && (
+                                        <div className="text-[10px] text-muted-foreground">
+                                          <p className="font-semibold mb-0.5">Pendências:</p>
+                                          <ul className="space-y-0.5 ml-1">
+                                            {comp.financeiro.pendencias.map((p: string) => <li key={p}>• {p}</li>)}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                              </TooltipProvider>
+                            </td>
+                            <td className="px-5 text-center">
+                              <span
+                                className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border",
+                                  isAtivo && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
+                                  isPendente && "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
+                                  !isAtivo && !isPendente && "bg-muted/60 text-muted-foreground border-border/50"
+                                )}
+                              >
+                                {statusMeta.label || (isAtivo ? "Ativo" : "Pendente")}
+                              </span>
+                            </td>
+                            <td className="px-5 text-right">
+                              <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleEdit(c)}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(c.id)}>
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Barra Oficial de Paginação */}
+              <div className="px-5 py-3 border-t border-border/80 bg-muted/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <span>
+                    {totalCount === 0
+                      ? "Nenhum colaborador encontrado"
+                      : `Exibindo ${(currentPage - 1) * pageSize + 1}–${Math.min(
+                          currentPage * pageSize,
+                          totalCount
+                        )} de ${totalCount}`}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-1.5">
+                    <label htmlFor="colaboradores-detalhada-page-size" className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">
+                      Linhas por página:
+                    </label>
+                    <div className="relative inline-flex items-center">
+                      <select
+                        id="colaboradores-detalhada-page-size"
+                        value={pageSize}
+                        onChange={(e) => {
+                          const nextSize = Number(e.target.value);
+                          setPageSize(nextSize);
+                          setCurrentPage(1);
+                        }}
+                        aria-label="Linhas por página"
+                        className="h-7 w-[72px] appearance-none rounded-md border border-border/80 bg-background px-2.5 pr-6 text-xs font-medium text-foreground transition-colors hover:bg-muted/40 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                      >
+                        <option value={15}>15</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5 text-muted-foreground opacity-60" />
                     </div>
                   </div>
-                  <div className="mt-6 pt-4 border-t border-border flex items-center justify-between">
-                    <div className="text-xs">
-                      <div className="text-muted-foreground uppercase text-[9px] font-bold tracking-tight">Valor Base</div>
-                      <div className="font-bold text-foreground">R$ {(c.valor_base || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                    </div>
-                    <div className="flex gap-1 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-all">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(c)}>
-                        <Pencil className="h-3.5 w-3.5" />
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-medium whitespace-nowrap">
+                      Página {currentPage} de {totalPages}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        className="h-7 w-7 p-0"
+                        onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                        disabled={currentPage <= 1}
+                        aria-label="Página anterior"
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => handleDelete(c.id)}>
-                        <Trash2 className="h-3.5 w-3.5" />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        type="button"
+                        className="h-7 w-7 p-0"
+                        onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage >= totalPages}
+                        aria-label="Próxima página"
+                      >
+                        <ChevronRight className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   </div>
-                </article>
-              ))}
-            </div>
+                </div>
+              </div>
+            </>
           )}
         </section>
       </div>

@@ -9,6 +9,8 @@ import {
   Building2,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Circle,
   Clock,
@@ -33,6 +35,11 @@ import {
   Users,
   Upload,
   Wrench,
+  RefreshCw,
+  ShieldAlert,
+  Search,
+  RotateCcw,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -42,6 +49,7 @@ import {
 
 import { QuickRegisterDialog } from "@/components/operacoes/lancamento/QuickRegisterDialog";
 import { AppShell } from "@/components/layout/AppShell";
+import { OrbeKpiCard } from "@/components/ux-lab/design-system";
 import { MetricCard } from "@/components/painel/MetricCard";
 import { StatusChip } from "@/components/painel/StatusChip";
 import { Badge } from "@/components/ui/badge";
@@ -483,14 +491,24 @@ const CadastroTabTrigger = ({
   value,
   icon: Icon,
   children,
+  count,
 }: {
   value: string;
   icon: ElementType;
   children: ReactNode;
+  count?: number;
 }) => (
-  <TabsTrigger value={value} className="gap-2">
-    <Icon className="h-4 w-4" />
+  <TabsTrigger
+    value={value}
+    className="gap-2 px-3.5 py-2 text-xs md:text-sm font-medium whitespace-nowrap data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs transition-all"
+  >
+    <Icon className="h-4 w-4 shrink-0" />
     <span>{children}</span>
+    {typeof count === "number" && (
+      <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-muted/80 text-muted-foreground data-[state=active]:bg-primary/10 data-[state=active]:text-primary border border-border/50">
+        {count}
+      </span>
+    )}
   </TabsTrigger>
 );
 
@@ -568,6 +586,31 @@ const CentralCadastros = () => {
   const [operacionalFilters, setOperacionalFilters] = useState<OperacionalQuickFilter[]>([]);
   const [collaboratorSearchTerm, setCollaboratorSearchTerm] = useState("");
   const [contractFilter, setContractFilter] = useState("todos");
+
+  // Paginação Oficial — Aba Colaboradores
+  const [colaboradoresPage, setColaboradoresPage] = useState(1);
+  const [colaboradoresPageSize, setColaboradoresPageSize] = useState<number>(15);
+
+  const hasActiveFilters =
+    collaboratorSearchTerm.trim() !== "" ||
+    operacionalFilters.length > 0 ||
+    contractFilter !== "todos" ||
+    kpiFilter !== "todos" ||
+    kpiSort !== "default";
+
+  const clearAllFilters = () => {
+    setCollaboratorSearchTerm("");
+    setOperacionalFilters([]);
+    setContractFilter("todos");
+    setKpiFilter("todos");
+    setKpiSort("default");
+    setColaboradoresPage(1);
+  };
+
+  useEffect(() => {
+    setColaboradoresPage(1);
+  }, [collaboratorSearchTerm, operacionalFilters, contractFilter, kpiFilter, kpiSort]);
+
   const [configType, setConfigType] = useState<"operacao" | "produto" | "dia">("operacao");
   const [editingConfig, setEditingConfig] = useState<any>(null);
   const [configForm, setConfigForm] = useState<any>({});
@@ -577,8 +620,8 @@ const CentralCadastros = () => {
   useEffect(() => {
     const runCleanup = async () => {
       try {
-        const { default: supabaseMod } = await import('@/lib/supabase');
-        const { data: allDescargas } = await supabaseMod.operationalClient
+        const { supabase } = await import('@/lib/supabase');
+        const { data: allDescargas } = await supabase
           .from('tipos_servico_operacional')
           .select('id, created_at')
           .ilike('nome', 'Descarga')
@@ -589,7 +632,7 @@ const CentralCadastros = () => {
           const toRename = allDescargas.slice(1);
           for (const duplicate of toRename) {
             const newName = 'Descarga (Duplicado ' + duplicate.id.substring(0, 4) + ')';
-            await supabaseMod.operationalClient
+            await supabase
               .from('tipos_servico_operacional')
               .update({ nome: newName, ativo: false })
               .eq('id', duplicate.id);
@@ -623,6 +666,13 @@ const CentralCadastros = () => {
       }
     }
   }, [activeSubTab, activeTab, setSearchParams, searchParams]);
+
+  const [paramSearchTerm, setParamSearchTerm] = useState("");
+
+  useEffect(() => {
+    setParamSearchTerm("");
+  }, [activeSubTab]);
+
   const [deleteModalType, setDeleteModalType] = useState<"transportadora" | "fornecedor" | "servico" | null>(null);
   const [itemToDelete, setItemToDelete] = useState<any>(null);
   const [deleteErrorDetails, setDeleteErrorDetails] = useState<{ tabela: string; count: number; ids?: string[] }[]>([]);
@@ -653,8 +703,10 @@ const CentralCadastros = () => {
     conta: "",
     conta_digito: "",
     tipo_conta: "corrente",
+    chave_pix: "",
     pis: "",
   });
+  const [colaboradorBankNameLocked, setColaboradorBankNameLocked] = useState(false);
   const [colaboradorIsProcessing, setColaboradorIsProcessing] = useState(false);
   const colaboradorBankValidation = useMemo(
     () => getColaboradorBankValidation(colaboradorForm),
@@ -769,6 +821,7 @@ const CentralCadastros = () => {
     nome: "", cnpj: "", unidade: "", cidade: "", estado: "",
     banco_codigo: "", agencia: "", agencia_digito: "", conta: "", conta_digito: "",
     convenios_bancario: "", codigo_empresa_banco: "", nome_empresa_banco: "",
+    status: "ativo",
   });
   const [empresaFormErrors, setEmpresaFormErrors] = useState<Record<string, string>>({});
 
@@ -1092,6 +1145,7 @@ const CentralCadastros = () => {
         conta: "",
         conta_digito: "",
         tipo_conta: "corrente",
+        chave_pix: "",
         pis: "",
       });
       await queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
@@ -1270,6 +1324,7 @@ const CentralCadastros = () => {
         nome: "", cnpj: "", unidade: "", cidade: "", estado: "",
         banco_codigo: "", agencia: "", agencia_digito: "", conta: "", conta_digito: "",
         convenios_bancario: "", codigo_empresa_banco: "", nome_empresa_banco: "",
+        status: "ativo",
       });
       await queryClient.invalidateQueries({ queryKey: ["empresas"] });
       const data = await queryClient.fetchQuery({ queryKey: ["empresas"], queryFn: () => EmpresaService.getWithCounts() });
@@ -1595,6 +1650,43 @@ const CentralCadastros = () => {
     });
   }, [produtoCargaRulesMap, produtosOptions]);
 
+  const filteredTiposOperacao = useMemo(() => {
+    if (!paramSearchTerm.trim()) return tiposOperacao;
+    const term = paramSearchTerm.toLowerCase();
+    return tiposOperacao.filter((op: any) =>
+      (op.nome || "").toLowerCase().includes(term) ||
+      (op.codigo || "").toLowerCase().includes(term)
+    );
+  }, [tiposOperacao, paramSearchTerm]);
+
+  const filteredProdutoCargaRows = useMemo(() => {
+    if (!paramSearchTerm.trim()) return produtoCargaRows;
+    const term = paramSearchTerm.toLowerCase();
+    return produtoCargaRows.filter(({ prod, rule }: any) => {
+      const fornecedorNome = fornecedores.find((f: any) => f.id === prod.fornecedor_id)?.nome || "";
+      const servicoNome = tiposServico.find((s: any) => s.id === rule?.tipo_servico_id)?.nome || "";
+      const transportadoraNome = transportadoras.find((item: any) => item.id === rule?.transportadora_id)?.nome || "";
+      const empresaNome = empresas.find((item: any) => item.id === rule?.empresa_id)?.nome || "";
+      return (
+        (prod.nome || "").toLowerCase().includes(term) ||
+        (prod.categoria || "").toLowerCase().includes(term) ||
+        fornecedorNome.toLowerCase().includes(term) ||
+        transportadoraNome.toLowerCase().includes(term) ||
+        empresaNome.toLowerCase().includes(term) ||
+        servicoNome.toLowerCase().includes(term)
+      );
+    });
+  }, [produtoCargaRows, paramSearchTerm, fornecedores, tiposServico, transportadoras, empresas]);
+
+  const filteredTiposDia = useMemo(() => {
+    if (!paramSearchTerm.trim()) return tiposDia;
+    const term = paramSearchTerm.toLowerCase();
+    return tiposDia.filter((d: any) =>
+      (d.nome || "").toLowerCase().includes(term) ||
+      String(d.fator || "").toLowerCase().includes(term)
+    );
+  }, [tiposDia, paramSearchTerm]);
+
   const resetProdutoCargaForm = () => {
     setProdutoCargaForm({
       nome: "",
@@ -1738,8 +1830,8 @@ const CentralCadastros = () => {
             : "Este produto já existe para o fornecedor selecionado.",
         );
       } else {
-        const createdProduct = await createProdutoCargaMutation.mutateAsync(payload);
-        await upsertProductServicePrice(createdProduct.id);
+        const createdProduct: any = await createProdutoCargaMutation.mutateAsync(payload);
+        await upsertProductServicePrice(createdProduct?.id);
         await queryClient.invalidateQueries({ queryKey: ["produtos_carga_service_rules"] });
       }
 
@@ -2445,16 +2537,78 @@ const CentralCadastros = () => {
       aguardandoComplemento,
       bloqueiamRh,
       bloqueiamFinanceiro,
-      completudeMedia
+      completudeMedia,
     };
   }, [colaboradoresFiltrados]);
 
+  // KPIs Executivos Oficiais (Auditoria Direta da Base Operacional)
+  const cadastrosKpiStats = useMemo(() => {
+    const total = colaboradoresOperacionais.length;
+    const ativos = colaboradoresOperacionais.filter((c) => c.status !== "inativo").length;
+
+    // 1. Prontos para Operação/Folha:
+    // Critério: Ativo, sem cadastro provisório, sem pendente_complemento,
+    // sem bloqueios fail-closed, com rh completo, operacional completo e financeiro completo.
+    const prontos = colaboradoresOperacionais.filter((c) => {
+      if (c.status === "inativo") return false;
+      if (c.status_cadastro === "pendente_complemento" || Boolean(c.cadastro_provisorio)) return false;
+      if (c.bloqueiaRh || c.bloqueiaFinanceiro) return false;
+      return (
+        Boolean(c.completudeDetailed?.operacional?.completo) &&
+        Boolean(c.completudeDetailed?.rh?.completo) &&
+        Boolean(c.completudeDetailed?.financeiro?.completo)
+      );
+    }).length;
+
+    // 2. Pendências Cadastrais / RH:
+    // Critério: Ativos com bloqueio de RH, cadastro provisório, status pendente_complemento,
+    // ou dados de RH / Operacional incompletos.
+    const pendenciasRh = colaboradoresOperacionais.filter((c) => {
+      if (c.status === "inativo") return false;
+      const isProvisorio = c.status_cadastro === "pendente_complemento" || Boolean(c.cadastro_provisorio);
+      const rhIncompleto = !c.completudeDetailed?.rh?.completo || !c.completudeDetailed?.operacional?.completo;
+      return Boolean(c.bloqueiaRh || isProvisorio || rhIncompleto);
+    }).length;
+
+    // 3. Pendências Bancárias / Fin:
+    // Critério: Ativos com bloqueio financeiro, dados financeiros incompletos ou dados bancários inválidos.
+    const pendenciasFin = colaboradoresOperacionais.filter((c) => {
+      if (c.status === "inativo") return false;
+      const finIncompleto = !c.completudeDetailed?.financeiro?.completo;
+      const bankInvalido = !getColaboradorBankValidation(c).isValid;
+      return Boolean(c.bloqueiaFinanceiro || finIncompleto || bankInvalido);
+    }).length;
+
+    return {
+      total,
+      ativos,
+      prontos,
+      pendenciasRh,
+      pendenciasFin,
+    };
+  }, [colaboradoresOperacionais]);
+
   const colaboradoresGrid = useMemo(() => {
-    let list = colaboradoresFiltrados.filter(c => {
+    let list = colaboradoresFiltrados.filter((c) => {
       const details = getColaboradorCompletudeDetailed(c);
-      if (kpiFilter === "aptos" && !details.operacional.completo) return false;
-      if (kpiFilter === "pendencias_rh" && details.rh.completo) return false;
-      if (kpiFilter === "pendencias_fin" && details.financeiro.completo) return false;
+      if (kpiFilter === "aptos") {
+        if (c.status === "inativo") return false;
+        if (c.status_cadastro === "pendente_complemento" || Boolean(c.cadastro_provisorio)) return false;
+        if (c.bloqueiaRh || c.bloqueiaFinanceiro) return false;
+        if (!details.operacional.completo || !details.rh.completo || !details.financeiro.completo) return false;
+      }
+      if (kpiFilter === "pendencias_rh") {
+        if (c.status === "inativo") return false;
+        const isProvisorio = c.status_cadastro === "pendente_complemento" || Boolean(c.cadastro_provisorio);
+        const rhIncompleto = !details.rh.completo || !details.operacional.completo;
+        if (!c.bloqueiaRh && !isProvisorio && !rhIncompleto) return false;
+      }
+      if (kpiFilter === "pendencias_fin") {
+        if (c.status === "inativo") return false;
+        const finIncompleto = !details.financeiro.completo;
+        const bankInvalido = !getColaboradorBankValidation(c).isValid;
+        if (!c.bloqueiaFinanceiro && !finIncompleto && !bankInvalido) return false;
+      }
       return true;
     });
 
@@ -2468,6 +2622,14 @@ const CentralCadastros = () => {
 
     return list;
   }, [colaboradoresFiltrados, kpiFilter, kpiSort]);
+
+  const totalColaboradoresCount = colaboradoresGrid.length;
+  const totalColaboradoresPages = Math.max(1, Math.ceil(totalColaboradoresCount / colaboradoresPageSize));
+
+  const paginatedColaboradores = useMemo(() => {
+    const startIndex = (colaboradoresPage - 1) * colaboradoresPageSize;
+    return colaboradoresGrid.slice(startIndex, startIndex + colaboradoresPageSize);
+  }, [colaboradoresGrid, colaboradoresPage, colaboradoresPageSize]);
 
   const cadastrosPipelineEmpresa = useMemo(() => {
     if (empresaId) {
@@ -2519,29 +2681,66 @@ const CentralCadastros = () => {
   return (
     <AppShell
       title="Central de Cadastros"
-      subtitle="Entidades operacionais e parâmetros do motor no mesmo contexto"
+      subtitle="Administração mestre de entidades operacionais, pessoas e parâmetros do motor"
       pipelineTrigger={cadastrosReviewTrigger}
     >
-      <div className="space-y-6">
-        <section className="esc-card p-4 md:p-5">
+      <div className="space-y-5">
+        {/* Header Executivo & Ações Globais */}
+        <section className="bg-card dark:bg-[#15191F] border border-border/80 dark:border-white/[0.06] rounded-xl p-4 md:p-5 shadow-xs">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="font-display font-semibold text-foreground">Administração Operacional</h2>
-              <p className="text-sm text-muted-foreground">
-                Organize empresas, equipe, dispositivos e parâmetros sem alternar entre módulos soltos.
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
+                  Cadastros & Sistema
+                </span>
+                <span className="text-xs text-muted-foreground">·</span>
+                <span className="text-xs text-muted-foreground font-medium">Gestão Mestre Centralizada</span>
+              </div>
+              <h2 className="font-display font-bold text-lg text-foreground tracking-tight">
+                Administração Operacional e Parametrização
+              </h2>
+              <p className="text-xs text-muted-foreground max-w-2xl">
+                Organize empresas, equipe operacional, dispositivos coletores e parâmetros tarifários do motor sem alternar entre módulos soltos.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => navigate("/cadastros/regras-operacionais")}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs font-medium gap-1.5"
+                onClick={() => {
+                  queryClient.invalidateQueries({ queryKey: ["colaboradores_list"] });
+                  queryClient.invalidateQueries({ queryKey: ["empresas"] });
+                  toast.success("Dados cadastrais atualizados.");
+                }}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Atualizar
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs font-medium gap-1.5"
+                onClick={() => setImportModalOpen(true)}
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Importar Planilha
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs font-medium gap-1.5"
+                onClick={() => navigate("/cadastros/regras-operacionais")}
+              >
                 <ArrowRight className="h-4 w-4 mr-2" />
                 Regras operacionais
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setImportModalOpen(true)}>
-                <Upload className="h-4 w-4 mr-2" />
-                Importar Planilha
-              </Button>
-
-              <Button variant="outline" size="sm" onClick={() => navigate("/colaboradores")}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs font-medium gap-1.5"
+                onClick={() => navigate("/colaboradores")}
+              >
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Gestão detalhada
               </Button>
@@ -2550,33 +2749,87 @@ const CentralCadastros = () => {
         </section>
 
         {loading ? (
-          <div className="flex items-center justify-center p-20 esc-card">
-            <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
+          <div className="flex flex-col items-center justify-center p-20 gap-3 bg-card border border-border/80 rounded-xl">
+            <Loader2 className="h-9 w-9 animate-spin text-primary" />
+            <span className="text-xs font-medium text-muted-foreground">
+              Carregando cadastros operacionais e indicadores executivos...
+            </span>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-4">
-              <MetricCard label="Empresas" value={empresas.length.toString()} icon={Building2} />
-              <MetricCard label="Colaboradores" value={colaboradores.length.toString()} icon={Users} />
-              <MetricCard label="Faturáveis" value={colaboradoresFaturaveis.toString()} icon={Boxes} />
-              <MetricCard label="Coletores" value={coletores.length.toString()} icon={Cpu} />
-              <MetricCard label="Online" value={coletoresOnline.toString()} icon={Database} />
-              <MetricCard label="Transportadoras" value={transportadoras.length.toString()} icon={Truck} />
-              <MetricCard label="Fornecedores" value={fornecedores.length.toString()} icon={Store} />
-              <MetricCard label="Serviços" value={tiposServico.length.toString()} icon={Wrench} />
+            {/* 4 Cards Executivos Oficiais */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 shrink-0">
+              <OrbeKpiCard
+                label="Total de Colaboradores"
+                value={cadastrosKpiStats.total}
+                subValue={`${cadastrosKpiStats.ativos} colaboradores ativos`}
+                icon={Users}
+                status="neutral"
+                interactive={activeTab === "colaboradores"}
+                selected={activeTab === "colaboradores" && kpiFilter === "todos"}
+                onClick={() => { setKpiFilter("todos"); setKpiSort("default"); }}
+              />
+              <OrbeKpiCard
+                label="Prontos para Operação/Folha"
+                value={cadastrosKpiStats.prontos}
+                subValue="Completude integral (RH + Fin)"
+                icon={CheckCircle2}
+                status={cadastrosKpiStats.prontos > 0 ? "success" : "neutral"}
+                interactive={activeTab === "colaboradores"}
+                selected={activeTab === "colaboradores" && kpiFilter === "aptos"}
+                onClick={() => setKpiFilter("aptos")}
+              />
+              <OrbeKpiCard
+                label="Pendências Cadastrais / RH"
+                value={cadastrosKpiStats.pendenciasRh}
+                subValue="Bloqueiam fechamento de folha"
+                icon={ShieldAlert}
+                status={cadastrosKpiStats.pendenciasRh > 0 ? "danger" : "neutral"}
+                interactive={activeTab === "colaboradores"}
+                selected={activeTab === "colaboradores" && kpiFilter === "pendencias_rh"}
+                onClick={() => setKpiFilter("pendencias_rh")}
+              />
+              <OrbeKpiCard
+                label="Pendências Bancárias / Fin"
+                value={cadastrosKpiStats.pendenciasFin}
+                subValue="Bancário ou bloqueio por RH"
+                icon={AlertTriangle}
+                status={cadastrosKpiStats.pendenciasFin > 0 ? "warning" : "neutral"}
+                interactive={activeTab === "colaboradores"}
+                selected={activeTab === "colaboradores" && kpiFilter === "pendencias_fin"}
+                onClick={() => setKpiFilter("pendencias_fin")}
+              />
             </div>
 
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as CadastroTabValue)} className="space-y-4">
-              <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50 flex flex-wrap h-auto">
-                <CadastroTabTrigger value="colaboradores" icon={Users}>Colaboradores</CadastroTabTrigger>
-                <CadastroTabTrigger value="empresas" icon={Building2}>Empresas</CadastroTabTrigger>
-                <CadastroTabTrigger value="coletores" icon={Cpu}>Coletores</CadastroTabTrigger>
-                <CadastroTabTrigger value="transportadoras" icon={Truck}>Transportadoras</CadastroTabTrigger>
-                <CadastroTabTrigger value="fornecedores" icon={Store}>Fornecedores</CadastroTabTrigger>
-                <CadastroTabTrigger value="servicos" icon={Wrench}>Serviços</CadastroTabTrigger>
-                <CadastroTabTrigger value="materiais" icon={ShoppingCart}>Materiais</CadastroTabTrigger>
-                <CadastroTabTrigger value="parametros" icon={Settings2}>Parâmetros operacionais</CadastroTabTrigger>
-              </TabsList>
+              <div className="w-full overflow-x-auto pb-1 scrollbar-none">
+                <TabsList className="bg-muted/40 p-1 rounded-xl border border-border/80 inline-flex w-max min-w-full sm:w-auto gap-1 h-auto">
+                  <CadastroTabTrigger value="colaboradores" icon={Users} count={colaboradores.length}>
+                    Colaboradores
+                  </CadastroTabTrigger>
+                  <CadastroTabTrigger value="empresas" icon={Building2} count={empresas.length}>
+                    Empresas
+                  </CadastroTabTrigger>
+                  <CadastroTabTrigger value="coletores" icon={Cpu} count={coletores.length}>
+                    Coletores
+                  </CadastroTabTrigger>
+                  <CadastroTabTrigger value="transportadoras" icon={Truck} count={transportadoras.length}>
+                    Transportadoras
+                  </CadastroTabTrigger>
+                  <CadastroTabTrigger value="fornecedores" icon={Store} count={fornecedores.length}>
+                    Fornecedores
+                  </CadastroTabTrigger>
+                  <CadastroTabTrigger value="servicos" icon={Wrench} count={tiposServico.length}>
+                    Serviços
+                  </CadastroTabTrigger>
+                  <CadastroTabTrigger value="materiais" icon={ShoppingCart}>
+                    Materiais
+                  </CadastroTabTrigger>
+                  <CadastroTabTrigger value="parametros" icon={Settings2}>
+                    Parâmetros operacionais
+                  </CadastroTabTrigger>
+                </TabsList>
+              </div>
 
               <TabsContent value="colaboradores" className="space-y-4 min-h-[400px]">
                 <section className="esc-card overflow-hidden">
@@ -2591,121 +2844,268 @@ const CentralCadastros = () => {
                       <Button size="sm" onClick={() => setColaboradorModalOpen(true)}>
                         <Plus className="h-4 w-4 mr-1.5" /> Novo colaborador
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => navigate("/colaboradores")}>
-                        <Settings2 className="h-4 w-4 mr-1.5" /> Gestão completa
-                      </Button>
                     </div>
                   </div>
                   <div className="px-5 py-4 border-b border-border space-y-4">
-                    <div className="bg-muted/30 border border-border/50 rounded-xl p-4 mb-4">
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                        <div
-                          className={cn("cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50 border border-transparent", kpiFilter === "todos" && "bg-muted/50 border-input")}
+                    {/* Faixa Operacional Compacta (Sub-toolbar de prontidão de campo) */}
+                    <div className="bg-muted/20 border border-border/60 rounded-lg p-2.5 sm:p-3 space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-xs">
+                        <div className="flex items-center gap-1.5 text-muted-foreground font-medium">
+                          <Info className="h-3.5 w-3.5 text-primary/70 shrink-0" />
+                          <span>Filtros rápidos de prontidão operacional</span>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground/80">
+                          * Aptos para Operação afere capacidade de escala em campo; fechamento de folha exige completude integral.
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                        <button
+                          type="button"
                           onClick={() => { setKpiFilter("todos"); setKpiSort("default"); }}
+                          className={cn(
+                            "flex items-center justify-between p-2 rounded-md border text-left transition-all",
+                            kpiFilter === "todos"
+                              ? "border-blue-600 dark:border-blue-500 bg-blue-50/25 dark:bg-[#1A1F27] ring-1 ring-blue-600/40 dark:ring-blue-500/40 shadow-xs"
+                              : "bg-background/80 hover:bg-muted/40 border-border/60 text-muted-foreground"
+                          )}
                         >
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Fila operacional</p>
-                          <p className="text-2xl font-display font-semibold text-foreground">{colaboradoresFiltrados.length}</p>
-                          <p className="text-xs text-muted-foreground">Colaboradores ativos</p>
-                        </div>
-                        <div
-                          className={cn("cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50 border border-transparent", kpiFilter === "aptos" && "bg-emerald-50/50 border-emerald-100")}
+                          <div className="min-w-0 pr-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground truncate">Fila ativa</p>
+                            <p className="text-sm font-bold font-mono tabular-nums text-foreground truncate">{colaboradoresFiltrados.length}</p>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground hidden lg:inline">Todos</span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => setKpiFilter("aptos")}
+                          className={cn(
+                            "flex items-center justify-between p-2 rounded-md border text-left transition-all",
+                            kpiFilter === "aptos"
+                              ? "border-blue-600 dark:border-blue-500 bg-blue-50/25 dark:bg-[#1A1F27] ring-1 ring-blue-600/40 dark:ring-blue-500/40 shadow-xs"
+                              : "bg-background/80 hover:bg-muted/40 border-border/60 text-muted-foreground"
+                          )}
                         >
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Aptos para Operação</p>
-                          <p className="text-2xl font-display font-semibold text-emerald-600">{operacionalResumo.operacionaisAptos}</p>
-                          <p className="text-xs text-muted-foreground">Validados operacionalmente</p>
-                        </div>
-                        <div
-                          className={cn("cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50 border border-transparent", kpiFilter === "pendencias_rh" && "bg-rose-50/50 border-rose-100")}
+                          <div className="min-w-0 pr-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground truncate">Aptos p/ Campo</p>
+                            <p className="text-sm font-bold font-mono tabular-nums text-foreground truncate">{operacionalResumo.operacionaisAptos}</p>
+                          </div>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground hidden lg:inline">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                            Escala
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => setKpiFilter("pendencias_rh")}
+                          className={cn(
+                            "flex items-center justify-between p-2 rounded-md border text-left transition-all",
+                            kpiFilter === "pendencias_rh"
+                              ? "border-blue-600 dark:border-blue-500 bg-blue-50/25 dark:bg-[#1A1F27] ring-1 ring-blue-600/40 dark:ring-blue-500/40 shadow-xs"
+                              : "bg-background/80 hover:bg-muted/40 border-border/60 text-muted-foreground"
+                          )}
                         >
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pendências RH</p>
-                          <p className="text-2xl font-display font-semibold text-rose-600">{operacionalResumo.pendenciasRh}</p>
-                          <p className="text-xs text-muted-foreground">Gargalo Folha</p>
-                        </div>
-                        <div
-                          className={cn("cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50 border border-transparent", kpiFilter === "pendencias_fin" && "bg-amber-50/50 border-amber-100")}
+                          <div className="min-w-0 pr-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground truncate">Pendências RH</p>
+                            <p className="text-sm font-bold font-mono tabular-nums text-foreground truncate">{operacionalResumo.pendenciasRh}</p>
+                          </div>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground hidden lg:inline">
+                            <span className="h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0" />
+                            Folha
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => setKpiFilter("pendencias_fin")}
+                          className={cn(
+                            "flex items-center justify-between p-2 rounded-md border text-left transition-all",
+                            kpiFilter === "pendencias_fin"
+                              ? "border-blue-600 dark:border-blue-500 bg-blue-50/25 dark:bg-[#1A1F27] ring-1 ring-blue-600/40 dark:ring-blue-500/40 shadow-xs"
+                              : "bg-background/80 hover:bg-muted/40 border-border/60 text-muted-foreground"
+                          )}
                         >
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pendências Financeiro</p>
-                          <p className="text-2xl font-display font-semibold text-amber-600">{operacionalResumo.pendenciasFinanceiro}</p>
-                          <p className="text-xs text-muted-foreground">Gargalo Bancário/CNAB</p>
-                        </div>
-                        <div
-                          className={cn("cursor-pointer rounded-lg p-2 transition-colors hover:bg-muted/50 border border-transparent", kpiSort === "completude_asc" && "bg-primary/5 border-primary/20")}
+                          <div className="min-w-0 pr-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground truncate">Pendências Fin</p>
+                            <p className="text-sm font-bold font-mono tabular-nums text-foreground truncate">{operacionalResumo.pendenciasFinanceiro}</p>
+                          </div>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground hidden lg:inline">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                            CNAB
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => setKpiSort(prev => prev === "completude_asc" ? "default" : "completude_asc")}
+                          className={cn(
+                            "flex flex-col justify-center p-2 rounded-md border text-left transition-all col-span-2 sm:col-span-1",
+                            kpiSort === "completude_asc"
+                              ? "border-blue-600 dark:border-blue-500 bg-blue-50/25 dark:bg-[#1A1F27] ring-1 ring-blue-600/40 dark:ring-blue-500/40 shadow-xs"
+                              : "bg-background/80 hover:bg-muted/40 border-border/60 text-muted-foreground"
+                          )}
                         >
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Qualidade da Base</p>
-                          <p className="text-2xl font-display font-semibold text-foreground">{operacionalResumo.completudeMedia}%</p>
-                          <div className="mt-2 h-2 rounded-full bg-muted">
-                            <div className="h-2 rounded-full bg-primary transition-all" style={{ width: `${operacionalResumo.completudeMedia}%` }} />
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground truncate">Qualidade</span>
+                            <span className="text-xs font-bold font-mono tabular-nums text-foreground">{operacionalResumo.completudeMedia}%</span>
+                          </div>
+                          <div className="mt-1 h-1.5 w-full rounded-full bg-muted/60 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-blue-600 dark:bg-blue-500 transition-all"
+                              style={{ width: `${operacionalResumo.completudeMedia}%` }}
+                            />
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Barra Consolidada de Busca e Filtros */}
+                    <div className="space-y-2.5">
+                      <div className="flex flex-col gap-2.5 md:flex-row md:items-end">
+                        {/* Input de Busca com Ícone e Limpeza */}
+                        <div className="space-y-1.5 flex-1 min-w-[240px]">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Buscar Colaborador
+                          </p>
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                            <Input
+                              placeholder="Nome, CPF ou Matrícula..."
+                              value={collaboratorSearchTerm}
+                              onChange={(e) => setCollaboratorSearchTerm(e.target.value)}
+                              className="w-full bg-background pl-8.5 pr-8"
+                            />
+                            {collaboratorSearchTerm && (
+                              <button
+                                type="button"
+                                onClick={() => setCollaboratorSearchTerm("")}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded-full"
+                                title="Limpar busca"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            )}
                           </div>
                         </div>
+
+                        {/* Select Filtro Operacional */}
+                        <div className="space-y-1.5 md:w-[220px]">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Filtro operacional
+                          </p>
+                          <Select
+                            value={operacionalFilters[0] ?? "todos"}
+                            onValueChange={(value) => setOperacionalFilters(value === "todos" ? [] : [value as OperacionalQuickFilter])}
+                          >
+                            <SelectTrigger className="w-full bg-background">
+                              <SelectValue placeholder="Todos os filtros" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="todos">Todos os filtros</SelectItem>
+                              <SelectItem value="apenas_pendentes">Apenas pendentes</SelectItem>
+                              <SelectItem value="bloqueiam_aprovacao">Bloqueiam aprovação</SelectItem>
+                              <SelectItem value="sem_banco">Sem banco</SelectItem>
+                              <SelectItem value="sem_contrato">Sem contrato</SelectItem>
+                              <SelectItem value="sem_pix">Sem PIX</SelectItem>
+                              <SelectItem value="criticos">Críticos</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Select Tipo de Contrato */}
+                        <div className="space-y-1.5 md:w-[200px]">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Tipo de contrato
+                          </p>
+                          <Select value={contractFilter} onValueChange={setContractFilter}>
+                            <SelectTrigger className="w-full bg-background">
+                              <SelectValue placeholder="Todos" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="todos">Todos</SelectItem>
+                              {contractFilterOptions.map((option) => (
+                                <SelectItem key={option} value={option}>{option}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Botão Limpar Filtros */}
+                        {hasActiveFilters && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={clearAllFilters}
+                            className="h-9 px-2.5 text-xs text-muted-foreground hover:text-foreground gap-1.5 shrink-0"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Limpar filtros
+                          </Button>
+                        )}
                       </div>
-                    </div>
-                    <div className="flex flex-col gap-3 md:flex-row md:items-end">
-                      <div className="space-y-1.5 md:w-[280px]">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Buscar Colaborador
-                        </p>
-                        <Input
-                          placeholder="Nome, CPF ou Matrícula..."
-                          value={collaboratorSearchTerm}
-                          onChange={(e) => setCollaboratorSearchTerm(e.target.value)}
-                          className="w-full bg-background"
-                        />
-                      </div>
-                      <div className="space-y-1.5 md:w-[220px]">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Filtro operacional
-                        </p>
-                        <Select
-                          value={operacionalFilters[0] ?? "todos"}
-                          onValueChange={(value) => setOperacionalFilters(value === "todos" ? [] : [value as OperacionalQuickFilter])}
-                        >
-                          <SelectTrigger className="w-full bg-background">
-                            <SelectValue placeholder="Todos os filtros" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="todos">Todos os filtros</SelectItem>
-                            <SelectItem value="apenas_pendentes">Apenas pendentes</SelectItem>
-                            <SelectItem value="bloqueiam_aprovacao">Bloqueiam aprovação</SelectItem>
-                            <SelectItem value="sem_banco">Sem banco</SelectItem>
-                            <SelectItem value="sem_contrato">Sem contrato</SelectItem>
-                            <SelectItem value="sem_pix">Sem PIX</SelectItem>
-                            <SelectItem value="criticos">Críticos</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1.5 md:w-[220px]">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Tipo de contrato
-                        </p>
-                        <Select value={contractFilter} onValueChange={setContractFilter}>
-                          <SelectTrigger className="w-full bg-background">
-                            <SelectValue placeholder="Todos" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="todos">Todos</SelectItem>
-                            {contractFilterOptions.map((option) => (
-                              <SelectItem key={option} value={option}>{option}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+
+                      {/* Chips / Tags de filtros ativos */}
+                      {hasActiveFilters && (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          <span className="text-[11px] text-muted-foreground font-medium mr-1">Filtros ativos:</span>
+                          {collaboratorSearchTerm && (
+                            <Badge variant="secondary" className="gap-1 text-xs py-0.5 px-2">
+                              Busca: "{collaboratorSearchTerm}"
+                              <button type="button" onClick={() => setCollaboratorSearchTerm("")} className="hover:text-destructive">
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          )}
+                          {operacionalFilters.length > 0 && (
+                            <Badge variant="secondary" className="gap-1 text-xs py-0.5 px-2">
+                              Operacional: {operacionalFilters[0]}
+                              <button type="button" onClick={() => setOperacionalFilters([])} className="hover:text-destructive">
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          )}
+                          {contractFilter !== "todos" && (
+                            <Badge variant="secondary" className="gap-1 text-xs py-0.5 px-2">
+                              Contrato: {contractFilter}
+                              <button type="button" onClick={() => setContractFilter("todos")} className="hover:text-destructive">
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          )}
+                          {kpiFilter !== "todos" && (
+                            <Badge variant="secondary" className="gap-1 text-xs py-0.5 px-2">
+                              Status KPI: {kpiFilter}
+                              <button type="button" onClick={() => setKpiFilter("todos")} className="hover:text-destructive">
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          )}
+                          {kpiSort === "completude_asc" && (
+                            <Badge variant="secondary" className="gap-1 text-xs py-0.5 px-2">
+                              Ordenação: Menor completude
+                              <button type="button" onClick={() => setKpiSort("default")} className="hover:text-destructive">
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className="max-h-[60vh] overflow-y-scroll pr-1">
+                  <div className="max-h-[calc(100vh-380px)] min-h-[320px] overflow-auto scrollbar-thin pr-1">
                     <table className="w-full text-sm">
-                      <thead className="esc-table-header">
+                      <thead className="esc-table-header sticky top-0 bg-background z-10 shadow-2xs border-b border-border/80">
                         <tr className="text-left">
-                          <th className="px-3 h-11 font-medium text-center">Prioridade</th>
-                          <th className="px-5 h-11 font-medium text-left">Colaborador</th>
-                          <th className="px-3 h-11 font-medium text-center">Empresa</th>
-                          <th className="px-3 h-11 font-medium text-center">Tipo</th>
-                          <th className="px-3 h-11 font-medium text-center">Contrato</th>
-                          <th className="px-3 h-11 font-medium text-center">Governança</th>
-                          <th className="px-5 h-11 font-medium text-center">Status</th>
+                          <th className="px-3 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground text-center">Prioridade</th>
+                          <th className="px-5 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground text-left">Colaborador</th>
+                          <th className="px-3 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground text-center">Empresa</th>
+                          <th className="px-3 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground text-center">Tipo</th>
+                          <th className="px-3 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground text-center">Contrato</th>
+                          <th className="px-3 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground text-center">Governança</th>
+                          <th className="px-5 h-10 font-semibold text-[11px] uppercase tracking-wider text-muted-foreground text-center">Status</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2715,122 +3115,224 @@ const CentralCadastros = () => {
                               Nenhum colaborador encontrado com os filtros operacionais atuais.
                             </td>
                           </tr>
-                        ) : colaboradoresGrid.map((colaborador) => (
-                          <tr
-                            key={colaborador.id}
-                            className="border-t border-border/50 hover:bg-muted/30 transition-colors cursor-pointer group"
-                            onClick={() => setSelectedColaboradorDrawer(colaborador)}
-                          >
-                            <td className="px-3 text-center">
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "font-medium border tracking-tight shadow-none",
-                                  colaborador.priority === "critico" && "bg-rose-50 text-rose-700 border-rose-200",
-                                  colaborador.priority === "atencao" && "bg-amber-50 text-amber-700 border-amber-200",
-                                  colaborador.priority === "ok" && "bg-slate-50 text-slate-600 border-slate-200",
-                                )}
-                              >
-                                {colaborador.priority === "critico" ? "Crítico" : colaborador.priority === "atencao" ? "Atenção" : "OK"}
-                              </Badge>
-                            </td>
-                            <td className="px-5 h-[56px] text-left">
-                              <div className="font-semibold text-foreground flex items-center justify-start gap-2">
-                                {colaborador.nome}
-                                {colaborador.is_teste && colaborador.cenario_homologacao && (
-                                  <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-200 border-purple-200 text-[10px] px-1.5 py-0.5" variant="outline">
-                                    [HML] {colaborador.cenario_homologacao}
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="text-[11px] text-muted-foreground/70 uppercase font-mono tracking-wide">
-                                Mat. {colaborador.matricula || "S/N"}
-                              </div>
-                            </td>
-                            <td className="px-3 text-muted-foreground text-center">{colaborador.empresas?.nome || "—"}</td>
-                            <td className="px-3 text-center font-medium">{getColaboradorTypeLabel(colaborador)}</td>
-                            <td className="px-3 text-center font-medium">{getColaboradorContractLabel(colaborador)}</td>
-                            <td className="px-3 text-center">
-                              <TooltipProvider delayDuration={150}>
-                                <div className="flex items-center justify-center gap-1.5">
-                                  {/* Operacional */}
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className={cn("flex h-6 w-8 items-center justify-center rounded-md border text-[10px] font-semibold cursor-help", colaborador.completudeDetailed?.operacional.completo ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-rose-50 border-rose-200 text-rose-700")}>OPER</div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p className="text-xs font-semibold mb-1">Operacional: {colaborador.completudeDetailed?.operacional.completo ? "Apto" : "Pendente"}</p>
-                                      {!colaborador.completudeDetailed?.operacional.completo && colaborador.completudeDetailed?.operacional.pendencias.length > 0 && (
-                                        <div className="text-[10px] text-muted-foreground">
-                                          <p className="font-semibold mb-0.5">Pendências:</p>
-                                          <ul className="space-y-0.5 ml-1">
-                                            {colaborador.completudeDetailed.operacional.pendencias.map(p => <li key={p}>• {p}</li>)}
-                                          </ul>
-                                        </div>
-                                      )}
-                                    </TooltipContent>
-                                  </Tooltip>
+                        ) : paginatedColaboradores.map((colaborador) => {
+                          const statusMeta = getColaboradorStatusMeta(colaborador);
+                          const isAtivo = statusMeta.status === "ativo";
+                          const isPendente = statusMeta.status === "pendente";
 
-                                  {/* RH */}
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className={cn("flex h-6 w-8 items-center justify-center rounded-md border text-[10px] font-semibold cursor-help", colaborador.completudeDetailed?.rh.completo ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-rose-50 border-rose-200 text-rose-700")}>RH</div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p className="text-xs font-semibold mb-1">RH: {colaborador.completudeDetailed?.rh.completo ? "Apto" : "Pendente"}</p>
-                                      {!colaborador.completudeDetailed?.rh.completo && colaborador.completudeDetailed?.rh.pendencias.length > 0 && (
-                                        <div className="text-[10px] text-muted-foreground">
-                                          <p className="font-semibold mb-0.5">Pendências:</p>
-                                          <ul className="space-y-0.5 ml-1">
-                                            {colaborador.completudeDetailed.rh.pendencias.map(p => <li key={p}>• {p}</li>)}
-                                          </ul>
-                                        </div>
-                                      )}
-                                    </TooltipContent>
-                                  </Tooltip>
-
-                                  {/* Financeiro */}
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div className={cn("flex h-6 w-8 items-center justify-center rounded-md border text-[10px] font-semibold cursor-help", colaborador.completudeDetailed?.financeiro.completo ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700")}>FIN</div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p className="text-xs font-semibold mb-1">Financeiro: {colaborador.completudeDetailed?.financeiro.completo ? "Apto" : "Pendente"}</p>
-                                      {!colaborador.completudeDetailed?.financeiro.completo && colaborador.completudeDetailed?.financeiro.pendencias.length > 0 && (
-                                        <div className="text-[10px] text-muted-foreground">
-                                          <p className="font-semibold mb-0.5">Pendências:</p>
-                                          <ul className="space-y-0.5 ml-1">
-                                            {colaborador.completudeDetailed.financeiro.pendencias.map(p => <li key={p}>• {p}</li>)}
-                                          </ul>
-                                        </div>
-                                      )}
-                                    </TooltipContent>
-                                  </Tooltip>
+                          return (
+                            <tr
+                              key={colaborador.id}
+                              className="border-t border-border/50 hover:bg-muted/30 transition-colors cursor-pointer group"
+                              onClick={() => setSelectedColaboradorDrawer(colaborador)}
+                            >
+                              <td className="px-3 text-center">
+                                {colaborador.priority === "critico" ? (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-[6px] text-[10px] font-semibold border uppercase tracking-tight bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20">
+                                    Crítico
+                                  </span>
+                                ) : colaborador.priority === "atencao" ? (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-[6px] text-[10px] font-medium border uppercase tracking-tight bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                                    Atenção
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] text-muted-foreground/60 font-medium">
+                                    OK
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-5 py-2.5 text-left">
+                                <div className="font-semibold text-foreground text-xs sm:text-sm flex items-center justify-start gap-2 leading-snug">
+                                  <span>{colaborador.nome}</span>
+                                  {colaborador.is_teste && colaborador.cenario_homologacao && (
+                                    <span className="bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-500/20 text-[9px] px-1 py-0.2 rounded-[4px] font-mono">
+                                      [HML] {colaborador.cenario_homologacao}
+                                    </span>
+                                  )}
                                 </div>
-                              </TooltipProvider>
-                            </td>
-                            <td className="px-5 text-center">
-                              {(() => {
-                                const statusMeta = getColaboradorStatusMeta(colaborador);
-                                if (statusMeta.status === "pendente") {
-                                  return (
-                                    <Badge className="bg-amber-500 text-amber-950 hover:bg-amber-600 font-semibold shadow-none border-transparent">
-                                      Aguardando complemento
-                                    </Badge>
-                                  );
-                                }
-                                return (
-                                  <StatusChip
-                                    status={statusMeta.status}
-                                    label={statusMeta.label}
+                                <div className="text-[11px] text-muted-foreground/80 font-mono">
+                                  Mat. {colaborador.matricula || "S/N"}
+                                </div>
+                              </td>
+                              <td className="px-3 text-muted-foreground text-center text-xs truncate max-w-[130px]">{colaborador.empresas?.nome || "—"}</td>
+                              <td className="px-3 text-center text-xs font-medium text-foreground/85">{getColaboradorTypeLabel(colaborador)}</td>
+                              <td className="px-3 text-center text-xs text-muted-foreground">{getColaboradorContractLabel(colaborador)}</td>
+                              <td className="px-3 text-center">
+                                <TooltipProvider delayDuration={150}>
+                                  <div className="flex items-center justify-center gap-1">
+                                    {/* Operacional */}
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className={cn(
+                                          "flex h-5 w-7 items-center justify-center rounded-[4px] text-[9.5px] font-bold font-mono tracking-tight cursor-help border transition-colors",
+                                          colaborador.completudeDetailed?.operacional.completo
+                                            ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-700 dark:text-emerald-400"
+                                            : "bg-muted/40 border-border/70 text-muted-foreground"
+                                        )}>
+                                          OPER
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p className="text-xs font-semibold mb-1">Operacional: {colaborador.completudeDetailed?.operacional.completo ? "Apto" : "Pendente"}</p>
+                                        {!colaborador.completudeDetailed?.operacional.completo && colaborador.completudeDetailed?.operacional.pendencias.length > 0 && (
+                                          <div className="text-[10px] text-muted-foreground">
+                                            <p className="font-semibold mb-0.5">Pendências:</p>
+                                            <ul className="space-y-0.5 ml-1">
+                                              {colaborador.completudeDetailed.operacional.pendencias.map(p => <li key={p}>• {p}</li>)}
+                                            </ul>
+                                          </div>
+                                        )}
+                                      </TooltipContent>
+                                    </Tooltip>
+
+                                    {/* RH */}
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className={cn(
+                                          "flex h-5 w-7 items-center justify-center rounded-[4px] text-[9.5px] font-bold font-mono tracking-tight cursor-help border transition-colors",
+                                          colaborador.completudeDetailed?.rh.completo
+                                            ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-700 dark:text-emerald-400"
+                                            : "bg-muted/40 border-border/70 text-muted-foreground"
+                                        )}>
+                                          RH
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p className="text-xs font-semibold mb-1">RH: {colaborador.completudeDetailed?.rh.completo ? "Apto" : "Pendente"}</p>
+                                        {!colaborador.completudeDetailed?.rh.completo && colaborador.completudeDetailed?.rh.pendencias.length > 0 && (
+                                          <div className="text-[10px] text-muted-foreground">
+                                            <p className="font-semibold mb-0.5">Pendências:</p>
+                                            <ul className="space-y-0.5 ml-1">
+                                              {colaborador.completudeDetailed.rh.pendencias.map(p => <li key={p}>• {p}</li>)}
+                                            </ul>
+                                          </div>
+                                        )}
+                                      </TooltipContent>
+                                    </Tooltip>
+
+                                    {/* Financeiro */}
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className={cn(
+                                          "flex h-5 w-7 items-center justify-center rounded-[4px] text-[9.5px] font-bold font-mono tracking-tight cursor-help border transition-colors",
+                                          colaborador.completudeDetailed?.financeiro.completo
+                                            ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-700 dark:text-emerald-400"
+                                            : "bg-muted/40 border-border/70 text-muted-foreground"
+                                        )}>
+                                          FIN
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p className="text-xs font-semibold mb-1">Financeiro: {colaborador.completudeDetailed?.financeiro.completo ? "Apto" : "Pendente"}</p>
+                                        {!colaborador.completudeDetailed?.financeiro.completo && colaborador.completudeDetailed?.financeiro.pendencias.length > 0 && (
+                                          <div className="text-[10px] text-muted-foreground">
+                                            <p className="font-semibold mb-0.5">Pendências:</p>
+                                            <ul className="space-y-0.5 ml-1">
+                                              {colaborador.completudeDetailed.financeiro.pendencias.map(p => <li key={p}>• {p}</li>)}
+                                            </ul>
+                                          </div>
+                                        )}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </div>
+                                </TooltipProvider>
+                              </td>
+                              <td className="px-5 text-center">
+                                <span
+                                  className={cn(
+                                    "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[6px] text-[11px] font-medium border",
+                                    isAtivo && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
+                                    isPendente && "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20",
+                                    !isAtivo && !isPendente && "bg-muted/60 text-muted-foreground border-border/70"
+                                  )}
+                                >
+                                  <span
+                                    className={cn(
+                                      "h-1.5 w-1.5 rounded-full shrink-0",
+                                      isAtivo && "bg-emerald-500",
+                                      isPendente && "bg-amber-500",
+                                      !isAtivo && !isPendente && "bg-slate-400"
+                                    )}
                                   />
-                                );
-                              })()}
-                            </td>
-                          </tr>
-                        ))}
+                                  <span>{statusMeta.label || (isAtivo ? "Ativo" : "Pendente")}</span>
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
+                  </div>
+
+                  {/* Barra Oficial de Paginação */}
+                  <div className="px-5 py-3 border-t border-border/80 bg-muted/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <span>
+                        {totalColaboradoresCount === 0
+                          ? "Nenhum colaborador encontrado"
+                          : `Exibindo ${(colaboradoresPage - 1) * colaboradoresPageSize + 1}–${Math.min(
+                              colaboradoresPage * colaboradoresPageSize,
+                              totalColaboradoresCount
+                            )} de ${totalColaboradoresCount}`}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-4">
+                      <div className="flex items-center gap-1.5">
+                        <label htmlFor="central-cadastros-page-size" className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">
+                          Linhas por página:
+                        </label>
+                        <div className="relative inline-flex items-center">
+                          <select
+                            id="central-cadastros-page-size"
+                            value={colaboradoresPageSize}
+                            onChange={(e) => {
+                              const nextSize = Number(e.target.value);
+                              setColaboradoresPageSize(nextSize);
+                              setColaboradoresPage(1);
+                            }}
+                            aria-label="Linhas por página"
+                            className="h-7 w-[72px] appearance-none rounded-md border border-border/80 bg-background px-2.5 pr-6 text-xs font-medium text-foreground transition-colors hover:bg-muted/40 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                          >
+                            <option value={15}>15</option>
+                            <option value={25}>25</option>
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5 text-muted-foreground opacity-60" />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-medium whitespace-nowrap">
+                          Página {colaboradoresPage} de {totalColaboradoresPages}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            type="button"
+                            className="h-7 w-7 p-0"
+                            onClick={() => setColaboradoresPage((prev) => Math.max(1, prev - 1))}
+                            disabled={colaboradoresPage <= 1}
+                            aria-label="Página anterior"
+                          >
+                            <ChevronLeft className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            type="button"
+                            className="h-7 w-7 p-0"
+                            onClick={() => setColaboradoresPage((prev) => Math.min(totalColaboradoresPages, prev + 1))}
+                            disabled={colaboradoresPage >= totalColaboradoresPages}
+                            aria-label="Próxima página"
+                          >
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </section>
 
@@ -2983,47 +3485,49 @@ const CentralCadastros = () => {
                       </Button>
                     </div>
                   </div>
-                  <div className="max-h-[60vh] overflow-y-scroll pr-1">
-                    <table className="w-full text-sm">
-                      <thead className="esc-table-header">
-                        <tr className="text-left">
-                          <th className="px-5 h-11 font-medium text-center">Nome</th>
-                          <th className="px-3 h-11 font-medium text-center">CNPJ</th>
-                          <th className="px-3 h-11 font-medium text-center">Unidade</th>
-                          <th className="px-3 h-11 font-medium text-center">Cidade/UF</th>
-                          <th className="px-3 h-11 font-medium text-center">Colaboradores</th>
-                          <th className="px-3 h-11 font-medium text-center">Coletores</th>
-                          <th className="px-5 h-11 font-medium text-center">Status</th>
-                          <th className="px-3 h-11 font-medium text-center">Ações</th>
+                  <div className="overflow-auto scrollbar-thin max-h-[58vh]">
+                    <table className="w-full text-sm border-collapse">
+                      <thead className="sticky top-0 z-10 bg-background border-b border-border/80 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        <tr className="h-9">
+                          <th className="px-5 text-left font-medium">Nome</th>
+                          <th className="px-3 text-left font-medium">CNPJ</th>
+                          <th className="px-3 text-left font-medium">Unidade</th>
+                          <th className="px-3 text-left font-medium">Cidade/UF</th>
+                          <th className="px-3 text-right font-medium">Colaboradores</th>
+                          <th className="px-3 text-right font-medium">Coletores</th>
+                          <th className="px-4 text-center font-medium">Status</th>
+                          <th className="pr-5 text-right font-medium">Ações</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="divide-y divide-border/60">
                         {empresas.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className="px-5 py-8 text-center text-muted-foreground">
+                            <td colSpan={8} className="px-5 py-8 text-center text-muted-foreground text-xs md:text-sm">
                               Nenhuma empresa cadastrada
                             </td>
                           </tr>
                         ) : (
                           empresas.map((empresa) => (
-                            <tr key={empresa.id} className="border-t border-muted hover:bg-background">
-                              <td className="px-5 h-[56px] font-medium text-foreground text-center">{empresa.nome}</td>
-                              <td className="px-3 text-muted-foreground text-center">{empresa.cnpj || "Não informado"}</td>
-                              <td className="px-3 text-muted-foreground text-center">{empresa.unidade || "Não informado"}</td>
-                              <td className="px-3 text-muted-foreground text-center">{empresa.cidade && empresa.estado ? `${empresa.cidade}/${empresa.estado}` : "Não informado"}</td>
-                              <td className="px-3 text-center font-display font-medium">{empresa.total_colaboradores}</td>
-                              <td className="px-3 text-center font-display font-medium">{empresa.total_coletores}</td>
-                              <td className="px-5 text-center">
-                                <Badge className={cn(
-                                  "font-semibold",
-                                  empresa.status === "ativa" ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                            <tr key={empresa.id} className="h-11 hover:bg-muted/30 transition-colors">
+                              <td className="px-5 font-medium text-foreground text-left">{empresa.nome}</td>
+                              <td className="px-3 text-muted-foreground text-left font-mono text-xs">{empresa.cnpj || "Não informado"}</td>
+                              <td className="px-3 text-muted-foreground text-left text-xs">{empresa.unidade || "Não informado"}</td>
+                              <td className="px-3 text-muted-foreground text-left text-xs">{empresa.cidade && empresa.estado ? `${empresa.cidade}/${empresa.estado}` : "Não informado"}</td>
+                              <td className="px-3 text-right font-mono tabular-nums text-xs font-medium text-foreground">{empresa.total_colaboradores}</td>
+                              <td className="px-3 text-right font-mono tabular-nums text-xs font-medium text-foreground">{empresa.total_coletores}</td>
+                              <td className="px-4 text-center">
+                                <span className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border capitalize",
+                                  empresa.status === "ativa"
+                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
+                                    : "bg-muted/60 text-muted-foreground border-border/60"
                                 )}>
                                   {empresa.status}
-                                </Badge>
+                                </span>
                               </td>
-                              <td className="px-3 text-center">
-                                <div className="flex items-center justify-center gap-1">
-                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                              <td className="pr-5 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => {
                                     setEditingEmpresa(empresa);
                                     setEmpresaForm({
                                       nome: empresa.nome || '',
@@ -3043,11 +3547,11 @@ const CentralCadastros = () => {
                                     });
                                     setEmpresaFormErrors({});
                                     setEmpresaModalOpen(true);
-                                  }}>
-                                    <PencilLine className="h-4 w-4" />
+                                  }} title="Editar empresa">
+                                    <PencilLine className="h-3.5 w-3.5" />
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteEmpresaMutation.mutate(empresa.id) }}>
-                                    <Trash2 className="h-4 w-4" />
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteEmpresaMutation.mutate(empresa.id) }} title="Excluir empresa">
+                                    <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
                                 </div>
                               </td>
@@ -3079,51 +3583,59 @@ const CentralCadastros = () => {
                       </Button>
                     </div>
                   </div>
-                  <div className="max-h-[60vh] overflow-y-scroll pr-1">
-                    <table className="w-full text-sm">
-                      <thead className="esc-table-header">
-                        <tr className="text-left">
-                          <th className="px-5 h-11 font-medium text-center">Modelo</th>
-                          <th className="px-3 h-11 font-medium text-center">Série</th>
-                          <th className="px-3 h-11 font-medium text-center">Empresa</th>
-                          <th className="px-3 h-11 font-medium text-center">Ãšltima sync</th>
-                          <th className="px-5 h-11 font-medium text-center">Status</th>
-                          <th className="px-3 h-11 font-medium text-center">Ações</th>
+                  <div className="overflow-auto scrollbar-thin max-h-[58vh]">
+                    <table className="w-full text-sm border-collapse">
+                      <thead className="sticky top-0 z-10 bg-background border-b border-border/80 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        <tr className="h-9">
+                          <th className="px-5 text-left font-medium">Modelo</th>
+                          <th className="px-3 text-left font-medium">Série</th>
+                          <th className="px-3 text-left font-medium">Empresa</th>
+                          <th className="px-3 text-left font-medium">Última sincronização</th>
+                          <th className="px-4 text-center font-medium">Status</th>
+                          <th className="pr-5 text-right font-medium">Ações</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {coletores.map((coletor) => (
-                          <tr key={coletor.id} className="border-t border-muted hover:bg-background">
-                            <td className="px-5 h-[56px] font-medium text-foreground text-center">{coletor.modelo}</td>
-                            <td className="px-3 text-muted-foreground text-center">{coletor.serie}</td>
-                            <td className="px-3 text-muted-foreground text-center">{coletor.empresas?.nome || "—"}</td>
-                            <td className="px-3 text-center text-muted-foreground">
-                              {coletor.ultima_sync ? new Date(coletor.ultima_sync).toLocaleString("pt-BR") : "Nunca"}
-                            </td>
-                            <td className="px-5 text-center">
-                              <Badge className={cn(
-                                "font-semibold",
-                                coletor.status === "online"
-                                  ? "bg-success-soft text-success-strong"
-                                  : coletor.status === "erro"
-                                    ? "bg-destructive-soft text-destructive-strong"
-                                    : "bg-muted text-muted-foreground"
-                              )}>
-                                {coletor.status}
-                              </Badge>
-                            </td>
-                            <td className="px-3 text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(`/coletores?id=${coletor.id}`)}>
-                                  <PencilLine className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteColetorMutation.mutate(coletor.id) }}>
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
+                      <tbody className="divide-y divide-border/60">
+                        {coletores.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-5 py-8 text-center text-muted-foreground text-xs md:text-sm">
+                              Nenhum coletor cadastrado
                             </td>
                           </tr>
-                        ))}
+                        ) : (
+                          coletores.map((coletor) => (
+                            <tr key={coletor.id} className="h-11 hover:bg-muted/30 transition-colors">
+                              <td className="px-5 font-medium text-foreground text-left">{coletor.modelo}</td>
+                              <td className="px-3 text-muted-foreground text-left font-mono text-xs">{coletor.serie}</td>
+                              <td className="px-3 text-muted-foreground text-left text-xs">{coletor.empresas?.nome || "—"}</td>
+                              <td className="px-3 text-left text-muted-foreground font-mono text-xs tabular-nums">
+                                {coletor.ultima_sync ? new Date(coletor.ultima_sync).toLocaleString("pt-BR") : "Nunca"}
+                              </td>
+                              <td className="px-4 text-center">
+                                <span className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border capitalize",
+                                  coletor.status === "online"
+                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
+                                    : coletor.status === "erro"
+                                      ? "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20"
+                                      : "bg-muted/60 text-muted-foreground border-border/60"
+                                )}>
+                                  {coletor.status}
+                                </span>
+                              </td>
+                              <td className="pr-5 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => navigate(`/coletores?id=${coletor.id}`)} title="Editar coletor">
+                                    <PencilLine className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão?")) deleteColetorMutation.mutate(coletor.id) }} title="Excluir coletor">
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -3148,52 +3660,56 @@ const CentralCadastros = () => {
                       </Button>
                     </div>
                   </div>
-                  <div className="max-h-[60vh] overflow-y-scroll pr-1">
-                    <table className="w-full text-sm">
-                      <thead className="esc-table-header">
-                        <tr className="text-left">
-                          <th className="px-5 h-11 font-medium text-center">Nome</th>
-                          <th className="px-3 h-11 font-medium text-center">CNPJ/CPF</th>
-                          <th className="px-3 h-11 font-medium text-center">Telefone</th>
-                          <th className="px-3 h-11 font-medium text-center">Email</th>
-                          <th className="px-3 h-11 font-medium text-center">Endereço</th>
-                          <th className="px-5 h-11 font-medium text-center">Status</th>
-                          <th className="px-3 h-11 font-medium text-center">Ações</th>
+                  <div className="overflow-auto scrollbar-thin max-h-[58vh]">
+                    <table className="w-full text-sm border-collapse">
+                      <thead className="sticky top-0 z-10 bg-background border-b border-border/80 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        <tr className="h-9">
+                          <th className="px-5 text-left font-medium">Nome</th>
+                          <th className="px-3 text-left font-medium">CNPJ/CPF</th>
+                          <th className="px-3 text-left font-medium">Telefone</th>
+                          <th className="px-3 text-left font-medium">Email</th>
+                          <th className="px-3 text-left font-medium">Endereço</th>
+                          <th className="px-4 text-center font-medium">Status</th>
+                          <th className="pr-5 text-right font-medium">Ações</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="divide-y divide-border/60">
                         {transportadoras.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground">
+                            <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground text-xs md:text-sm">
                               Nenhuma transportadora cadastrada
                             </td>
                           </tr>
                         ) : (
                           transportadoras.map((transportadora) => (
-                            <tr key={transportadora.id} className="border-t border-muted hover:bg-background">
-                              <td className="px-5 h-[56px] font-medium text-foreground text-center">{transportadora.nome}</td>
-                              <td className="px-3 text-muted-foreground text-center">{transportadora.documento || "—"}</td>
-                              <td className="px-3 text-muted-foreground text-center">{transportadora.telefone || "—"}</td>
-                              <td className="px-3 text-muted-foreground text-center">{transportadora.email || "—"}</td>
-                              <td className="px-3 text-muted-foreground text-center text-xs">{transportadora.endereco || "—"}</td>
-                              <td className="px-5 text-center">
-                                <Badge className={cn(
-                                  "font-semibold",
-                                  transportadora.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                            <tr key={transportadora.id} className="h-11 hover:bg-muted/30 transition-colors">
+                              <td className="px-5 font-medium text-foreground text-left">{transportadora.nome}</td>
+                              <td className="px-3 text-muted-foreground text-left font-mono text-xs">{transportadora.documento || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-left text-xs">{transportadora.telefone || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-left text-xs">{transportadora.email || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-left text-xs truncate max-w-[220px]" title={transportadora.endereco || undefined}>
+                                {transportadora.endereco || "—"}
+                              </td>
+                              <td className="px-4 text-center">
+                                <span className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border",
+                                  transportadora.ativo
+                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
+                                    : "bg-muted/60 text-muted-foreground border-border/60"
                                 )}>
                                   {transportadora.ativo ? "Ativo" : "Inativo"}
-                                </Badge>
+                                </span>
                               </td>
-                              <td className="px-3 text-center">
-                                <div className="flex items-center justify-center gap-1">
-                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingTransportadora(transportadora)}>
-                                    <PencilLine className="h-4 w-4" />
+                              <td className="pr-5 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setEditingTransportadora(transportadora)} title="Editar transportadora">
+                                    <PencilLine className="h-3.5 w-3.5" />
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleTransportadoraAtivoMutation.mutate({ id: transportadora.id, ativo: !transportadora.ativo })} title={transportadora.ativo ? "Desativar" : "Ativar"}>
-                                    {transportadora.ativo ? <PowerOff className="h-4 w-4" /> : <ToggleRight className="h-4 w-4" />}
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600 hover:text-amber-700" onClick={() => toggleTransportadoraAtivoMutation.mutate({ id: transportadora.id, ativo: !transportadora.ativo })} title={transportadora.ativo ? "Desativar" : "Ativar"}>
+                                    {transportadora.ativo ? <PowerOff className="h-3.5 w-3.5" /> : <ToggleRight className="h-3.5 w-3.5" />}
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await TransportadoraClienteService.deleteWithCheck(transportadora.id); if (!result.success) { setItemToDelete(transportadora); setDeleteModalType("transportadora"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteTransportadoraMutation.mutate(transportadora.id); } }}>
-                                    <Trash2 className="h-4 w-4" />
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={async () => { const result = await TransportadoraClienteService.deleteWithCheck(transportadora.id); if (!result.success) { setItemToDelete(transportadora); setDeleteModalType("transportadora"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteTransportadoraMutation.mutate(transportadora.id); } }} title="Excluir transportadora">
+                                    <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
                                 </div>
                               </td>
@@ -3224,60 +3740,64 @@ const CentralCadastros = () => {
                       </Button>
                     </div>
                   </div>
-                  <div className="max-h-[60vh] overflow-y-scroll pr-1">
-                    <table className="w-full text-sm">
-                      <thead className="esc-table-header">
-                        <tr className="text-left">
-                          <th className="px-5 h-11 font-medium text-center">Nome</th>
-                          <th className="px-3 h-11 font-medium text-center">CNPJ/CPF</th>
-                          <th className="px-3 h-11 font-medium text-center">Telefone</th>
-                          <th className="px-3 h-11 font-medium text-center">Email</th>
-                          <th className="px-3 h-11 font-medium text-center">Endereço</th>
-                          <th className="px-3 h-11 font-medium text-center">Produtos Associados</th>
-                          <th className="px-5 h-11 font-medium text-center">Status</th>
-                          <th className="px-3 h-11 font-medium text-center">Ações</th>
+                  <div className="overflow-auto scrollbar-thin max-h-[58vh]">
+                    <table className="w-full text-sm border-collapse">
+                      <thead className="sticky top-0 z-10 bg-background border-b border-border/80 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        <tr className="h-9">
+                          <th className="px-5 text-left font-medium">Nome</th>
+                          <th className="px-3 text-left font-medium">CNPJ/CPF</th>
+                          <th className="px-3 text-left font-medium">Telefone</th>
+                          <th className="px-3 text-left font-medium">Email</th>
+                          <th className="px-3 text-left font-medium">Endereço</th>
+                          <th className="px-3 text-left font-medium">Produtos Associados</th>
+                          <th className="px-4 text-center font-medium">Status</th>
+                          <th className="pr-5 text-right font-medium">Ações</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="divide-y divide-border/60">
                         {fornecedores.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className="px-5 py-8 text-center text-muted-foreground">
+                            <td colSpan={8} className="px-5 py-8 text-center text-muted-foreground text-xs md:text-sm">
                               Nenhum fornecedor cadastrado
                             </td>
                           </tr>
                         ) : (
                           fornecedores.map((fornecedor) => (
-                            <tr key={fornecedor.id} className="border-t border-muted hover:bg-background">
-                              <td className="px-5 h-[56px] font-medium text-foreground text-center">{fornecedor.nome}</td>
-                              <td className="px-3 text-muted-foreground text-center">{fornecedor.documento || "—"}</td>
-                              <td className="px-3 text-muted-foreground text-center">{fornecedor.telefone || "—"}</td>
-                              <td className="px-3 text-muted-foreground text-center">{fornecedor.email || "—"}</td>
-                              <td className="px-3 text-muted-foreground text-center text-xs">{fornecedor.endereco || "—"}</td>
-                              <td className="px-3 text-muted-foreground text-center text-xs">
+                            <tr key={fornecedor.id} className="h-11 hover:bg-muted/30 transition-colors">
+                              <td className="px-5 font-medium text-foreground text-left">{fornecedor.nome}</td>
+                              <td className="px-3 text-muted-foreground text-left font-mono text-xs">{fornecedor.documento || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-left text-xs">{fornecedor.telefone || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-left text-xs">{fornecedor.email || "—"}</td>
+                              <td className="px-3 text-muted-foreground text-left text-xs truncate max-w-[200px]" title={fornecedor.endereco || undefined}>
+                                {fornecedor.endereco || "—"}
+                              </td>
+                              <td className="px-3 text-left text-xs">
                                 {fornecedor.produtos_carga?.length > 0 ? (
-                                  <span className="bg-primary/10 text-primary px-2 py-0.5 rounded font-medium border border-primary/20">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border border-border/60 bg-muted/40 text-foreground">
                                     {fornecedor.produtos_carga.map((p: any) => p.nome).join(", ")}
                                   </span>
                                 ) : "—"}
                               </td>
-                              <td className="px-5 text-center">
-                                <Badge className={cn(
-                                  "font-semibold",
-                                  fornecedor.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                              <td className="px-4 text-center">
+                                <span className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border",
+                                  fornecedor.ativo
+                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
+                                    : "bg-muted/60 text-muted-foreground border-border/60"
                                 )}>
                                   {fornecedor.ativo ? "Ativo" : "Inativo"}
-                                </Badge>
+                                </span>
                               </td>
-                              <td className="px-3 text-center">
-                                <div className="flex items-center justify-center gap-1">
-                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingFornecedor({ ...fornecedor, produto_id: fornecedor.produtos_carga?.[0]?.id || "" })}>
-                                    <PencilLine className="h-4 w-4" />
+                              <td className="pr-5 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setEditingFornecedor({ ...fornecedor, produto_id: fornecedor.produtos_carga?.[0]?.id || "" })} title="Editar fornecedor">
+                                    <PencilLine className="h-3.5 w-3.5" />
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleFornecedorAtivoMutation.mutate({ id: fornecedor.id, ativo: !fornecedor.ativo })} title={fornecedor.ativo ? "Desativar" : "Ativar"}>
-                                    {fornecedor.ativo ? <PowerOff className="h-4 w-4" /> : <ToggleRight className="h-4 w-4" />}
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600 hover:text-amber-700" onClick={() => toggleFornecedorAtivoMutation.mutate({ id: fornecedor.id, ativo: !fornecedor.ativo })} title={fornecedor.ativo ? "Desativar" : "Ativar"}>
+                                    {fornecedor.ativo ? <PowerOff className="h-3.5 w-3.5" /> : <ToggleRight className="h-3.5 w-3.5" />}
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await FornecedorService.deleteWithCheck(fornecedor.id); if (!result.success) { setItemToDelete(fornecedor); setDeleteModalType("fornecedor"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteFornecedorMutation.mutate(fornecedor.id); } }}>
-                                    <Trash2 className="h-4 w-4" />
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={async () => { const result = await FornecedorService.deleteWithCheck(fornecedor.id); if (!result.success) { setItemToDelete(fornecedor); setDeleteModalType("fornecedor"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteFornecedorMutation.mutate(fornecedor.id); } }} title="Excluir fornecedor">
+                                    <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
                                 </div>
                               </td>
@@ -3308,40 +3828,40 @@ const CentralCadastros = () => {
                       </Button>
                     </div>
                   </div>
-                  <div className="max-h-[60vh] overflow-y-scroll pr-1">
-                    <table className="w-full text-sm">
-                      <thead className="esc-table-header">
-                        <tr className="text-left">
-                          <th className="px-5 h-11 font-medium text-center">Nome</th>
-                          <th className="px-3 h-11 font-medium text-center">Descrição</th>
-                          <th className="px-3 h-11 font-medium text-center">Extra?</th>
-                          <th className="px-3 h-11 font-medium text-center">Unidade</th>
-                          <th className="px-3 h-11 font-medium text-center">Cálculo</th>
-                          <th className="px-3 h-11 font-medium text-center">Valor</th>
-                          <th className="px-5 h-11 font-medium text-center">Status</th>
-                          <th className="px-3 h-11 font-medium text-center">Ações</th>
+                  <div className="overflow-auto scrollbar-thin max-h-[58vh]">
+                    <table className="w-full text-sm border-collapse">
+                      <thead className="sticky top-0 z-10 bg-background border-b border-border/80 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        <tr className="h-9">
+                          <th className="px-5 text-left font-medium">Nome</th>
+                          <th className="px-3 text-left font-medium">Descrição</th>
+                          <th className="px-3 text-center font-medium">Extra?</th>
+                          <th className="px-3 text-center font-medium">Unidade</th>
+                          <th className="px-3 text-left font-medium">Cálculo</th>
+                          <th className="px-3 text-right font-medium">Valor</th>
+                          <th className="px-4 text-center font-medium">Status</th>
+                          <th className="pr-5 text-right font-medium">Ações</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="divide-y divide-border/60">
                         {tiposServico.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className="px-5 py-8 text-center text-muted-foreground">
+                            <td colSpan={8} className="px-5 py-8 text-center text-muted-foreground text-xs md:text-sm">
                               Nenhum tipo de serviço cadastrado
                             </td>
                           </tr>
                         ) : (
                           tiposServico.map((servico) => (
-                            <tr key={servico.id} className="border-t border-muted hover:bg-background">
-                              <td className="px-5 h-[56px] font-medium text-foreground text-center">{servico.nome}</td>
-                              <td className="px-3 text-muted-foreground text-center text-xs">{servico.descricao || "—"}</td>
+                            <tr key={servico.id} className="h-11 hover:bg-muted/30 transition-colors">
+                              <td className="px-5 font-medium text-foreground text-left">{servico.nome}</td>
+                              <td className="px-3 text-muted-foreground text-left text-xs truncate max-w-[200px]" title={servico.descricao || undefined}>{servico.descricao || "—"}</td>
                               <td className="px-3 text-center">
                                 {servico.is_extra_service ? (
-                                  <Badge variant="secondary" className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-amber-200">Sim</Badge>
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400">Sim</span>
                                 ) : (
                                   <span className="text-muted-foreground text-xs">—</span>
                                 )}
                               </td>
-                              <td className="px-3 text-muted-foreground text-center text-xs">
+                              <td className="px-3 text-center text-muted-foreground text-xs font-mono">
                                 {servico.is_extra_service ? (
                                   servico.unidade_cobranca === "unidade" ? "UN" :
                                     servico.unidade_cobranca === "hora" ? "Hora" :
@@ -3349,34 +3869,36 @@ const CentralCadastros = () => {
                                         servico.unidade_cobranca === "km" ? "KM" : (servico.unidade_cobranca || "UN")
                                 ) : "—"}
                               </td>
-                              <td className="px-3 text-muted-foreground text-center text-xs">
+                              <td className="px-3 text-muted-foreground text-left text-xs">
                                 {servico.is_extra_service ? (
                                   servico.tipo_calculo === "fixed" ? "Preço Fixo" : "Manual"
                                 ) : "—"}
                               </td>
-                              <td className="px-3 text-center font-display font-medium text-xs">
+                              <td className="px-3 text-right font-mono tabular-nums text-xs font-medium text-foreground">
                                 {servico.is_extra_service ? (
                                   servico.tipo_calculo === "fixed" ? formatCurrencyBRL(servico.valor_unitario) : "Manual"
                                 ) : "—"}
                               </td>
-                              <td className="px-5 text-center">
-                                <Badge className={cn(
-                                  "font-semibold",
-                                  servico.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                              <td className="px-4 text-center">
+                                <span className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border",
+                                  servico.ativo
+                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
+                                    : "bg-muted/60 text-muted-foreground border-border/60"
                                 )}>
                                   {servico.ativo ? "Ativo" : "Inativo"}
-                                </Badge>
+                                </span>
                               </td>
-                              <td className="px-3 text-center">
-                                <div className="flex items-center justify-center gap-1">
-                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingServico(servico)}>
-                                    <PencilLine className="h-4 w-4" />
+                              <td className="pr-5 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setEditingServico(servico)} title="Editar serviço">
+                                    <PencilLine className="h-3.5 w-3.5" />
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:text-amber-700" onClick={() => toggleServicoAtivoMutation.mutate({ id: servico.id, ativo: !servico.ativo })} title={servico.ativo ? "Desativar" : "Ativar"}>
-                                    {servico.ativo ? <PowerOff className="h-4 w-4" /> : <ToggleRight className="h-4 w-4" />}
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600 hover:text-amber-700" onClick={() => toggleServicoAtivoMutation.mutate({ id: servico.id, ativo: !servico.ativo })} title={servico.ativo ? "Desativar" : "Ativar"}>
+                                    {servico.ativo ? <PowerOff className="h-3.5 w-3.5" /> : <ToggleRight className="h-3.5 w-3.5" />}
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={async () => { const result = await TipoServicoOperacionalService.deleteWithCheck(servico.id); if (!result.success) { setItemToDelete(servico); setDeleteModalType("servico"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteServicoMutation.mutate(servico.id); } }}>
-                                    <Trash2 className="h-4 w-4" />
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={async () => { const result = await TipoServicoOperacionalService.deleteWithCheck(servico.id); if (!result.success) { setItemToDelete(servico); setDeleteModalType("servico"); setDeleteErrorDetails(result.detalhes || []); setDeleteModalOpen(true); } else if (confirm("Confirmar exclusão definitiva? Esta ação não pode ser desfeita.")) { deleteServicoMutation.mutate(servico.id); } }} title="Excluir serviço">
+                                    <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
                                 </div>
                               </td>
@@ -3404,43 +3926,45 @@ const CentralCadastros = () => {
                       </Button>
                     </div>
                   </div>
-                  <div className="max-h-[60vh] overflow-y-scroll pr-1">
-                    <table className="w-full text-sm">
-                      <thead className="esc-table-header">
-                        <tr className="text-left">
-                          <th className="px-5 h-11 font-medium text-center">Nome</th>
-                          <th className="px-3 h-11 font-medium text-center">Unidade</th>
-                          <th className="px-3 h-11 font-medium text-center">Valor Unitário</th>
-                          <th className="px-5 h-11 font-medium text-center">Status</th>
-                          <th className="px-3 h-11 font-medium text-center">Ações</th>
+                  <div className="overflow-auto scrollbar-thin max-h-[58vh]">
+                    <table className="w-full text-sm border-collapse">
+                      <thead className="sticky top-0 z-10 bg-background border-b border-border/80 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        <tr className="h-9">
+                          <th className="px-5 text-left font-medium">Nome</th>
+                          <th className="px-3 text-center font-medium">Unidade</th>
+                          <th className="px-4 text-right font-medium">Valor Unitário</th>
+                          <th className="px-4 text-center font-medium">Status</th>
+                          <th className="pr-5 text-right font-medium">Ações</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="divide-y divide-border/60">
                         {materiais.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="px-5 py-8 text-center text-muted-foreground">
+                            <td colSpan={5} className="px-5 py-8 text-center text-muted-foreground text-xs md:text-sm">
                               Nenhum material cadastrado
                             </td>
                           </tr>
                         ) : (
                           materiais.map((material) => (
-                            <tr key={material.id} className="border-t border-muted hover:bg-background">
-                              <td className="px-5 h-[56px] font-medium text-foreground text-center">{material.nome}</td>
-                              <td className="px-3 text-muted-foreground text-center">{material.unidade}</td>
-                              <td className="px-3 text-center font-display font-medium">
+                            <tr key={material.id} className="h-11 hover:bg-muted/30 transition-colors">
+                              <td className="px-5 font-medium text-foreground text-left">{material.nome}</td>
+                              <td className="px-3 text-center text-xs font-mono text-muted-foreground">{material.unidade}</td>
+                              <td className="px-4 text-right font-mono tabular-nums text-xs font-medium text-foreground">
                                 {formatCurrencyBRL(material.valor_unitario)}
                               </td>
-                              <td className="px-5 text-center">
-                                <Badge className={cn(
-                                  "font-semibold",
-                                  material.ativo ? "bg-success-soft text-success-strong" : "bg-muted text-muted-foreground"
+                              <td className="px-4 text-center">
+                                <span className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border",
+                                  material.ativo
+                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
+                                    : "bg-muted/60 text-muted-foreground border-border/60"
                                 )}>
                                   {material.ativo ? "Ativo" : "Inativo"}
-                                </Badge>
+                                </span>
                               </td>
-                              <td className="px-3 text-center">
-                                <div className="flex items-center justify-center gap-1">
-                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                              <td className="pr-5 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => {
                                     setEditingMaterial(material);
                                     setMaterialForm({
                                       nome: material.nome,
@@ -3449,11 +3973,11 @@ const CentralCadastros = () => {
                                       ativo: material.ativo
                                     });
                                     setMaterialModalOpen(true);
-                                  }}>
-                                    <PencilLine className="h-4 w-4" />
+                                  }} title="Editar material">
+                                    <PencilLine className="h-3.5 w-3.5" />
                                   </Button>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão definitiva?")) deleteMaterialMutation.mutate(material.id) }}>
-                                    <Trash2 className="h-4 w-4" />
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => { if (confirm("Confirmar exclusão definitiva?")) deleteMaterialMutation.mutate(material.id) }} title="Excluir material">
+                                    <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
                                 </div>
                               </td>
@@ -3467,81 +3991,176 @@ const CentralCadastros = () => {
               </TabsContent>
 
               <TabsContent value="parametros" className="space-y-4 min-h-[400px]">
+                <section className="esc-card overflow-hidden">
+                  {/* 1. Cabeçalho oficial da seção */}
+                  <div className="px-5 py-4 border-b border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <h2 className="font-display font-semibold text-foreground">Parâmetros operacionais</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Configure os tipos de operação, produtos e classificações de dias utilizados pelo ERP.
+                      </p>
+                    </div>
+                  </div>
 
-                <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="space-y-4">
-                  <TabsList className="bg-muted p-1 h-9 rounded-lg">
-                    <TabsTrigger value="operacao" className="text-xs py-1 px-4">Tipos de operação</TabsTrigger>
-                    <TabsTrigger value="produtos" className="text-xs py-1 px-4">Produtos</TabsTrigger>
-                    <TabsTrigger value="dia" className="text-xs py-1 px-4">Tipos de dia</TabsTrigger>
-                  </TabsList>
+                  {/* 2. Navegação secundária e tabelas das subabas */}
+                  <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="space-y-0">
+                    <div className="px-5 py-3 border-b border-border bg-muted/10">
+                      <TabsList className="bg-muted/60 p-1 h-9 rounded-lg inline-flex w-full sm:w-auto overflow-x-auto">
+                        <TabsTrigger value="operacao" className="text-xs py-1 px-4">Tipos de operação</TabsTrigger>
+                        <TabsTrigger value="produtos" className="text-xs py-1 px-4">Produtos</TabsTrigger>
+                        <TabsTrigger value="dia" className="text-xs py-1 px-4">Tipos de dia</TabsTrigger>
+                      </TabsList>
+                    </div>
 
-                  <TabsContent value="operacao">
-                    <ConfigTable<any>
-                      title="Tipos de Operação"
-                      data={tiposOperacao}
-                      columns={[
-                        { header: "Nome", accessorKey: "nome" },
-                        {
-                          header: "Código",
-                          accessorKey: "codigo",
-                          cell: (item) => <code className="bg-muted px-2 py-0.5 rounded text-xs font-mono">{item.codigo}</code>,
-                        },
-                        {
-                          header: "Status",
-                          accessorKey: "status",
-                          cell: (item) => (
-                            <Badge variant={item.status === "ativo" ? "success" : "secondary"} className="h-5">
-                              {item.status}
-                            </Badge>
-                          ),
-                        },
-                      ]}
-                      onAdd={() => handleAddConfig("operacao")}
-                      onEdit={(item) => handleEditConfig("operacao", item)}
-                      onDelete={(item) => {
-                        if (confirm("Deseja remover este registro?")) {
-                          setConfigType("operacao");
-                          deleteConfigMutation.mutate(item.id);
-                        }
-                      }}
-                      onToggleStatus={(item) => toggleOpStatus.mutate(item)}
-                    />
-                  </TabsContent>
-
-                  <TabsContent value="produtos">
-                    <section className="esc-card overflow-hidden">
-                      <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
-                        <div>
-                          <h2 className="font-display font-semibold text-foreground">Produtos / Cargas</h2>
-                          <p className="text-sm text-muted-foreground">Produtos operacionais vinculados a fornecedores.</p>
+                    {/* Subaba: Tipos de Operação */}
+                    <TabsContent value="operacao" className="m-0 focus-visible:outline-none">
+                      <div className="px-5 py-3.5 border-b border-border flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                        <div className="relative w-full sm:w-80">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                          <Input
+                            placeholder="Buscar tipo de operação..."
+                            className="pl-9 pr-8 h-9 border-border bg-background"
+                            value={paramSearchTerm}
+                            onChange={(e) => setParamSearchTerm(e.target.value)}
+                          />
+                          {paramSearchTerm && (
+                            <button
+                              type="button"
+                              onClick={() => setParamSearchTerm("")}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded-full"
+                              title="Limpar busca"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                         </div>
-                        <Button size="sm" onClick={() => { resetProdutoCargaForm(); setProdutoCargaModalOpen(true); }}>
-                          <Plus className="h-4 w-4 mr-1.5" /> Novo produto
+                        <Button size="sm" onClick={() => handleAddConfig("operacao")} className="shrink-0 font-medium">
+                          <Plus className="h-4 w-4 mr-1.5" /> Novo tipo de operação
                         </Button>
                       </div>
-                      <div className="max-h-[55vh] overflow-y-auto">
-                        <table className="w-full text-sm">
-                          <thead className="esc-table-header">
-                            <tr className="text-left">
-                              <th className="px-5 h-11 font-medium text-center">Nome</th>
-                              <th className="px-3 h-11 font-medium text-center">Categoria</th>
-                              <th className="px-3 h-11 font-medium text-center">Fornecedor</th>
-                              <th className="px-3 h-11 font-medium text-center">Tipo vínculo</th>
-                              <th className="px-3 h-11 font-medium text-center">Vínculo preço</th>
-                              <th className="px-3 h-11 font-medium text-center">Serviço</th>
-                              <th className="px-3 h-11 font-medium text-center">Preço unit.</th>
-                              <th className="px-3 h-11 font-medium text-center">Ações</th>
+
+                      <div className="overflow-auto scrollbar-thin max-h-[55vh]">
+                        <table className="w-full text-sm border-collapse">
+                          <thead className="sticky top-0 z-10 bg-background border-b border-border/80 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            <tr className="h-9">
+                              <th className="px-5 text-left font-medium">Nome</th>
+                              <th className="px-4 text-center font-medium">Código</th>
+                              <th className="px-4 text-center font-medium">Status</th>
+                              <th className="pr-5 text-right font-medium">Ações</th>
                             </tr>
                           </thead>
-                          <tbody>
-                            {produtoCargaRows.length === 0 ? (
+                          <tbody className="divide-y divide-border/60">
+                            {filteredTiposOperacao.length === 0 ? (
                               <tr>
-                                <td colSpan={8} className="px-5 py-8 text-center text-muted-foreground">
-                                  Nenhum produto cadastrado. Clique em "Novo produto" para começar.
+                                <td colSpan={4} className="px-5 py-8 text-center text-muted-foreground text-xs md:text-sm">
+                                  {paramSearchTerm ? "Nenhum tipo de operação encontrado para a busca." : "Nenhum tipo de operação cadastrado."}
                                 </td>
                               </tr>
                             ) : (
-                              produtoCargaRows.map(({ prod, rule }: any) => {
+                              filteredTiposOperacao.map((item: any) => (
+                                <tr key={item.id} className="h-11 hover:bg-muted/30 transition-colors">
+                                  <td className="px-5 font-medium text-foreground text-left">{item.nome}</td>
+                                  <td className="px-4 text-center">
+                                    <code className="bg-muted/60 px-2 py-0.5 rounded text-xs font-mono border border-border/50 text-foreground">{item.codigo}</code>
+                                  </td>
+                                  <td className="px-4 text-center">
+                                    <span className={cn(
+                                      "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border",
+                                      item.status === "ativo"
+                                        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
+                                        : "bg-muted/60 text-muted-foreground border-border/60"
+                                    )}>
+                                      {item.status === "ativo" ? "Ativo" : "Inativo"}
+                                    </span>
+                                  </td>
+                                  <td className="pr-5 text-right">
+                                    <div className="flex items-center justify-end gap-1">
+                                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleEditConfig("operacao", item)} title="Editar">
+                                        <PencilLine className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-amber-600 hover:text-amber-700"
+                                        onClick={() => toggleOpStatus.mutate(item)}
+                                        title={item.status === "ativo" ? "Desativar" : "Ativar"}
+                                      >
+                                        {item.status === "ativo" ? <PowerOff className="h-3.5 w-3.5" /> : <ToggleRight className="h-3.5 w-3.5" />}
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                        onClick={() => {
+                                          if (confirm("Deseja remover este registro?")) {
+                                            setConfigType("operacao");
+                                            deleteConfigMutation.mutate(item.id);
+                                          }
+                                        }}
+                                        title="Excluir"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </TabsContent>
+
+                    {/* Subaba: Produtos */}
+                    <TabsContent value="produtos" className="m-0 focus-visible:outline-none">
+                      <div className="px-5 py-3.5 border-b border-border flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                        <div className="relative w-full sm:w-80">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                          <Input
+                            placeholder="Buscar produto..."
+                            className="pl-9 pr-8 h-9 border-border bg-background"
+                            value={paramSearchTerm}
+                            onChange={(e) => setParamSearchTerm(e.target.value)}
+                          />
+                          {paramSearchTerm && (
+                            <button
+                              type="button"
+                              onClick={() => setParamSearchTerm("")}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded-full"
+                              title="Limpar busca"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                        <Button size="sm" onClick={() => { resetProdutoCargaForm(); setProdutoCargaModalOpen(true); }} className="shrink-0 font-medium">
+                          <Plus className="h-4 w-4 mr-1.5" /> Novo produto
+                        </Button>
+                      </div>
+
+                      <div className="overflow-auto scrollbar-thin max-h-[55vh]">
+                        <table className="w-full text-sm border-collapse">
+                          <thead className="sticky top-0 z-10 bg-background border-b border-border/80 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            <tr className="h-9">
+                              <th className="px-5 text-left font-medium">Nome</th>
+                              <th className="px-3 text-left font-medium">Categoria</th>
+                              <th className="px-3 text-left font-medium">Fornecedor</th>
+                              <th className="px-3 text-left font-medium">Tipo vínculo</th>
+                              <th className="px-3 text-left font-medium">Vínculo preço</th>
+                              <th className="px-3 text-left font-medium">Serviço</th>
+                              <th className="px-3 text-right font-medium">Preço unit.</th>
+                              <th className="pr-5 text-right font-medium">Ações</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/60">
+                            {filteredProdutoCargaRows.length === 0 ? (
+                              <tr>
+                                <td colSpan={8} className="px-5 py-8 text-center text-muted-foreground text-xs md:text-sm">
+                                  {paramSearchTerm ? "Nenhum produto encontrado para a busca." : "Nenhum produto cadastrado. Clique em \"Novo produto\" para começar."}
+                                </td>
+                              </tr>
+                            ) : (
+                              filteredProdutoCargaRows.map(({ prod, rule }: any) => {
                                 const fornecedorNome = fornecedores.find((f: any) => f.id === prod.fornecedor_id)?.nome;
                                 const transportadoraNome = transportadoras.find((item: any) => item.id === rule?.transportadora_id)?.nome;
                                 const empresaNome = empresas.find((item: any) => item.id === rule?.empresa_id)?.nome;
@@ -3549,17 +4168,17 @@ const CentralCadastros = () => {
                                 const vinculoNome = transportadoraNome || empresaNome || (rule?.fornecedor_id ? fornecedores.find((f: any) => f.id === rule?.fornecedor_id)?.nome : null);
                                 const servicoNome = tiposServico.find((item: any) => item.id === rule?.tipo_servico_id)?.nome;
                                 return (
-                                  <tr key={`${prod.id}-${rule?.id ?? "base"}`} className="border-t border-muted hover:bg-background">
-                                    <td className="px-5 h-12 font-medium text-foreground text-center">{prod.nome}</td>
-                                    <td className="px-3 text-muted-foreground text-center">{prod.categoria || "—"}</td>
-                                    <td className="px-3 text-muted-foreground text-center">{fornecedorNome || "—"}</td>
-                                    <td className="px-3 text-muted-foreground text-center">{vinculoTipo}</td>
-                                    <td className="px-3 text-muted-foreground text-center">{vinculoNome || "—"}</td>
-                                    <td className="px-3 text-muted-foreground text-center">{servicoNome || "—"}</td>
-                                    <td className="px-3 text-center text-foreground">{rule?.valor_unitario != null ? Number(rule.valor_unitario).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : "—"}</td>
-                                    <td className="px-3 text-center">
-                                      <div className="flex items-center justify-center gap-1">
-                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                                  <tr key={`${prod.id}-${rule?.id ?? "base"}`} className="h-11 hover:bg-muted/30 transition-colors">
+                                    <td className="px-5 font-medium text-foreground text-left">{prod.nome}</td>
+                                    <td className="px-3 text-muted-foreground text-left text-xs">{prod.categoria || "—"}</td>
+                                    <td className="px-3 text-muted-foreground text-left text-xs">{fornecedorNome || "—"}</td>
+                                    <td className="px-3 text-muted-foreground text-left text-xs">{vinculoTipo}</td>
+                                    <td className="px-3 text-muted-foreground text-left text-xs">{vinculoNome || "—"}</td>
+                                    <td className="px-3 text-muted-foreground text-left text-xs">{servicoNome || "—"}</td>
+                                    <td className="px-3 text-right font-mono tabular-nums text-xs font-medium text-foreground">{rule?.valor_unitario != null ? Number(rule.valor_unitario).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : "—"}</td>
+                                    <td className="pr-5 text-right">
+                                      <div className="flex items-center justify-end gap-1">
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => {
                                           const vinculoTipo: ProdutoCargaTargetType =
                                             rule?.transportadora_id
                                               ? "transportadora"
@@ -3582,10 +4201,10 @@ const CentralCadastros = () => {
                                             valor_unitario: rule?.valor_unitario != null ? String(rule.valor_unitario) : "",
                                           });
                                           setProdutoCargaModalOpen(true);
-                                        }}>
-                                          <PencilLine className="h-4 w-4" />
+                                        }} title="Editar">
+                                          <PencilLine className="h-3.5 w-3.5" />
                                         </Button>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => {
                                           const vinculoTipo: ProdutoCargaTargetType =
                                             rule?.transportadora_id
                                               ? "transportadora"
@@ -3609,13 +4228,13 @@ const CentralCadastros = () => {
                                           });
                                           setProdutoCargaFormErrors({});
                                           setProdutoCargaModalOpen(true);
-                                        }}>
-                                          <Copy className="h-4 w-4" />
+                                        }} title="Duplicar">
+                                          <Copy className="h-3.5 w-3.5" />
                                         </Button>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => {
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => {
                                           if (confirm("Deseja excluir este produto?")) deleteProdutoCargaMutation.mutate(prod.id);
-                                        }}>
-                                          <Trash2 className="h-4 w-4" />
+                                        }} title="Excluir">
+                                          <Trash2 className="h-3.5 w-3.5" />
                                         </Button>
                                       </div>
                                     </td>
@@ -3626,41 +4245,99 @@ const CentralCadastros = () => {
                           </tbody>
                         </table>
                       </div>
-                    </section>
-                  </TabsContent>
+                    </TabsContent>
 
-                  <TabsContent value="dia">
-                    <ConfigTable<any>
-                      title="Tipos de Dia"
-                      data={tiposDia}
-                      columns={[
-                        { header: "Descrição", accessorKey: "nome" },
-                        {
-                          header: "Fator",
-                          accessorKey: "fator",
-                          cell: (item) => <span className="font-mono font-bold">x{item.fator}</span>,
-                        },
-                        {
-                          header: "Status",
-                          accessorKey: "status",
-                          cell: (item) => (
-                            <Badge variant={item.status === "ativo" ? "success" : "secondary"} className="h-5">
-                              {item.status}
-                            </Badge>
-                          ),
-                        },
-                      ]}
-                      onAdd={() => handleAddConfig("dia")}
-                      onEdit={(item) => handleEditConfig("dia", item)}
-                      onDelete={(item) => {
-                        if (confirm("Deseja remover este tipo de dia?")) {
-                          setConfigType("dia");
-                          deleteConfigMutation.mutate(item.id);
-                        }
-                      }}
-                    />
-                  </TabsContent>
-                </Tabs>
+                    {/* Subaba: Tipos de Dia */}
+                    <TabsContent value="dia" className="m-0 focus-visible:outline-none">
+                      <div className="px-5 py-3.5 border-b border-border flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                        <div className="relative w-full sm:w-80">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                          <Input
+                            placeholder="Buscar tipo de dia..."
+                            className="pl-9 pr-8 h-9 border-border bg-background"
+                            value={paramSearchTerm}
+                            onChange={(e) => setParamSearchTerm(e.target.value)}
+                          />
+                          {paramSearchTerm && (
+                            <button
+                              type="button"
+                              onClick={() => setParamSearchTerm("")}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded-full"
+                              title="Limpar busca"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                        <Button size="sm" onClick={() => handleAddConfig("dia")} className="shrink-0 font-medium">
+                          <Plus className="h-4 w-4 mr-1.5" /> Novo tipo de dia
+                        </Button>
+                      </div>
+
+                      <div className="overflow-auto scrollbar-thin max-h-[55vh]">
+                        <table className="w-full text-sm border-collapse">
+                          <thead className="sticky top-0 z-10 bg-background border-b border-border/80 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            <tr className="h-9">
+                              <th className="px-5 text-left font-medium">Descrição</th>
+                              <th className="px-4 text-center font-medium">Fator</th>
+                              <th className="px-4 text-center font-medium">Status</th>
+                              <th className="pr-5 text-right font-medium">Ações</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/60">
+                            {filteredTiposDia.length === 0 ? (
+                              <tr>
+                                <td colSpan={4} className="px-5 py-8 text-center text-muted-foreground text-xs md:text-sm">
+                                  {paramSearchTerm ? "Nenhum tipo de dia encontrado para a busca." : "Nenhum tipo de dia cadastrado."}
+                                </td>
+                              </tr>
+                            ) : (
+                              filteredTiposDia.map((item: any) => (
+                                <tr key={item.id} className="h-11 hover:bg-muted/30 transition-colors">
+                                  <td className="px-5 font-medium text-foreground text-left">{item.nome}</td>
+                                  <td className="px-4 text-center">
+                                    <span className="font-mono font-semibold text-xs text-foreground bg-muted/60 px-2 py-0.5 rounded border border-border/50">x{item.fator}</span>
+                                  </td>
+                                  <td className="px-4 text-center">
+                                    <span className={cn(
+                                      "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border",
+                                      item.status === "ativo"
+                                        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
+                                        : "bg-muted/60 text-muted-foreground border-border/60"
+                                    )}>
+                                      {item.status === "ativo" ? "Ativo" : "Inativo"}
+                                    </span>
+                                  </td>
+                                  <td className="pr-5 text-right">
+                                    <div className="flex items-center justify-end gap-1">
+                                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleEditConfig("dia", item)} title="Editar">
+                                        <PencilLine className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                        onClick={() => {
+                                          if (confirm("Deseja remover este tipo de dia?")) {
+                                            setConfigType("dia");
+                                            deleteConfigMutation.mutate(item.id);
+                                          }
+                                        }}
+                                        title="Excluir"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </section>
               </TabsContent>
             </Tabs>
           </>
@@ -5543,7 +6220,7 @@ const CentralCadastros = () => {
         description={activeImportConfig?.description || ""}
         onDownloadTemplate={
           activeImportConfig?.downloadUrl
-            ? () => window.open(activeImportConfig.downloadUrl, "_blank", "noopener,noreferrer")
+            ? () => { window.open(activeImportConfig.downloadUrl, "_blank", "noopener,noreferrer"); }
             : undefined
         }
         expectedColumns={activeImportConfig?.expectedColumns}

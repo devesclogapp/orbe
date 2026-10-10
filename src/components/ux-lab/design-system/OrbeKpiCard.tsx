@@ -48,48 +48,47 @@ export const OrbeKpiCard: React.FC<OrbeKpiCardProps> = ({
     <div
       onClick={interactive ? onClick : undefined}
       className={cn(
-        "bg-card dark:bg-[#15191F] border border-border/80 dark:border-white/[0.06] rounded-xl p-3.5 sm:p-4 shadow-xs flex flex-col justify-between space-y-2 select-none",
-        interactive && "cursor-pointer transition-all hover:bg-muted/30 dark:hover:bg-[#1A1F27] hover:border-border-strong",
+        "group relative flex flex-col justify-between overflow-hidden rounded-xl border border-border bg-card p-3.5 transition-all duration-200 shadow-xs select-none",
+        "dark:border-white/[0.05] dark:bg-[#15191F] dark:shadow-none",
+        interactive && "cursor-pointer hover:border-blue-500/40 hover:bg-muted/15 dark:hover:border-white/[0.08] dark:hover:bg-[#1A1F27]",
         selected && "border-blue-600 dark:border-blue-500 bg-blue-50/20 dark:bg-[#1A1F27] ring-1 ring-blue-600/40 dark:ring-blue-500/40",
         className
       )}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-1.5">
         <div className="flex items-center gap-1.5 min-w-0">
-          {status && (
-            <span className={cn("h-2 w-2 rounded-full shrink-0", statusDots[status])} />
-          )}
-          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider truncate">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80 dark:text-[#A0A7B2] truncate">
             {label}
           </span>
         </div>
         {Icon && (
-          <div className="h-6 w-6 rounded-md bg-muted/40 dark:bg-white/[0.04] flex items-center justify-center text-muted-foreground shrink-0">
-            <Icon className="h-3.5 w-3.5" />
+          <div className="flex items-center gap-1 shrink-0">
+            <Icon className="h-3.5 w-3.5 text-muted-foreground/50 dark:text-[#69717D]" strokeWidth={1.75} />
           </div>
         )}
       </div>
 
-      <div className="space-y-1">
-        <div className="text-xl sm:text-2xl font-black font-display font-mono text-foreground leading-none tracking-tight">
+      <div className="mt-2 flex items-baseline justify-between gap-2">
+        <div className="font-display text-2xl font-bold tracking-tight text-foreground dark:text-[#F1F3F5] sm:text-[26px] leading-none">
           {value}
         </div>
-        {(subValue || trend) && (
-          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground pt-0.5">
-            {subValue && <span className="truncate">{subValue}</span>}
-            {trend && (
-              <span
-                className={cn(
-                  "font-mono font-medium text-[11px] shrink-0",
-                  trend.positive ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
-                )}
-              >
-                {trend.value}
-              </span>
+        {trend && (
+          <span
+            className={cn(
+              "font-mono font-medium text-[11px] shrink-0",
+              trend.positive ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
             )}
-          </div>
+          >
+            {trend.value}
+          </span>
         )}
       </div>
+
+      {subValue && (
+        <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-border/40 dark:border-white/[0.04] pt-1.5 text-[10.5px] text-muted-foreground/80 dark:text-[#A0A7B2]">
+          <span className="leading-tight tracking-tight min-w-0 truncate">{subValue}</span>
+        </div>
+      )}
     </div>
   );
 };
