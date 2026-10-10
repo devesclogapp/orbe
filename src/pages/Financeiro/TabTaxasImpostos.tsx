@@ -42,7 +42,7 @@ export const TabTaxasImpostos = () => {
     }, [isLoading, modulo, createModuloMutation.isPending, createModuloMutation.mutate]);
 
     if (isLoading || createModuloMutation.isPending || !modulo) {
-        return <Card className="p-5 text-center text-muted-foreground">Preparando módulo de Taxas e Impostos...</Card>;
+        return <Card className="border border-border/80 bg-card rounded-xl p-8 text-center text-sm text-muted-foreground shadow-xs">Preparando módulo de Taxas e Impostos...</Card>;
     }
 
     return (

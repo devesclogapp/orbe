@@ -15,6 +15,12 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
     Dialog,
     DialogContent,
     DialogFooter,
@@ -221,132 +227,155 @@ export const TabMeiosPagamento = () => {
     };
 
     return (
-        <div className="space-y-8">
-            <div className="space-y-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                        <h2 className="font-semibold text-foreground">Meios de Pagamento Operacionais</h2>
-                        <p className="text-sm text-muted-foreground">
-                            Gerencie as formas de pagamento disponíveis para os lançamentos de produção.
-                        </p>
+        <TooltipProvider delayDuration={150}>
+            <div className="space-y-8">
+                <div className="space-y-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <h2 className="text-base font-semibold text-foreground tracking-tight">Meios de Pagamento Operacionais</h2>
+                            <p className="text-xs text-muted-foreground">
+                                Gerencie as formas de pagamento disponíveis para os lançamentos de produção.
+                            </p>
+                        </div>
+                        <Button
+                            size="sm"
+                            className="h-8 text-xs font-medium gap-1.5 font-display font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
+                            onClick={() => setIsModalOpen(true)}
+                        >
+                            <Plus className="h-3.5 w-3.5" />
+                            Novo Meio de Pagamento
+                        </Button>
                     </div>
-                    <Button onClick={() => setIsModalOpen(true)}>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Novo Meio de Pagamento
-                    </Button>
+
+                    <div className="relative rounded-lg border border-border/80 overflow-x-auto scrollbar-thin bg-card">
+                        <Table>
+                            <TableHeader>
+                                <TableRow className="border-b border-border/80 bg-muted/30 hover:bg-muted/30">
+                                    <TableHead className="h-9 px-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Nome</TableHead>
+                                    <TableHead className="h-9 px-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Modalidade Atrelada</TableHead>
+                                    <TableHead className="h-9 px-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center">Status</TableHead>
+                                    <TableHead className="h-9 px-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right pr-4">Ações</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {isLoading ? (
+                                    <TableRow>
+                                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground text-sm">Carregando...</TableCell>
+                                    </TableRow>
+                                ) : formas.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground text-sm">Nenhum meio de pagamento cadastrado.</TableCell>
+                                    </TableRow>
+                                ) : (
+                                    formas.map((item: any) => (
+                                        <TableRow key={item.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                                            <TableCell className="px-3.5 py-2.5 font-medium text-sm text-foreground">{item.nome}</TableCell>
+                                            <TableCell className="px-3.5 py-2.5">
+                                                <Badge variant="outline" className="text-xs font-mono border-border/70 bg-muted/30">
+                                                    {item.modalidade === 'CAIXA_IMEDIATO' ? 'À Vista (Caixa)' :
+                                                    item.modalidade === 'DUPLICATA' ? 'Prazo (Boleto/Fatura)' : 'Ambos'}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="px-3.5 py-2.5 text-center">
+                                                <Badge
+                                                    variant="outline"
+                                                    className={cn(
+                                                        "cursor-pointer text-[11px] font-medium transition-colors border",
+                                                        item.ativo
+                                                            ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/70 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50"
+                                                            : "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200/70 dark:bg-white/[0.04] dark:text-[#A0A7B2] dark:border-white/[0.08]"
+                                                    )}
+                                                    onClick={() => toggleStatusMutation.mutate({ id: item.id, ativo: !item.ativo })}
+                                                >
+                                                    <span className={cn(
+                                                        "h-1.5 w-1.5 rounded-full mr-1.5",
+                                                        item.ativo ? "bg-emerald-600 dark:bg-emerald-400" : "bg-slate-400 dark:bg-[#A0A7B2]"
+                                                    )} />
+                                                    {item.ativo ? "Ativo" : "Inativo"}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="px-3.5 py-2.5 text-right pr-4">
+                                                <div className="flex justify-end gap-1 items-center">
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                                                                onClick={() => handleEdit(item)}
+                                                            >
+                                                                <Pencil className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="top">Editar Meio</TooltipContent>
+                                                    </Tooltip>
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-7 w-7 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                                                                onClick={() => {
+                                                                    if (confirm(`Deseja realmente excluir o meio de pagamento "${item.nome}"?`)) {
+                                                                        deleteMutation.mutate(item.id);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="top">Excluir Meio</TooltipContent>
+                                                    </Tooltip>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </div>
 
-                <Card className="overflow-hidden">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Nome</TableHead>
-                                <TableHead>Modalidade Atrelada</TableHead>
-                                <TableHead className="text-center">Status</TableHead>
-                                <TableHead className="text-right">Ações</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {isLoading ? (
-                                <TableRow>
-                                    <TableCell colSpan={4} className="text-center py-6 text-muted-foreground">Carregando...</TableCell>
-                                </TableRow>
-                            ) : formas.length === 0 ? (
-                                <TableRow>
-                                    <TableCell colSpan={4} className="text-center py-6 text-muted-foreground">Nenhum meio de pagamento cadastrado.</TableCell>
-                                </TableRow>
-                            ) : (
-                                formas.map((item: any) => (
-                                    <TableRow key={item.id}>
-                                        <TableCell className="font-semibold text-foreground">{item.nome}</TableCell>
-                                        <TableCell>
-                                            <Badge variant="outline">
-                                                {item.modalidade === 'CAIXA_IMEDIATO' ? 'À Vista (Caixa)' :
-                                                item.modalidade === 'DUPLICATA' ? 'Prazo (Boleto/Fatura)' : 'Ambos'}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-center">
-                                            <Badge
-                                                variant={item.ativo ? "default" : "secondary"}
-                                                className={cn(
-                                                    "cursor-pointer",
-                                                    item.ativo ? "bg-emerald-500 hover:bg-emerald-600" : "bg-slate-200 text-slate-700"
-                                                )}
-                                                onClick={() => toggleStatusMutation.mutate({ id: item.id, ativo: !item.ativo })}
-                                            >
-                                                {item.ativo ? "Ativo" : "Inativo"}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-1">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                                    onClick={() => handleEdit(item)}
-                                                >
-                                                    <Pencil className="h-4 w-4" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                                                    onClick={() => {
-                                                        if (confirm(`Deseja realmente excluir o meio de pagamento "${item.nome}"?`)) {
-                                                            deleteMutation.mutate(item.id);
-                                                        }
-                                                    }}
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
-                </Card>
-            </div>
-
             {/* Seção FIX 09: Prazos Financeiros de Duplicatas por Empresa */}
-            <div className="pt-6 border-t border-slate-200 space-y-4">
+            <div className="pt-6 border-t border-border/80 space-y-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
-                        <h2 className="font-semibold text-foreground flex items-center gap-2">
-                            <Clock className="h-5 w-5 text-primary" />
+                        <h2 className="text-base font-semibold text-foreground tracking-tight flex items-center gap-2">
+                            <Clock className="h-4 w-4 text-blue-600" />
                             Prazos de Vencimento de Duplicatas / Boletos
                         </h2>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                             Configure o prazo comercial de vencimento das duplicatas (D+N). A regra global é aplicada a todas as empresas, exceto quando houver prazo específico definido.
                         </p>
                     </div>
                     <Button
                         variant="outline"
+                        size="sm"
+                        className="h-8 text-xs font-medium gap-1.5 border-border/80 hover:bg-muted/50"
                         onClick={() => {
                             resetPrazoForm();
                             setIsPrazoModalOpen(true);
                         }}
                     >
-                        <Building2 className="mr-2 h-4 w-4" />
+                        <Building2 className="h-3.5 w-3.5" />
                         Personalizar Prazo por Empresa
                     </Button>
                 </div>
 
                 {/* Banner da Regra Global */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-primary/5 rounded-xl border border-primary/20">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 sm:p-4 bg-muted/40 rounded-xl border border-border/80">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                            <Globe className="h-5 w-5" />
+                        <div className="p-2 bg-blue-50 dark:bg-blue-950/40 rounded-lg text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/40">
+                            <Globe className="h-4 w-4" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-primary uppercase tracking-wider">Regra Padrão Global</span>
-                                <Badge variant="secondary" className="font-bold bg-primary/20 text-primary">
+                                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Regra Padrão Global</span>
+                                <Badge variant="outline" className="font-mono font-semibold text-xs border-blue-200 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-900/50">
                                     D+{regraGlobalDuplicata?.prazo_dias ?? 7}
                                 </Badge>
                             </div>
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs text-muted-foreground mt-0.5">
                                 Aplicada automaticamente para empresas sem regra individual cadastrada.
                             </p>
                         </div>
@@ -354,7 +383,7 @@ export const TabMeiosPagamento = () => {
                     <Button
                         size="sm"
                         variant="outline"
-                        className="border-primary/30 hover:bg-primary/10 text-primary"
+                        className="h-7 text-xs border-border/80 hover:bg-background text-foreground gap-1.5"
                         onClick={() => {
                             setEditingPrazoId(regraGlobalDuplicata?.id || null);
                             setPrazoForm({
@@ -365,31 +394,31 @@ export const TabMeiosPagamento = () => {
                             setIsPrazoModalOpen(true);
                         }}
                     >
-                        <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                        <Pencil className="h-3 w-3" />
                         Alterar Prazo Global
                     </Button>
                 </div>
 
                 {/* Tabela de Regras Personalizadas por Empresa */}
-                <Card className="overflow-hidden">
+                <div className="relative rounded-lg border border-border/80 overflow-x-auto scrollbar-thin bg-card">
                     <Table>
                         <TableHeader>
-                            <TableRow>
-                                <TableHead>Empresa</TableHead>
-                                <TableHead>Modalidade</TableHead>
-                                <TableHead className="text-center">Prazo Comercial</TableHead>
-                                <TableHead className="text-center">Tipo de Regra</TableHead>
-                                <TableHead className="text-right">Ações</TableHead>
+                            <TableRow className="border-b border-border/80 bg-muted/30 hover:bg-muted/30">
+                                <TableHead className="h-9 px-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Empresa</TableHead>
+                                <TableHead className="h-9 px-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Modalidade</TableHead>
+                                <TableHead className="h-9 px-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center">Prazo Comercial</TableHead>
+                                <TableHead className="h-9 px-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center">Tipo de Regra</TableHead>
+                                <TableHead className="h-9 px-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right pr-4">Ações</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoadingRegras ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="text-center py-6 text-muted-foreground">Carregando regras...</TableCell>
+                                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground text-sm">Carregando regras...</TableCell>
                                 </TableRow>
                             ) : regrasEmpresasDuplicata.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="text-center py-6 text-muted-foreground text-sm">
+                                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground text-sm">
                                         Nenhuma empresa possui prazo personalizado cadastrado. Todas seguem a regra global (D+{regraGlobalDuplicata?.prazo_dias ?? 7}).
                                     </TableCell>
                                 </TableRow>
@@ -397,53 +426,63 @@ export const TabMeiosPagamento = () => {
                                 regrasEmpresasDuplicata.map((r: any) => {
                                     const empresa = (empresas as any[]).find((e: any) => e.id === r.empresa_id);
                                     return (
-                                        <TableRow key={r.id}>
-                                            <TableCell className="font-semibold text-foreground">
+                                        <TableRow key={r.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                                            <TableCell className="px-3.5 py-2.5 font-medium text-sm text-foreground">
                                                 {empresa?.nome || r.nome || "Empresa"}
                                             </TableCell>
-                                            <TableCell>
-                                                <Badge variant="outline" className="text-xs font-mono">
+                                            <TableCell className="px-3.5 py-2.5">
+                                                <Badge variant="outline" className="text-xs font-mono border-border/70 bg-muted/30">
                                                     DUPLICATA (Boleto)
                                                 </Badge>
                                             </TableCell>
-                                            <TableCell className="text-center font-bold text-foreground">
+                                            <TableCell className="px-3.5 py-2.5 text-center font-mono font-semibold text-sm text-foreground">
                                                 D+{r.prazo_dias}
                                             </TableCell>
-                                            <TableCell className="text-center">
-                                                <Badge className="bg-amber-100 text-amber-800 border-amber-200">
+                                            <TableCell className="px-3.5 py-2.5 text-center">
+                                                <Badge variant="outline" className="text-[11px] font-medium border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900/50">
                                                     Personalizada
                                                 </Badge>
                                             </TableCell>
-                                            <TableCell className="text-right">
-                                                <div className="flex justify-end gap-1">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                                        onClick={() => {
-                                                            setEditingPrazoId(r.id);
-                                                            setPrazoForm({
-                                                                empresa_id: r.empresa_id,
-                                                                prazo_dias: r.prazo_dias,
-                                                                is_global: false,
-                                                            });
-                                                            setIsPrazoModalOpen(true);
-                                                        }}
-                                                    >
-                                                        <Pencil className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                                                        onClick={() => {
-                                                            if (confirm(`Remover prazo personalizado desta empresa e retornar ao padrão global D+${regraGlobalDuplicata?.prazo_dias ?? 7}?`)) {
-                                                                deletePrazoMutation.mutate(r.id);
-                                                            }
-                                                        }}
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
+                                            <TableCell className="px-3.5 py-2.5 text-right pr-4">
+                                                <div className="flex justify-end gap-1 items-center">
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                                                                onClick={() => {
+                                                                    setEditingPrazoId(r.id);
+                                                                    setPrazoForm({
+                                                                        empresa_id: r.empresa_id,
+                                                                        prazo_dias: r.prazo_dias,
+                                                                        is_global: false,
+                                                                    });
+                                                                    setIsPrazoModalOpen(true);
+                                                                }}
+                                                            >
+                                                                <Pencil className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="top">Editar Prazo</TooltipContent>
+                                                    </Tooltip>
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-7 w-7 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                                                                onClick={() => {
+                                                                    if (confirm(`Remover prazo personalizado desta empresa e retornar ao padrão global D+${regraGlobalDuplicata?.prazo_dias ?? 7}?`)) {
+                                                                        deletePrazoMutation.mutate(r.id);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="top">Excluir Prazo</TooltipContent>
+                                                    </Tooltip>
                                                 </div>
                                             </TableCell>
                                         </TableRow>
@@ -452,7 +491,7 @@ export const TabMeiosPagamento = () => {
                             )}
                         </TableBody>
                     </Table>
-                </Card>
+                </div>
             </div>
 
             {/* Modal de Meio de Pagamento */}
@@ -586,5 +625,6 @@ export const TabMeiosPagamento = () => {
                 </DialogContent>
             </Dialog>
         </div>
+    </TooltipProvider>
     );
 };

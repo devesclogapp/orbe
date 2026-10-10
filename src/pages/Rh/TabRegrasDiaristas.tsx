@@ -1,11 +1,18 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, CheckCircle2, Pencil, Plus, Save } from "lucide-react";
+import { Ban, Check, CheckCircle2, Pencil, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
 import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -179,138 +186,149 @@ export const TabRegrasDiaristas = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="font-semibold text-foreground">
+          <h3 className="font-display font-bold text-base text-foreground tracking-tight">
             Multiplicadores do Módulo Diaristas
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Adicione códigos, legendas e o multiplicador que atuará no valor da
-            diária.
+          </h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Códigos operacionais, legendas e multiplicadores aplicados sobre a diária base.
           </p>
         </div>
         <Button
+          size="sm"
+          className="h-8 text-xs font-medium gap-1.5 font-display font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
           onClick={() => {
             resetForm();
             setIsModalOpen(true);
           }}
         >
-          <Plus className="mr-2 h-4 w-4" />
+          <Plus className="h-3.5 w-3.5" />
           Nova Regra
         </Button>
       </div>
 
-      <div className="rounded-xl border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="text-center">Código</TableHead>
-              <TableHead className="text-center">Descrição</TableHead>
-              <TableHead className="text-center">Multiplicador</TableHead>
-              <TableHead className="text-center">Escopo</TableHead>
-              <TableHead className="text-center">Status</TableHead>
-              <TableHead className="text-right">Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+      <div className="relative rounded-lg border border-border/80 overflow-x-auto scrollbar-thin">
+        <table className="w-full text-xs text-left border-collapse min-w-[720px]">
+          <thead className="bg-muted/40 border-b border-border/80">
+            <tr className="hover:bg-transparent">
+              <th className="px-3.5 py-2.5 text-center font-semibold text-muted-foreground text-[11px] uppercase tracking-wider w-[100px]">Código</th>
+              <th className="px-3.5 py-2.5 text-left font-semibold text-muted-foreground text-[11px] uppercase tracking-wider">Descrição</th>
+              <th className="px-3.5 py-2.5 text-center font-semibold text-muted-foreground text-[11px] uppercase tracking-wider w-[130px]">Multiplicador</th>
+              <th className="px-3.5 py-2.5 text-center font-semibold text-muted-foreground text-[11px] uppercase tracking-wider w-[130px]">Escopo</th>
+              <th className="px-3.5 py-2.5 text-center font-semibold text-muted-foreground text-[11px] uppercase tracking-wider w-[110px]">Status</th>
+              <th className="px-3.5 py-2.5 text-right font-semibold text-muted-foreground text-[11px] uppercase tracking-wider pr-4 w-[100px]">Ações</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/60">
             {(regras as any[]).map((regra) => (
-              <TableRow key={regra.id}>
-                <TableCell className="text-center font-semibold">
-                  {regra.codigo}
-                </TableCell>
-                <TableCell className="text-center">
+              <tr key={regra.id} className="hover:bg-muted/30 transition-colors">
+                <td className="px-3.5 py-2.5 text-center">
+                  <span className="font-mono font-bold text-xs text-foreground px-2 py-0.5 rounded-[4px] bg-muted/60 border border-border/70">
+                    {regra.codigo}
+                  </span>
+                </td>
+                <td className="px-3.5 py-2.5 text-left font-medium text-foreground">
                   {regra.descricao}
-                </TableCell>
-                <TableCell className="text-center">
-                  <span className="rounded border bg-muted/50 px-2 py-0.5 font-mono text-muted-foreground">
+                </td>
+                <td className="px-3.5 py-2.5 text-center">
+                  <span className="rounded-[4px] border border-border/60 bg-muted/50 px-2 py-0.5 font-mono text-xs tabular-nums text-foreground font-semibold">
                     x {Number(regra.multiplicador).toFixed(2)}
                   </span>
-                </TableCell>
-                <TableCell className="text-center">
-                  <span className="flex justify-center">
+                </td>
+                <td className="px-3.5 py-2.5 text-center">
+                  <span className="inline-flex justify-center">
                     {regra.empresa_id ? (
-                      <Badge variant="outline">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-[4px] text-[10.5px] font-medium border border-border/80 bg-background text-foreground">
                         {regra.empresas?.nome || "Unidade"}
-                      </Badge>
+                      </span>
                     ) : (
-                      <Badge
-                        variant="secondary"
-                        className="bg-blue-100 text-blue-800"
-                      >
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-[4px] text-[10.5px] font-mono bg-muted/60 text-muted-foreground border border-border/60">
                         Global
-                      </Badge>
+                      </span>
                     )}
                   </span>
-                </TableCell>
-                <TableCell className="text-center">
-                  <span className="flex justify-center">
-                    {regra.ativo ? (
-                      <Badge className="border-0 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                        <CheckCircle2 className="mr-1 h-3 w-3" />
-                        Ativo
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="border-border text-muted-foreground"
-                      >
-                        <Ban className="mr-1 h-3 w-3" />
-                        Inativo
-                      </Badge>
-                    )}
+                </td>
+                <td className="px-3.5 py-2.5 text-center">
+                  <span className="inline-flex justify-center">
+                    <span className={cn(
+                      "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[6px] text-[11px] font-medium border",
+                      regra.ativo
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50"
+                        : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-white/[0.04] dark:text-[#A0A7B2] dark:border-white/[0.08]"
+                    )}>
+                      <span className={cn("h-1.5 w-1.5 rounded-full", regra.ativo ? "bg-emerald-600 dark:bg-emerald-400" : "bg-slate-400")} />
+                      {regra.ativo ? "Ativo" : "Inativo"}
+                    </span>
                   </span>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => toggleStatusMutation.mutate(regra)}
-                      className="h-8 w-8 p-0"
-                      title={regra.ativo ? "Inativar" : "Ativar"}
-                    >
-                      {regra.ativo ? (
-                        <Ban className="h-4 w-4" />
-                      ) : (
-                        <CheckCircle2 className="h-4 w-4" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 px-2 text-xs"
-                      onClick={() => {
-                        setEditingRule(regra);
-                        setForm({
-                          empresa_id: regra.empresa_id,
-                          codigo: regra.codigo,
-                          descricao: regra.descricao,
-                          multiplicador: regra.multiplicador,
-                          ativo: regra.ativo,
-                        });
-                        setIsModalOpen(true);
-                      }}
-                    >
-                      <Pencil className="mr-1 h-3.5 w-3.5" />
-                      Editar
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
+                </td>
+                <td className="px-3.5 py-2.5 text-right pr-4">
+                  <TooltipProvider delayDuration={150}>
+                    <div className="flex justify-end items-center gap-1">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            aria-label="Editar regra"
+                            onClick={() => {
+                              setEditingRule(regra);
+                              setForm({
+                                empresa_id: regra.empresa_id,
+                                codigo: regra.codigo,
+                                descricao: regra.descricao,
+                                multiplicador: regra.multiplicador,
+                                ativo: regra.ativo,
+                              });
+                              setIsModalOpen(true);
+                            }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Editar regra</TooltipContent>
+                      </Tooltip>
+
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className={cn(
+                              "h-7 w-7",
+                              regra.ativo
+                                ? "text-muted-foreground hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                                : "text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                            )}
+                            aria-label={regra.ativo ? "Inativar regra" : "Ativar regra"}
+                            onClick={() => toggleStatusMutation.mutate(regra)}
+                          >
+                            {regra.ativo ? <Ban className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{regra.ativo ? "Inativar" : "Ativar"}</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </TooltipProvider>
+                </td>
+              </tr>
             ))}
 
             {(regras as any[]).length === 0 && !isLoading && (
-              <TableRow>
-                <TableCell
+              <tr>
+                <td
                   colSpan={6}
                   className="h-24 text-center text-muted-foreground"
                 >
                   Nenhuma regra específica encontrada.
-                </TableCell>
-              </TableRow>
+                </td>
+              </tr>
             )}
-          </TableBody>
-        </Table>
+          </tbody>
+        </table>
       </div>
 
       <Dialog open={isModalOpen} onOpenChange={(open) => !open && resetForm()}>
