@@ -26,7 +26,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -498,32 +497,33 @@ export default function Inadimplencia() {
         ) : activeTab === "clientes" ? (
           /* TABELA: VISÃO POR CLIENTE */
           <div className="rounded-xl border border-border bg-card overflow-hidden shadow-xs">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  <TableHead className="w-[320px] font-bold text-xs uppercase tracking-wider">
-                    Cliente (Tomador)
-                  </TableHead>
-                  <TableHead className="text-center font-bold text-xs uppercase tracking-wider">
-                    Títulos
-                  </TableHead>
-                  <TableHead className="text-right font-bold text-xs uppercase tracking-wider">
-                    Total em Atraso
-                  </TableHead>
-                  <TableHead className="text-center font-bold text-xs uppercase tracking-wider">
-                    Título Mais Antigo
-                  </TableHead>
-                  <TableHead className="text-center font-bold text-xs uppercase tracking-wider">
-                    Maior Atraso
-                  </TableHead>
-                  <TableHead className="text-center font-bold text-xs uppercase tracking-wider">
-                    Faixa Mais Crítica
-                  </TableHead>
-                  <TableHead className="text-right font-bold text-xs uppercase tracking-wider">
-                    Ação
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left min-w-[850px]">
+                <TableHeader>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40">
+                    <TableHead className="w-[320px] font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Cliente (Tomador)
+                    </TableHead>
+                    <TableHead className="text-center font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Títulos
+                    </TableHead>
+                    <TableHead className="text-right font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Total em Atraso
+                    </TableHead>
+                    <TableHead className="text-center font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Título Mais Antigo
+                    </TableHead>
+                    <TableHead className="text-center font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Maior Atraso
+                    </TableHead>
+                    <TableHead className="text-center font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Faixa Mais Crítica
+                    </TableHead>
+                    <TableHead className="text-right font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Ação
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
               <TableBody>
                 {filteredClientes.length === 0 ? (
                   <TableRow>
@@ -596,43 +596,45 @@ export default function Inadimplencia() {
                   ))
                 )}
               </TableBody>
-            </Table>
+            </table>
+            </div>
           </div>
         ) : (
           /* TABELA: VISÃO TÍTULOS EM ATRASO */
           <div className="rounded-xl border border-border bg-card overflow-hidden shadow-xs">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  <TableHead className="font-bold text-xs uppercase tracking-wider">
-                    Referência
-                  </TableHead>
-                  <TableHead className="w-[280px] font-bold text-xs uppercase tracking-wider">
-                    Cliente
-                  </TableHead>
-                  <TableHead className="font-bold text-xs uppercase tracking-wider">
-                    Competência
-                  </TableHead>
-                  <TableHead className="font-bold text-xs uppercase tracking-wider">
-                    Vencimento
-                  </TableHead>
-                  <TableHead className="text-center font-bold text-xs uppercase tracking-wider">
-                    Dias em Atraso
-                  </TableHead>
-                  <TableHead className="font-bold text-xs uppercase tracking-wider">
-                    Modalidade
-                  </TableHead>
-                  <TableHead className="text-right font-bold text-xs uppercase tracking-wider">
-                    Valor Total
-                  </TableHead>
-                  <TableHead className="text-center font-bold text-xs uppercase tracking-wider">
-                    Status da Cobrança
-                  </TableHead>
-                  <TableHead className="text-right font-bold text-xs uppercase tracking-wider">
-                    Ação
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left min-w-[960px]">
+                <TableHeader>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40">
+                    <TableHead className="font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Referência
+                    </TableHead>
+                    <TableHead className="w-[280px] font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Cliente
+                    </TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Competência
+                    </TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Vencimento
+                    </TableHead>
+                    <TableHead className="text-center font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Dias em Atraso
+                    </TableHead>
+                    <TableHead className="font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Modalidade
+                    </TableHead>
+                    <TableHead className="text-right font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Valor Total
+                    </TableHead>
+                    <TableHead className="text-center font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Status da Cobrança
+                    </TableHead>
+                    <TableHead className="text-right font-bold text-xs uppercase tracking-wider whitespace-nowrap">
+                      Ação
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
               <TableBody>
                 {filteredTitulos.length === 0 ? (
                   <TableRow>
@@ -714,7 +716,8 @@ export default function Inadimplencia() {
                   })
                 )}
               </TableBody>
-            </Table>
+            </table>
+            </div>
           </div>
         )}
 

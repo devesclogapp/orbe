@@ -1101,7 +1101,7 @@ const RhDiaristasPainel = () => {
 
                 {/* Barra de Filtros Compacta em Linha Única (CONV-16 FIX 05) */}
                 <div className="p-3.5 rounded-xl border border-border bg-card shadow-xs space-y-2.5">
-                    <div className="flex flex-wrap xl:flex-nowrap items-end gap-2 xl:gap-2.5">
+                    <div className="flex flex-wrap items-end gap-2 xl:gap-2.5">
 
                         {/* 1. Empresa */}
                         <div className="space-y-1 w-full sm:w-[165px] xl:w-[180px] shrink-0">
@@ -1222,7 +1222,7 @@ const RhDiaristasPainel = () => {
                                         : "Fechar período operacional e consolidar lote para validação do RH.";
 
                                 return (
-                                    <div className="space-y-1 shrink-0">
+                                    <div className="space-y-1 shrink-0 sm:ml-auto">
                                         <Label className="text-[10px] font-bold uppercase tracking-wider text-transparent select-none hidden sm:block">
                                             Ação
                                         </Label>
