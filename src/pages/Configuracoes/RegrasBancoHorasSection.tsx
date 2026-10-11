@@ -351,7 +351,7 @@ export const RegrasBancoHorasSection: React.FC = () => {
     };
 
     return (
-        <section id="regras-banco-horas" className="esc-card p-6 mt-6 space-y-6">
+        <section id="regras-banco-horas" className="rounded-xl border border-border/80 bg-card p-6 shadow-xs space-y-5 transition-colors">
             {/* 1. CABEÇALHO DA SEÇÃO */}
             <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
@@ -418,7 +418,7 @@ export const RegrasBancoHorasSection: React.FC = () => {
                     </div>
                 ) : (
                     <table className="w-full text-sm">
-                        <thead className="esc-table-header">
+                        <thead className="bg-muted/40 border-b border-border/60 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                             <tr className="text-left">
                                 <th className="px-5 h-11 font-medium">Nome da Regra</th>
                                 <th className="px-3 h-11 font-medium">Escopo de Aplicação</th>

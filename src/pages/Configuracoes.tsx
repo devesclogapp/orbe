@@ -20,9 +20,11 @@ import {
   Pencil,
   Plus,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Lock,
+  RotateCcw,
 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
 import { cn } from "@/lib/utils";
@@ -420,7 +422,7 @@ const Configuracoes = () => {
 
   if (loadingSettings) {
     return (
-      <AppShell title="Configurações" subtitle="Carregando configurações...">
+      <AppShell title="Preferências & Perfil" subtitle="Carregando configurações...">
         <div className="flex items-center justify-center p-20">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
@@ -429,105 +431,173 @@ const Configuracoes = () => {
   }
 
   return (
-    <AppShell title="Preferências e Conta" subtitle="Ajustes pessoais de uso e perfil do ERP">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50">
-          <TabsTrigger value="preferencias" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
-            <Settings2 className="h-4 w-4 mr-2" /> Preferências
-          </TabsTrigger>
-          <TabsTrigger value="config_operacional" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
-            <Boxes className="h-4 w-4 mr-2" /> Configurações Operacionais
-          </TabsTrigger>
-          <TabsTrigger value="manutencao" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
-            <AlertTriangle className="h-4 w-4 mr-2" /> Manutenção do Ambiente
-          </TabsTrigger>
-          <TabsTrigger value="modelos" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
-            <Database className="h-4 w-4 mr-2" /> Modelos de Importação
-          </TabsTrigger>
-          <TabsTrigger value="conta" className="px-6 rounded-lg data-[state=active]:bg-card data-[state=active]:shadow-sm">
-            <User className="h-4 w-4 mr-2" /> Meu Perfil
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="preferencias" className="space-y-6 mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <section className="esc-card p-6">
-              <h2 className="font-display font-bold text-foreground mb-1 flex items-center gap-2">
-                <Sun className="h-5 w-5 text-primary" /> Aparência
-              </h2>
-              <p className="text-xs text-muted-foreground mb-6">Personalize o visual da sua interface.</p>
-
-              <div className="grid grid-cols-2 gap-3">
-                <OptionCard
-                  active={theme === "light"}
-                  onClick={() => { setTheme("light"); toast.success("Tema claro ativado"); }}
-                  icon={<Sun className="h-5 w-5" />}
-                  title="Modo Claro"
-                  desc="Ideal para alta luminosidade"
-                />
-                <OptionCard
-                  active={theme === "dark"}
-                  onClick={() => { setTheme("dark"); toast.success("Tema escuro ativado"); }}
-                  icon={<Moon className="h-5 w-5" />}
-                  title="Modo Escuro"
-                  desc="Conforto visual e economia"
-                />
-              </div>
-            </section>
-
-            <section className="esc-card p-6">
-              <h2 className="font-display font-bold text-foreground mb-1 flex items-center gap-2">
-                <Globe className="h-5 w-5 text-primary" /> Navegação Padrão
-              </h2>
-              <p className="text-xs text-muted-foreground mb-6">Escolha qual aba abrir ao acessar o painel principal.</p>
-
-              <div className="grid grid-cols-2 gap-3">
-                <OptionCard
-                  active={defaultTab === "ponto"}
-                  onClick={() => { setDefaultTab("ponto"); toast.success("Padrão: Ponto"); }}
-                  icon={<Clock className="h-5 w-5" />}
-                  title="Ponto"
-                  desc="Foco em registros de pessoal"
-                />
-                <OptionCard
-                  active={defaultTab === "operacoes"}
-                  onClick={() => { setDefaultTab("operacoes"); toast.success("Padrão: Operações"); }}
-                  icon={<Boxes className="h-5 w-5" />}
-                  title="Operações"
-                  desc="Foco em logística e volume"
-                />
-              </div>
-            </section>
+    <AppShell
+      title="Preferências & Perfil"
+      subtitle="Personalize sua experiência de uso, tema visual e dados do perfil corporativo"
+    >
+      <div className="space-y-4 pb-12 w-full max-w-[1560px] mx-auto pt-1 animate-in fade-in-50 duration-200">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <div className="border-b border-border/80 pb-2">
+            <TabsList className="bg-muted/40 border border-border/80 p-1 text-muted-foreground w-full flex flex-nowrap overflow-x-auto h-auto justify-start gap-1 md:w-auto md:inline-flex md:h-10 no-scrollbar scroll-smooth rounded-lg">
+              <TabsTrigger
+                value="preferencias"
+                className="px-4 py-1.5 text-xs font-medium flex-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs rounded-md transition-all gap-2"
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                Preferências Gerais
+              </TabsTrigger>
+              <TabsTrigger
+                value="config_operacional"
+                className="px-4 py-1.5 text-xs font-medium flex-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs rounded-md transition-all gap-2"
+              >
+                <Boxes className="h-3.5 w-3.5" />
+                Configurações Operacionais
+              </TabsTrigger>
+              <TabsTrigger
+                value="manutencao"
+                className="px-4 py-1.5 text-xs font-medium flex-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs rounded-md transition-all gap-2"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Manutenção do Ambiente
+              </TabsTrigger>
+              <TabsTrigger
+                value="modelos"
+                className="px-4 py-1.5 text-xs font-medium flex-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs rounded-md transition-all gap-2"
+              >
+                <Database className="h-3.5 w-3.5" />
+                Modelos de Importação
+              </TabsTrigger>
+              <TabsTrigger
+                value="conta"
+                className="px-4 py-1.5 text-xs font-medium flex-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs rounded-md transition-all gap-2"
+              >
+                <User className="h-3.5 w-3.5" />
+                Meu Perfil
+              </TabsTrigger>
+            </TabsList>
           </div>
 
-          <section className="esc-card p-5 flex flex-col gap-4 border-warning/30 bg-warning-soft/30 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-warning-strong">
-                <AlertTriangle className="h-4 w-4" />
-                <span className="text-sm font-semibold">Manutenção do ambiente</span>
+          <TabsContent value="preferencias" className="space-y-4 mt-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Card 1: Aparência */}
+              <div className="rounded-xl border border-border/80 bg-card p-5 shadow-xs transition-colors space-y-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Sun className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <h3 className="font-display font-semibold text-sm tracking-tight text-foreground">
+                      Aparência
+                    </h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Personalize o visual e a luminosidade da interface do ERP.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <OptionCard
+                    active={theme === "light"}
+                    onClick={() => {
+                      setTheme("light");
+                      toast.success("Tema claro ativado");
+                    }}
+                    icon={<Sun className="h-4 w-4" />}
+                    title="Modo Claro"
+                    desc="Otimizado para alta luminosidade e ambientes corporativos"
+                  />
+                  <OptionCard
+                    active={theme === "dark"}
+                    onClick={() => {
+                      setTheme("dark");
+                      toast.success("Tema escuro ativado");
+                    }}
+                    icon={<Moon className="h-4 w-4" />}
+                    title="Modo Escuro"
+                    desc="Conforto visual reduzindo o cansaço ocular"
+                  />
+                </div>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Resets operacionais e financeiros controlados ficam isolados em uma área segura, com auditoria persistente e confirmação dupla.
-              </p>
+
+              {/* Card 2: Navegação Padrão */}
+              <div className="rounded-xl border border-border/80 bg-card p-5 shadow-xs transition-colors space-y-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Globe className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    <h3 className="font-display font-semibold text-sm tracking-tight text-foreground">
+                      Navegação Padrão
+                    </h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Defina qual visão operacional carregar ao acessar o painel principal.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <OptionCard
+                    active={defaultTab === "ponto"}
+                    onClick={() => {
+                      setDefaultTab("ponto");
+                      toast.success("Padrão: Ponto");
+                    }}
+                    icon={<Clock className="h-4 w-4" />}
+                    title="Ponto & Jornadas"
+                    desc="Foco inicial em gestão de equipes, batidas e frequência"
+                  />
+                  <OptionCard
+                    active={defaultTab === "operacoes"}
+                    onClick={() => {
+                      setDefaultTab("operacoes");
+                      toast.success("Padrão: Operações");
+                    }}
+                    icon={<Boxes className="h-4 w-4" />}
+                    title="Operações de Campo"
+                    desc="Foco em logística, movimentação e volume de produção"
+                  />
+                </div>
+              </div>
             </div>
-            <Button variant="outline" onClick={() => setActiveTab("manutencao")}>
-              <AlertTriangle className="h-4 w-4 mr-2" />
-              Abrir Manutenção do Ambiente
-            </Button>
-          </section>
-        </TabsContent>
+
+            {/* Banner Manutenção do Ambiente */}
+            <div className="rounded-xl border border-border/80 bg-card p-5 shadow-xs flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between transition-colors">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
+                  <AlertTriangle className="h-4 w-4" />
+                </div>
+                <div className="space-y-0.5">
+                  <div className="text-xs font-semibold text-foreground">
+                    Manutenção do Ambiente
+                  </div>
+                  <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed">
+                    Resets transacionais e manutenções controladas ficam isolados em uma área restrita, com auditoria persistente e confirmação dupla obrigatória.
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setActiveTab("manutencao")}
+                className="shrink-0 rounded-lg border-border/80 text-xs font-medium hover:bg-muted/50"
+              >
+                <AlertTriangle className="h-3.5 w-3.5 mr-1.5 text-amber-600 dark:text-amber-400" />
+                Abrir Manutenção do Ambiente
+              </Button>
+            </div>
+          </TabsContent>
 
         <TabsContent value="manutencao" className="space-y-6 mt-6">
           <ResetOperacional />
         </TabsContent>
 
-        <TabsContent value="config_operacional" className="space-y-6 mt-6">
-          <section className="esc-card p-5">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
+                <TabsContent value="config_operacional" className="space-y-5 mt-2">
+          {/* Card 1: Motor Operacional */}
+          <div className="rounded-xl border border-border/80 bg-card p-6 shadow-xs space-y-5 transition-colors">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-border/60">
               <div>
-                <h2 className="font-display font-semibold text-foreground">Motor operacional</h2>
-                <p className="text-sm text-muted-foreground">
-                  Regras que governam cálculo, conferência e comportamento dos fluxos do ERP.
+                <h3 className="font-display font-semibold text-sm tracking-tight text-foreground flex items-center gap-2">
+                  <Settings2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  Motor Operacional
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Regras que governam cálculo, conferência e comportamento dos fluxos operacionais do ERP.
                 </p>
               </div>
               <Button
@@ -535,18 +605,32 @@ const Configuracoes = () => {
                 size="sm"
                 onClick={() => isEditingParams ? saveParamsMutation.mutate(paramsForm) : setIsEditingParams(true)}
                 disabled={saveParamsMutation.isPending}
+                className={cn(
+                  "rounded-lg text-xs font-medium shrink-0 h-9 px-4 transition-all",
+                  isEditingParams
+                    ? "bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
+                    : "border-border/80 hover:bg-muted/40 text-foreground"
+                )}
               >
-                {saveParamsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : isEditingParams ? <Check className="h-4 w-4 mr-2" /> : <Pencil className="h-4 w-4 mr-2" />}
+                {saveParamsMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                ) : isEditingParams ? (
+                  <Check className="h-3.5 w-3.5 mr-1.5" />
+                ) : (
+                  <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                )}
                 {isEditingParams ? "Salvar Alterações" : "Editar Parâmetros"}
               </Button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
-              <section className="esc-card p-6">
-                <h3 className="font-display font-semibold mb-4 text-foreground flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-primary" /> Geral
-                </h3>
-                <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Card Geral */}
+              <div className="rounded-xl border border-border/70 bg-muted/20 p-5 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <span className="font-display font-semibold text-xs text-foreground tracking-tight">Parâmetros Gerais</span>
+                </div>
+                <div className="space-y-1 divide-y divide-border/50">
                   <EditableParam
                     label="Moeda Padrão"
                     value={paramsForm.moeda_padrao || 'BRL (R$)'}
@@ -569,12 +653,15 @@ const Configuracoes = () => {
                     onChange={v => setParamsForm({ ...paramsForm, limite_escopo: Number(v) })}
                   />
                 </div>
-              </section>
-              <section className="esc-card p-6">
-                <h3 className="font-display font-semibold mb-4 text-foreground flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-primary" /> Operacional
-                </h3>
-                <div className="space-y-4">
+              </div>
+
+              {/* Card Operacional */}
+              <div className="rounded-xl border border-border/70 bg-muted/20 p-5 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <span className="font-display font-semibold text-xs text-foreground tracking-tight">Regras de Apuração</span>
+                </div>
+                <div className="space-y-1 divide-y divide-border/50">
                   <EditableParam
                     label="Tolerância de Ponto (Minutos)"
                     value={String(paramsForm.tolerancia_ponto || 10)}
@@ -589,7 +676,7 @@ const Configuracoes = () => {
                     onChange={v => setParamsForm({ ...paramsForm, arredondamento_financeiro: v })}
                     options={["Duas casas", "Inteiro (Cêntimos)", "Teto"]}
                   />
-                  <div className="flex items-center justify-between py-2">
+                  <div className="flex items-center justify-between py-2 min-h-[48px]">
                     <span className="text-xs text-muted-foreground">Notificação de Inconsistência</span>
                     {isEditingParams ? (
                       <Switch
@@ -597,340 +684,503 @@ const Configuracoes = () => {
                         onCheckedChange={v => setParamsForm({ ...paramsForm, notificacao_inconsistencia: v })}
                       />
                     ) : (
-                      <span className="text-sm font-semibold text-foreground">{paramsForm.notificacao_inconsistencia ? 'Ativado' : 'Desativado'}</span>
+                      <span className="text-xs font-semibold text-foreground">
+                        {paramsForm.notificacao_inconsistencia ? 'Ativado' : 'Desativado'}
+                      </span>
                     )}
                   </div>
                 </div>
-              </section>
+              </div>
+            </div>
+          </div>
+
+          {/* Seção 2: Jornadas de Trabalho */}
+          <JornadasTrabalhoSection />
+
+          {/* Seção 3: Regras de Banco de Horas */}
+          <RegrasBancoHorasSection />
+
+          {/* Seção 4: Filtros de Colaboradores */}
+          <div className="rounded-xl border border-border/80 bg-card p-6 shadow-xs space-y-5 transition-colors">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-4 border-b border-border/60">
+              <div className="space-y-0.5">
+                <h3 className="font-display font-semibold text-sm tracking-tight text-foreground">
+                  Filtros de colaboradores por tela do encarregado
+                </h3>
+                <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed">
+                  Cada fluxo decide de forma independente quais colaboradores podem ser carregados. Campos vazios significam sem restrição para aquele critério.
+                </p>
+                {!empresaId && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                    Nenhuma empresa válida foi encontrada para salvar esta configuração.
+                  </p>
+                )}
+              </div>
+              <Button
+                size="sm"
+                onClick={() => saveParamsMutation.mutate(paramsForm)}
+                disabled={saveParamsMutation.isPending || !empresaId}
+                className="rounded-lg text-xs font-medium shrink-0 h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all gap-1.5"
+              >
+                {saveParamsMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                Salvar filtros
+              </Button>
             </div>
 
-            <JornadasTrabalhoSection />
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {ENCARREGADO_FILTER_TARGETS.map((preset) => {
+                const filter = presetFilters[preset.id];
+                const availableOptions = getAvailableOptionsForField(filter.campo_filtro);
 
-            <RegrasBancoHorasSection />
+                return (
+                  <div key={preset.id} className="rounded-xl border border-border/70 bg-muted/20 p-4 space-y-3.5">
+                    <div>
+                      <h4 className="font-semibold text-xs text-foreground">{fixMojibakeText(preset.title)}</h4>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{fixMojibakeText(preset.description)}</p>
+                    </div>
 
-            <section className="esc-card p-6 mt-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <h3 className="font-display font-semibold text-foreground">Filtros de colaboradores por tela do encarregado</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Cada fluxo decide de forma independente quais colaboradores podem ser carregados. Campos vazios significam sem restrição para aquele critério.
-                  </p>
-                  {!empresaId && (
-                    <p className="text-sm text-amber-600">
-                      Nenhuma empresa válida foi encontrada para salvar esta configuração.
-                    </p>
-                  )}
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => saveParamsMutation.mutate(paramsForm)}
-                  disabled={saveParamsMutation.isPending || !empresaId}
-                >
-                  {saveParamsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Check className="h-4 w-4 mr-2" />}
-                  Salvar filtros
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-5">
-                {ENCARREGADO_FILTER_TARGETS.map((preset) => {
-                  const filter = presetFilters[preset.id];
-                  const availableOptions = getAvailableOptionsForField(filter.campo_filtro);
-
-                  return (
-                    <section key={preset.id} className="rounded-2xl border border-border/60 bg-background p-5 space-y-4">
-                      <div>
-                        <h4 className="font-semibold text-foreground">{fixMojibakeText(preset.title)}</h4>
-                        <p className="text-xs text-muted-foreground mt-1">{fixMojibakeText(preset.description)}</p>
+                    <div className="grid grid-cols-1 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] font-medium text-muted-foreground">Filtrar colaboradores por</Label>
+                        {preset.fixed ? (
+                          <div className="min-h-9 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs font-medium text-foreground flex items-center">
+                            Tipo
+                          </div>
+                        ) : (
+                          <Select
+                            value={filter.campo_filtro || "tipo_contrato"}
+                            onValueChange={(value) => updatePresetFilter(preset.id, { campo_filtro: value as "tipo_colaborador" | "tipo_contrato" })}
+                          >
+                            <SelectTrigger className="h-9 text-xs rounded-lg bg-background">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="tipo_contrato" className="text-xs">Contrato</SelectItem>
+                              <SelectItem value="tipo_colaborador" className="text-xs">Tipo</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
 
-                      <div className="grid grid-cols-1 gap-3">
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-muted-foreground">Filtrar colaboradores por</Label>
-                          {preset.fixed ? (
-                            <div className="min-h-10 rounded-xl border border-border/50 px-3 py-2 text-sm text-foreground">
-                              Tipo
-                            </div>
-                          ) : (
-                            <Select
-                              value={filter.campo_filtro || "tipo_contrato"}
-                              onValueChange={(value) => updatePresetFilter(preset.id, { campo_filtro: value as "tipo_colaborador" | "tipo_contrato" })}
-                            >
-                              <SelectTrigger className="h-10">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="tipo_contrato">Contrato</SelectItem>
-                                <SelectItem value="tipo_colaborador">Tipo</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          )}
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-muted-foreground">Valores permitidos</Label>
-                          {!preset.fixed ? (
-                            <Select
-                              value={filter.valores_filtro?.[0] || ""}
-                              onValueChange={(value) => updatePresetFilter(preset.id, { valores_filtro: value ? [value] : [] })}
-                            >
-                              <SelectTrigger className="h-10">
-                                <SelectValue placeholder="Selecione uma opção disponível" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {availableOptions.map((option) => (
-                                  <SelectItem key={option} value={option}>
-                                    {option}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <div className="min-h-10 rounded-xl border border-border/50 px-3 py-2 text-sm text-foreground">
-                              {preset.fixed ? "DIARISTA" : formatFilterList(filter.valores_filtro)}
-                            </div>
-                          )}
-                        </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] font-medium text-muted-foreground">Valores permitidos</Label>
+                        {!preset.fixed ? (
+                          <Select
+                            value={filter.valores_filtro?.[0] || ""}
+                            onValueChange={(value) => updatePresetFilter(preset.id, { valores_filtro: value ? [value] : [] })}
+                          >
+                            <SelectTrigger className="h-9 text-xs rounded-lg bg-background">
+                              <SelectValue placeholder="Selecione uma opção disponível" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableOptions.map((option) => (
+                                <SelectItem key={option} value={option} className="text-xs">
+                                  {option}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <div className="min-h-9 rounded-lg border border-border/60 bg-background px-3 py-2 text-xs font-medium text-foreground flex items-center">
+                            {preset.fixed ? "DIARISTA" : formatFilterList(filter.valores_filtro)}
+                          </div>
+                        )}
                       </div>
-                    </section>
-                  );
-                })}
-              </div>
-            </section>
-          </section>
-
-
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </TabsContent>
 
-        <TabsContent value="modelos" className="space-y-6 mt-6">
-          <section className="esc-card p-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="font-display font-semibold text-foreground">Modelos de Importação</h2>
-              <p className="text-sm text-muted-foreground">
-                Cadastre links do Google Drive para os modelos usados no botão "Baixar modelo".
+                <TabsContent value="modelos" className="space-y-4 mt-2">
+          {/* Header Card */}
+          <div className="rounded-xl border border-border/80 bg-card p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <h3 className="font-display font-semibold text-sm tracking-tight text-foreground">
+                  Modelos de Importação
+                </h3>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Cadastre links de planilhas de referência do Google Drive para download nos assistentes de importação.
               </p>
             </div>
-            <Button onClick={handleAddImportTemplate}>
-              <Plus className="h-4 w-4 mr-2" />
-              Novo modelo
+            <Button
+              onClick={handleAddImportTemplate}
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium shrink-0 h-9 px-3.5 shadow-xs transition-all gap-1.5"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Novo Modelo
             </Button>
-          </section>
+          </div>
 
-          <section className="esc-card overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="esc-table-header">
-                <tr className="text-left">
-                  <th className="px-5 h-11 font-medium">Módulo</th>
-                  <th className="px-4 h-11 font-medium">Nome do arquivo</th>
-                  <th className="px-4 h-11 font-medium">Link do Drive</th>
-                  <th className="px-4 h-11 font-medium text-center">Status</th>
-                  <th className="px-5 h-11 font-medium text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loadingModelos ? (
-                  <tr>
-                    <td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">
-                      <Loader2 className="h-5 w-5 animate-spin inline mr-2" />
-                      Carregando modelos...
-                    </td>
+          {/* Tabela de Modelos */}
+          <div className="rounded-xl border border-border/80 bg-card overflow-hidden shadow-xs transition-colors">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-muted/40 border-b border-border/60 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground text-left">
+                    <th className="px-5 py-3">Módulo</th>
+                    <th className="px-4 py-3">Nome do arquivo</th>
+                    <th className="px-4 py-3">Link do Drive</th>
+                    <th className="px-4 py-3 text-center">Status</th>
+                    <th className="px-5 py-3 text-right">Ações</th>
                   </tr>
-                ) : importacaoModelos.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">
-                      Nenhum modelo configurado ainda.
-                    </td>
-                  </tr>
-                ) : (
-                  importacaoModelos.map((item: any) => {
-                    const moduloLabel = IMPORTACAO_MODULOS.find((modulo) => modulo.value === item.modulo)?.label || item.modulo;
-                    return (
-                      <tr key={item.id} className="border-t border-muted hover:bg-background">
-                        <td className="px-5 h-14 font-medium text-foreground">{moduloLabel}</td>
-                        <td className="px-4 text-muted-foreground">{item.nome_arquivo || "Não informado"}</td>
-                        <td className="px-4 text-muted-foreground">
-                          <a
-                            href={item.drive_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="underline underline-offset-2 hover:text-primary"
-                          >
-                            Abrir link
-                          </a>
-                        </td>
-                        <td className="px-4 text-center">
-                          <Badge variant={item.ativo ? 'success' : 'secondary'} className="h-5">
-                            {item.ativo ? "Ativo" : "Inativo"}
-                          </Badge>
-                        </td>
-                        <td className="px-5">
-                          <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => window.open(item.drive_url, "_blank", "noopener,noreferrer")}>
-                              <Globe className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditImportTemplate(item)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive"
-                              onClick={() => {
-                                if (confirm("Deseja remover este modelo de importação?")) {
-                                  deleteImportTemplateMutation.mutate(item.id);
-                                }
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {loadingModelos ? (
+                    <tr>
+                      <td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin inline mr-2 text-blue-600" />
+                        Carregando modelos...
+                      </td>
+                    </tr>
+                  ) : importacaoModelos.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-5 py-12 text-center">
+                        <div className="flex flex-col items-center justify-center space-y-2">
+                          <div className="h-10 w-10 rounded-full bg-muted/50 flex items-center justify-center text-muted-foreground">
+                            <Database className="h-5 w-5" />
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </section>
+                          <p className="text-xs font-medium text-foreground">Nenhum modelo configurado</p>
+                          <p className="text-[11px] text-muted-foreground max-w-sm">
+                            Adicione links de planilhas para disponibilizar aos usuários nas rotinas de importação.
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    importacaoModelos.map((item: any) => {
+                      const moduloLabel = IMPORTACAO_MODULOS.find((modulo) => modulo.value === item.modulo)?.label || item.modulo;
+                      return (
+                        <tr key={item.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-5 py-3.5 font-medium text-foreground">{moduloLabel}</td>
+                          <td className="px-4 py-3.5 text-muted-foreground">{item.nome_arquivo || "Não informado"}</td>
+                          <td className="px-4 py-3.5 text-muted-foreground">
+                            <a
+                              href={item.drive_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                            >
+                              <Globe className="h-3.5 w-3.5 text-blue-500" />
+                              Abrir Planilha
+                            </a>
+                          </td>
+                          <td className="px-4 py-3.5 text-center">
+                            {item.ativo ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                Ativo
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-muted/60 text-muted-foreground border border-border/60">
+                                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+                                Inativo
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+                                onClick={() => window.open(item.drive_url, "_blank", "noopener,noreferrer")}
+                                title="Abrir no Google Drive"
+                              >
+                                <Globe className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+                                onClick={() => handleEditImportTemplate(item)}
+                                title="Editar modelo"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                                onClick={() => {
+                                  if (confirm("Deseja remover este modelo de importação?")) {
+                                    deleteImportTemplateMutation.mutate(item.id);
+                                  }
+                                }}
+                                title="Remover modelo"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </TabsContent>
 
-        <TabsContent value="conta" className="mt-6">
-          <div className="max-w-2xl mx-auto space-y-6">
-            <div className="esc-card p-8 flex items-center gap-6 relative">
-              <div className="relative group">
-                <div className="h-24 w-24 rounded-full bg-primary-soft flex items-center justify-center border-2 border-primary overflow-hidden relative">
-                  {user?.user_metadata?.avatar_url ? (
-                    <img src={user.user_metadata.avatar_url} alt="Profile" className="h-full w-full object-cover" />
-                  ) : (
-                    <User className="h-12 w-12 text-primary" />
-                  )}
-                  {isUploading && (
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                      <Loader2 className="h-6 w-6 animate-spin text-white" />
-                    </div>
-                  )}
-                </div>
-                <label className="absolute bottom-0 right-0 h-8 w-8 rounded-full bg-primary text-white flex items-center justify-center cursor-pointer shadow-lg hover:scale-110 transition-transform border-2 border-card">
-                  <Camera className="h-4 w-4" />
-                  <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} disabled={isUploading} />
-                </label>
+        <TabsContent value="conta" className="space-y-4 mt-2">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            {/* Coluna 1 & 2: Cartão de Identidade e Dados Cadastrais */}
+            <div className="lg:col-span-2 rounded-xl border border-border/80 bg-card p-6 shadow-xs space-y-6">
+              <div>
+                <h3 className="font-display font-semibold text-sm tracking-tight text-foreground">
+                  Identidade & Dados Cadastrais
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Informações corporativas e credenciais de acesso vinculadas ao seu usuário.
+                </p>
               </div>
 
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  {isEditingName ? (
-                    <div className="flex items-center gap-2 w-full max-w-sm">
-                      <Input
-                        value={newName}
-                        onChange={(e) => setNewName(e.target.value)}
-                        className="h-9 focus-visible:ring-primary"
-                        autoFocus
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 pb-6 border-b border-border/60">
+                <div className="relative group">
+                  <div className="h-20 w-20 rounded-full border-2 border-border/80 bg-muted/50 flex items-center justify-center overflow-hidden relative shadow-xs">
+                    {user?.user_metadata?.avatar_url ? (
+                      <img
+                        src={user.user_metadata.avatar_url}
+                        alt="Profile"
+                        className="h-full w-full object-cover"
                       />
-                      <Button size="icon" className="h-9 w-9 shrink-0" onClick={handleUpdateName}>
-                        <Check className="h-4 w-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0" onClick={() => { setIsEditingName(false); setNewName(user?.user_metadata?.full_name || ""); }}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 group/name">
-                      <h2 className="text-xl font-bold text-foreground">{user?.user_metadata?.full_name || "Usuário Orbe"}</h2>
-                      <button
-                        onClick={() => setIsEditingName(true)}
-                        className="opacity-0 group-hover/name:opacity-100 transition-opacity p-1 hover:text-primary"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )}
+                    ) : (
+                      <User className="h-10 w-10 text-muted-foreground" />
+                    )}
+                    {isUploading && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <Loader2 className="h-5 w-5 animate-spin text-white" />
+                      </div>
+                    )}
+                  </div>
+                  <label className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-blue-600 text-white flex items-center justify-center cursor-pointer shadow-sm hover:bg-blue-700 transition-transform hover:scale-105 border-2 border-card">
+                    <Camera className="h-3.5 w-3.5" />
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*"
+                      onChange={handleAvatarUpload}
+                      disabled={isUploading}
+                    />
+                  </label>
                 </div>
 
-                <div className="text-sm text-muted-foreground flex flex-col gap-1 mt-1">
-                  <div className="flex items-center gap-1.5">
-                    <Shield className="h-4 w-4 text-success" /> {user?.user_metadata?.role || "Colaborador Administrativo"}
+                <div className="space-y-2 flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    {isEditingName ? (
+                      <div className="flex items-center gap-1.5 w-full max-w-sm">
+                        <Input
+                          value={newName}
+                          onChange={(e) => setNewName(e.target.value)}
+                          className="h-8 text-xs focus-visible:ring-blue-600 rounded-lg"
+                          autoFocus
+                        />
+                        <Button
+                          size="icon"
+                          className="h-8 w-8 shrink-0 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+                          onClick={handleUpdateName}
+                          title="Salvar nome"
+                          aria-label="Salvar nome"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8 shrink-0 rounded-lg"
+                          onClick={() => {
+                            setIsEditingName(false);
+                            setNewName(user?.user_metadata?.full_name || "");
+                          }}
+                          title="Cancelar"
+                          aria-label="Cancelar"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 group/name">
+                        <h4 className="text-base font-bold font-display text-foreground truncate">
+                          {user?.user_metadata?.full_name || "Usuário Orbe"}
+                        </h4>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setIsEditingName(true)}
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground opacity-70 group-hover/name:opacity-100 transition-opacity rounded-md"
+                          title="Editar nome"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-xs opacity-70">{user?.email}</div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-border/80 bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-foreground">
+                      <Shield className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                      {user?.user_metadata?.role || "Colaborador Administrativo"}
+                    </span>
+                    <span className="text-xs text-muted-foreground truncate">
+                      {user?.email}
+                    </span>
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground mt-4">Matrícula: <code className="bg-muted px-1.5 py-0.5 rounded">{user?.user_metadata?.matricula || "N/A"}</code></p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                <div className="rounded-lg border border-border/60 bg-muted/20 p-3.5 space-y-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Matrícula Corporativa
+                  </div>
+                  <div className="font-mono text-xs font-semibold text-foreground">
+                    {user?.user_metadata?.matricula || "N/A"}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-border/60 bg-muted/20 p-3.5 space-y-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Organização / Tenant
+                  </div>
+                  <div className="text-xs font-semibold text-foreground truncate">
+                    {perfil?.empresa_id || "ESC Logística Oficial"}
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="esc-card p-6">
-              <h3 className="font-display font-semibold mb-4 text-foreground">Segurança</h3>
-              <div className="space-y-2">
-                <Button
-                  variant="outline"
-                  className="w-full justify-start text-foreground border-border hover:bg-secondary"
-                  onClick={async () => {
-                    try {
-                      await supabase.auth.resetPasswordForEmail(user?.email || "");
-                      toast.success("E-mail de redefinição enviado", { description: "Verifique sua caixa de entrada." });
-                    } catch (e: any) {
-                      toast.error("Erro ao enviar e-mail", { description: e.message });
-                    }
-                  }}
-                >
-                  Alterar Senha de Acesso
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start text-foreground border-border hover:bg-secondary"
-                  onClick={() => toast.info("Autenticação em duas etapas", { description: "Esta funcionalidade será disponibilizada na próxima atualização." })}
-                >
-                  Configurar Autenticação em Duas Etapas (2FA)
-                </Button>
+            {/* Coluna 3: Cartão de Segurança */}
+            <div className="rounded-xl border border-border/80 bg-card p-6 shadow-xs space-y-6 flex flex-col justify-between">
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-display font-semibold text-sm tracking-tight text-foreground flex items-center gap-2">
+                    <Lock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    Segurança & Credenciais
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Gerencie o acesso à sua conta corporativa.
+                  </p>
+                </div>
+
+                <div className="space-y-3 pt-1">
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-medium text-foreground">Senha de Acesso</div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Enviaremos um link de redefinição seguro para o seu e-mail cadastrado.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full justify-start text-xs font-medium border-border/80 rounded-lg hover:bg-muted/40 mt-1"
+                      onClick={async () => {
+                        try {
+                          await supabase.auth.resetPasswordForEmail(user?.email || "");
+                          toast.success("E-mail de redefinição enviado", {
+                            description: "Verifique sua caixa de entrada.",
+                          });
+                        } catch (e: any) {
+                          toast.error("Erro ao enviar e-mail", { description: e.message });
+                        }
+                      }}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+                      Solicitar Redefinição de Senha
+                    </Button>
+                  </div>
+
+                  <div className="pt-3 border-t border-border/60 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-medium text-foreground">Autenticação em Duas Etapas (2FA)</div>
+                      <span className="rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">
+                        Em breve
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Camada extra de proteção via aplicativo autenticador.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full justify-start text-xs font-medium border-border/80 rounded-lg opacity-60 cursor-not-allowed mt-1"
+                      disabled
+                    >
+                      <Shield className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+                      Configurar 2FA
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-border/60 text-[10px] text-muted-foreground flex items-center justify-between">
+                <span>Sessão segura ativa</span>
+                <span className="font-mono">v2026</span>
               </div>
             </div>
           </div>
         </TabsContent>
       </Tabs>
+    </div>
 
-      <Dialog open={importTemplateModalOpen} onOpenChange={setImportTemplateModalOpen}>
-        <DialogContent className="sm:max-w-[520px]">
+            <Dialog open={importTemplateModalOpen} onOpenChange={setImportTemplateModalOpen}>
+        <DialogContent className="sm:max-w-[520px] rounded-xl border border-border/80 bg-card p-6 shadow-lg">
           <DialogHeader>
-            <DialogTitle>{editingImportTemplate ? "Editar modelo de importação" : "Novo modelo de importação"}</DialogTitle>
+            <DialogTitle className="font-display font-semibold text-base tracking-tight text-foreground">
+              {editingImportTemplate ? "Editar modelo de importação" : "Novo modelo de importação"}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Cadastre ou edite o modelo de planilha associado ao módulo para download.
+            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Módulo</Label>
+          <div className="space-y-4 py-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-foreground">Módulo</Label>
               <Select
                 value={importTemplateForm.modulo}
                 onValueChange={(value) => setImportTemplateForm({ ...importTemplateForm, modulo: value })}
               >
-                <SelectTrigger>
+                <SelectTrigger className="h-9 text-xs rounded-lg">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {IMPORTACAO_MODULOS.map((modulo) => (
-                    <SelectItem key={modulo.value} value={modulo.value}>{modulo.label}</SelectItem>
+                    <SelectItem key={modulo.value} value={modulo.value} className="text-xs">{modulo.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Nome do arquivo</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-foreground">Nome do arquivo</Label>
               <Input
                 value={importTemplateForm.nome_arquivo}
                 onChange={(e) => setImportTemplateForm({ ...importTemplateForm, nome_arquivo: e.target.value })}
                 placeholder="Ex: modelo_transportadoras.xlsx"
+                className="h-9 text-xs rounded-lg"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Link do Google Drive</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-foreground">Link do Google Drive</Label>
               <Input
                 value={importTemplateForm.drive_url}
                 onChange={(e) => setImportTemplateForm({ ...importTemplateForm, drive_url: e.target.value })}
                 placeholder="https://drive.google.com/..."
+                className="h-9 text-xs rounded-lg"
               />
             </div>
 
-            <div className="flex items-center justify-between rounded-lg border border-border p-3">
-              <div>
-                <p className="text-sm font-medium text-foreground">Modelo ativo</p>
-                <p className="text-xs text-muted-foreground">Define se o link deve ser usado no botão de download.</p>
+            <div className="flex items-center justify-between rounded-lg border border-border/70 bg-muted/20 p-3 pt-3">
+              <div className="space-y-0.5">
+                <Label className="text-xs font-medium text-foreground">Modelo ativo</Label>
+                <p className="text-[11px] text-muted-foreground">Disponível para download nos assistentes</p>
               </div>
               <Switch
                 checked={importTemplateForm.ativo}
@@ -939,13 +1189,22 @@ const Configuracoes = () => {
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setImportTemplateModalOpen(false)}>Cancelar</Button>
+          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-border/60">
             <Button
-              onClick={() => importTemplateMutation.mutate(importTemplateForm)}
-              disabled={importTemplateMutation.isPending || !importTemplateForm.drive_url.trim()}
+              variant="outline"
+              size="sm"
+              onClick={() => setImportTemplateModalOpen(false)}
+              className="rounded-lg text-xs font-medium border-border/80 hover:bg-muted/40 h-9"
             >
-              {importTemplateMutation.isPending ? "Salvando..." : "Salvar"}
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => importTemplateMutation.mutate(importTemplateForm)}
+              disabled={importTemplateMutation.isPending || !importTemplateForm.drive_url}
+              className="rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white shadow-xs h-9 px-4"
+            >
+              {importTemplateMutation.isPending ? "Salvando..." : "Salvar Modelo"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1019,20 +1278,33 @@ const OptionCard = ({
   desc: string;
 }) => (
   <button
+    type="button"
     onClick={onClick}
     className={cn(
-      "text-left p-4 rounded-xl border transition-all duration-200 outline-none",
+      "group relative text-left p-4 rounded-xl border transition-all duration-200 outline-none w-full",
       active
-        ? "border-primary bg-primary-soft ring-1 ring-primary shadow-sm"
-        : "border-border bg-card hover:border-primary/30 hover:bg-muted/30"
+        ? "border-blue-600 bg-blue-50/40 dark:bg-blue-950/20 ring-1 ring-blue-600 shadow-xs"
+        : "border-border/80 bg-card hover:border-border hover:bg-muted/30"
     )}
   >
-    <div className={cn("mb-3 h-10 w-10 rounded-lg flex items-center justify-center transition-colors",
-      active ? "bg-primary text-white" : "bg-muted text-muted-foreground")}>
-      {icon}
+    <div className="flex items-start justify-between gap-3 mb-3">
+      <div
+        className={cn(
+          "h-9 w-9 rounded-lg flex items-center justify-center transition-colors",
+          active ? "bg-blue-600 text-white shadow-xs" : "bg-muted text-muted-foreground group-hover:text-foreground"
+        )}
+      >
+        {icon}
+      </div>
+      {active && (
+        <span className="flex h-5 items-center gap-1 rounded-full bg-blue-600/10 px-2 text-[10px] font-semibold text-blue-600 dark:bg-blue-500/20 dark:text-blue-400">
+          <Check className="h-3 w-3" />
+          Ativo
+        </span>
+      )}
     </div>
-    <div className="font-display font-bold text-foreground text-sm tracking-tight">{title}</div>
-    <div className="text-[11px] text-muted-foreground mt-1 leading-relaxed">{desc}</div>
+    <div className="font-display font-semibold text-foreground text-xs tracking-tight">{title}</div>
+    <div className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{desc}</div>
   </button>
 );
 

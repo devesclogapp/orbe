@@ -315,7 +315,7 @@ export const JornadasTrabalhoSection: React.FC = () => {
   const divisorReferencia = REFERENCIA_GERAL_CLT_PADRAO.divisorMensal;
 
   return (
-    <section className="esc-card p-6 mt-6 space-y-6">
+    <section className="rounded-xl border border-border/80 bg-card p-6 shadow-xs space-y-5 transition-colors">
       {/* 1. CABEÇALHO DA SEÇÃO */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
