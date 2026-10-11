@@ -25,7 +25,7 @@ import { CommandMenu } from "./CommandMenu";
 import { getBackTarget, getBreadcrumbs, getRouteLabel, getSectionLabel } from "./navigationMeta";
 
 type TopbarProps = {
-  title: string;
+  title?: string;
   subtitle?: string;
   badge?: string;
   backPath?: string;
@@ -42,7 +42,8 @@ export const Topbar = ({ title, subtitle, badge, backPath, pipelineTrigger }: To
 
   const currentPath = location.pathname;
   const sectionLabel = getSectionLabel(currentPath);
-  const breadcrumbs = getBreadcrumbs(currentPath, title);
+  const resolvedTitle = title || getRouteLabel(currentPath, "Dashboard Executivo");
+  const breadcrumbs = getBreadcrumbs(currentPath, resolvedTitle);
   const resolvedBackPath = getBackTarget(currentPath, backPath);
   const backLabel = resolvedBackPath ? getRouteLabel(resolvedBackPath) : undefined;
 
@@ -84,7 +85,7 @@ export const Topbar = ({ title, subtitle, badge, backPath, pipelineTrigger }: To
 
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="font-display font-semibold text-sm text-foreground truncate">
-              {title}
+              {resolvedTitle}
             </span>
 
             {badge && (

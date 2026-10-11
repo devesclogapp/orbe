@@ -1024,7 +1024,7 @@ const RhDiaristasPainel = () => {
 
     return (
         <AppShell title="Diaristas" subtitle="Acompanhe os lançamentos semanais, confira as apurações e valide os lotes da operação.">
-            <div className="max-w-[1560px] mx-auto p-4 md:p-6 space-y-6">
+            <div className="space-y-6 pb-12 w-full max-w-[1560px] mx-auto animate-in fade-in-50 duration-200">
 
                 {/* ========================================================================= */}
                 {/* REGIÃO 01 — CABEÇALHO, CONTEXTO & FILTROS COMPACTOS                     */}
@@ -1034,7 +1034,10 @@ const RhDiaristasPainel = () => {
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-border/40">
                     <div>
                         <h1 className="text-xl font-bold font-display text-foreground tracking-tight">
-                            Diaristas
+                            <span className="flex items-center gap-2">
+                                <Users className="w-5 h-5 text-royal-blue dark:text-royal-blue-light shrink-0" />
+                                Diaristas
+                            </span>
                         </h1>
                         <p className="text-xs text-muted-foreground mt-0.5">
                             Acompanhe os lançamentos semanais, confira as apurações e valide os lotes da operação.

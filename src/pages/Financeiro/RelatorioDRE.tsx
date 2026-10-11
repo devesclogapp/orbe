@@ -307,7 +307,7 @@ export default function RelatorioDRE() {
       title="Resultado Operacional (DRE)"
       subtitle={`Demonstração Gerencial de Lucratividade, Faturamento e Custos Operacionais · ${competenciaLabel}`}
     >
-      <div className="mx-auto max-w-[1700px] w-full px-4 sm:px-6 md:px-8 space-y-5 pb-20 animate-in fade-in-50 duration-300">
+      <div className="space-y-5 pb-20 w-full max-w-[1560px] mx-auto animate-in fade-in-50 duration-300">
         {/* ── BARRA DE CONTROLES SUPERIORES (FILTROS) ──────────────────── */}
         <div className="flex flex-wrap items-center justify-between gap-3 bg-card border border-border/80 rounded-xl p-3 shadow-xs">
           <div className="flex flex-wrap items-center gap-2">

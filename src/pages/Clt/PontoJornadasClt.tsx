@@ -964,11 +964,15 @@ export const PontoJornadasClt: React.FC = () => {
   ];
 
   return (
-    <AppShell>
-      <OrbePageContainer maxWidth="1560px" className="space-y-4">
+    <AppShell
+      title="Ponto & Jornadas CLT"
+      subtitle="Apuração de jornadas, marcações e banco de horas."
+    >
+      <div className="space-y-4 pb-16 w-full max-w-[1560px] mx-auto animate-in fade-in-50 duration-200">
         {/* Page Header */}
         <OrbePageHeader
           badge={<OrbeBadge variant="primary">Módulo Pessoas & RH</OrbeBadge>}
+          icon={Clock}
           title="Ponto & Jornadas CLT"
           description="Apuração de jornadas, marcações e banco de horas."
           actions={
@@ -1788,7 +1792,7 @@ export const PontoJornadasClt: React.FC = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </OrbePageContainer>
+      </div>
     </AppShell>
   );
 };

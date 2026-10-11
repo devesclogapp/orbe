@@ -306,7 +306,7 @@ export default function CentralBancaria() {
 
   return (
     <AppShell
-      title="Central Bancária & CNAB"
+      title="Central Bancária"
       subtitle="Esteira unificada de remessas, retornos e conciliações dos pagamentos bancarizados."
     >
       <div className="space-y-4 pb-12 w-full max-w-[1560px] mx-auto pt-1 animate-in fade-in-50 duration-200">
@@ -315,8 +315,8 @@ export default function CentralBancaria() {
         {/* ========================================================================= */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-card border border-border/80 rounded-xl p-3 shadow-xs">
           <div>
-            <h1 className="text-sm font-bold tracking-tight text-foreground flex items-center gap-2">
-              <Banknote className="h-4 w-4 text-blue-600" />
+            <h1 className="text-base sm:text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+              <Banknote className="w-5 h-5 text-royal-blue dark:text-royal-blue-light shrink-0" />
               Central Bancária & CNAB
             </h1>
             <p className="text-xs text-muted-foreground mt-0.5">

@@ -1,8 +1,10 @@
 import React from "react";
 import { cn } from "@/lib/utils";
+import { LucideIcon } from "lucide-react";
 
 export interface OrbePageHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
   badge?: React.ReactNode;
+  icon?: LucideIcon;
   title: string | React.ReactNode;
   description?: string | React.ReactNode;
   actions?: React.ReactNode;
@@ -16,6 +18,7 @@ export interface OrbePageHeaderProps extends React.HTMLAttributes<HTMLDivElement
  */
 export const OrbePageHeader: React.FC<OrbePageHeaderProps> = ({
   badge,
+  icon: Icon,
   title,
   description,
   actions,
@@ -33,6 +36,7 @@ export const OrbePageHeader: React.FC<OrbePageHeaderProps> = ({
       <div className="space-y-1">
         {badge && <div className="mb-1">{badge}</div>}
         <h1 className="text-lg sm:text-xl font-bold font-display tracking-tight text-foreground flex items-center gap-2">
+          {Icon && <Icon className="w-5 h-5 text-royal-blue dark:text-royal-blue-light shrink-0" />}
           {title}
         </h1>
         {description && (

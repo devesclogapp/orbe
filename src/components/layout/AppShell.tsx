@@ -4,7 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 
 interface AppShellProps {
-  title: string;
+  title?: string;
   subtitle?: string;
   badge?: string;
   backPath?: string;

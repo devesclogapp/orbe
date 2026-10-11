@@ -314,7 +314,7 @@ const IntermitentesRecebidos = () => {
 
     return (
         <AppShell
-            title="Intermitentes Recebidos"
+            title="Intermitentes"
             subtitle="Visualização e conciliação dos dados de colaboradores intermitentes vindos do Tio Digital"
             badge="ENTRADAS / CAPTURA"
         >

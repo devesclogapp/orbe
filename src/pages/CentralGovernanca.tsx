@@ -78,7 +78,7 @@ const CentralGovernanca = () => {
 
   return (
     <AppShell
-      title="Governança Executiva"
+      title="Governança"
       subtitle="Central Global de Auditoria e Monitoramento Corporativo"
     >
       <div className="space-y-6">

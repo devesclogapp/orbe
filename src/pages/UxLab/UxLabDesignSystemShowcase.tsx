@@ -225,6 +225,7 @@ export const UxLabDesignSystemShowcase: React.FC = () => {
       <OrbePageContainer>
         {/* Header Oficial da Página */}
         <OrbePageHeader
+          icon={Sparkles}
           badge={<OrbeBadge variant="solid">DS-01 OFICIAL</OrbeBadge>}
           title="ORBE Design System & Foundations"
           description="Linguagem visual unificada, tokens transversais e componentes primitivos para todas as telas do ERP ORBE."

@@ -613,7 +613,7 @@ export default function ServicosExtrasRecebidos() {
           <div className="space-y-0.5">
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                <Wrench className="w-5 h-5 text-primary" />
+                <Wrench className="w-5 h-5 text-royal-blue dark:text-royal-blue-light shrink-0" />
                 Serviços Extras
               </h1>
               <Badge variant="outline" className="text-[10px] tracking-wide uppercase font-semibold">
@@ -678,7 +678,7 @@ export default function ServicosExtrasRecebidos() {
               <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider block">
                 Serviços no Período
               </span>
-              <div className="text-lg font-bold text-foreground font-mono">
+              <div className="text-2xl font-bold font-display text-foreground tracking-tight">
                 {kpis.total}
               </div>
             </div>
@@ -703,7 +703,7 @@ export default function ServicosExtrasRecebidos() {
               <span className="text-[11px] text-amber-700 dark:text-amber-400 font-medium uppercase tracking-wider block">
                 Requer Ação
               </span>
-              <div className="text-lg font-bold text-amber-700 dark:text-amber-400 font-mono">
+              <div className="text-2xl font-bold font-display text-amber-700 dark:text-amber-400 tracking-tight">
                 {kpis.requerAcao}
               </div>
             </div>
@@ -728,7 +728,7 @@ export default function ServicosExtrasRecebidos() {
               <span className="text-[11px] text-indigo-700 dark:text-indigo-400 font-medium uppercase tracking-wider block">
                 Aguardando Financeiro
               </span>
-              <div className="text-lg font-bold text-foreground font-mono">
+              <div className="text-2xl font-bold font-display text-foreground tracking-tight">
                 {kpis.aguardandoFinanceiro}
               </div>
             </div>
@@ -753,7 +753,7 @@ export default function ServicosExtrasRecebidos() {
               <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium uppercase tracking-wider block">
                 Faturados / Concluídos
               </span>
-              <div className="text-lg font-bold text-emerald-700 dark:text-emerald-400 font-mono">
+              <div className="text-2xl font-bold font-display text-emerald-700 dark:text-emerald-400 tracking-tight">
                 {kpis.faturadosConcluidos}
               </div>
             </div>

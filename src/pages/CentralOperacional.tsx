@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { ClipboardCheck, Clock, UserCheck, Scale, Wallet, AlertTriangle, CheckCircle2, ArrowRight, Package } from "lucide-react";
+import { ClipboardCheck, Clock, UserCheck, Scale, Wallet, AlertTriangle, CheckCircle2, ArrowRight, Package, Layers } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useTenant } from "@/contexts/TenantContext";
@@ -148,8 +148,11 @@ const CentralOperacional = () => {
       <div className="space-y-8 max-w-[1100px]">
         {/* Cabeçalho */}
         <div>
-          <h1 className="font-display font-bold text-[24px] text-[#171717]">Central Operacional</h1>
-          <p className="font-body text-[14px] text-[#737373] mt-1 capitalize">{today}</p>
+          <h1 className="font-display font-bold text-xl sm:text-2xl text-foreground flex items-center gap-2">
+            <Layers className="w-5 h-5 text-royal-blue dark:text-royal-blue-light shrink-0" />
+            Central Operacional
+          </h1>
+          <p className="font-body text-xs sm:text-sm text-muted-foreground mt-1 capitalize">{today}</p>
         </div>
 
         {/* Pipeline visual */}

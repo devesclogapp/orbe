@@ -1,0 +1,317 @@
+[
+  {
+    "phase": "before",
+    "viewport": "1366x768",
+    "routeId": "dashboard",
+    "routeName": "Dashboard Executivo (Ref)",
+    "url": "http://localhost:8080/operacional/dashboard",
+    "appShellBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1042,
+      "height": 1217.625
+    },
+    "childBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1042,
+      "height": 1217.625
+    },
+    "hasHorizontalScroll": false,
+    "screenshotFile": "Y:\\2026\\ERP ESC LOG\\Orbe\\scratch\\screenshots_before\\dashboard_1366x768.png"
+  },
+  {
+    "phase": "before",
+    "viewport": "1366x768",
+    "routeId": "torre",
+    "routeName": "Torre Operacional",
+    "url": "http://localhost:8080/operacional/pipeline",
+    "appShellBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1042,
+      "height": 971
+    },
+    "childBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1042,
+      "height": 971
+    },
+    "hasHorizontalScroll": false,
+    "screenshotFile": "Y:\\2026\\ERP ESC LOG\\Orbe\\scratch\\screenshots_before\\torre_1366x768.png"
+  },
+  {
+    "phase": "before",
+    "viewport": "1366x768",
+    "routeId": "dre",
+    "routeName": "Resultado Operacional (DRE)",
+    "url": "http://localhost:8080/financeiro/dre",
+    "appShellBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1042,
+      "height": 1140.125
+    },
+    "childBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1042,
+      "height": 1140.125
+    },
+    "hasHorizontalScroll": false,
+    "screenshotFile": "Y:\\2026\\ERP ESC LOG\\Orbe\\scratch\\screenshots_before\\dre_1366x768.png"
+  },
+  {
+    "phase": "before",
+    "viewport": "1366x768",
+    "routeId": "diaristas",
+    "routeName": "Painel de Diaristas",
+    "url": "http://localhost:8080/operacional/diaristas",
+    "appShellBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1042,
+      "height": 804.625
+    },
+    "childBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1042,
+      "height": 804.625
+    },
+    "hasHorizontalScroll": false,
+    "screenshotFile": "Y:\\2026\\ERP ESC LOG\\Orbe\\scratch\\screenshots_before\\diaristas_1366x768.png"
+  },
+  {
+    "phase": "before",
+    "viewport": "1366x768",
+    "routeId": "aprovacoes",
+    "routeName": "Central de Aprovações",
+    "url": "http://localhost:8080/rh/aprovacoes",
+    "appShellBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1042,
+      "height": 1143.5
+    },
+    "childBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1042,
+      "height": 1143.5
+    },
+    "hasHorizontalScroll": false,
+    "screenshotFile": "Y:\\2026\\ERP ESC LOG\\Orbe\\scratch\\screenshots_before\\aprovacoes_1366x768.png"
+  },
+  {
+    "phase": "before",
+    "viewport": "1440x900",
+    "routeId": "dashboard",
+    "routeName": "Dashboard Executivo (Ref)",
+    "url": "http://localhost:8080/operacional/dashboard",
+    "appShellBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1116,
+      "height": 1196.875
+    },
+    "childBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1116,
+      "height": 1196.875
+    },
+    "hasHorizontalScroll": false,
+    "screenshotFile": "Y:\\2026\\ERP ESC LOG\\Orbe\\scratch\\screenshots_before\\dashboard_1440x900.png"
+  },
+  {
+    "phase": "before",
+    "viewport": "1440x900",
+    "routeId": "torre",
+    "routeName": "Torre Operacional",
+    "url": "http://localhost:8080/operacional/pipeline",
+    "appShellBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1116,
+      "height": 971
+    },
+    "childBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1116,
+      "height": 971
+    },
+    "hasHorizontalScroll": false,
+    "screenshotFile": "Y:\\2026\\ERP ESC LOG\\Orbe\\scratch\\screenshots_before\\torre_1440x900.png"
+  },
+  {
+    "phase": "before",
+    "viewport": "1440x900",
+    "routeId": "dre",
+    "routeName": "Resultado Operacional (DRE)",
+    "url": "http://localhost:8080/financeiro/dre",
+    "appShellBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1116,
+      "height": 1140.125
+    },
+    "childBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1116,
+      "height": 1140.125
+    },
+    "hasHorizontalScroll": false,
+    "screenshotFile": "Y:\\2026\\ERP ESC LOG\\Orbe\\scratch\\screenshots_before\\dre_1440x900.png"
+  },
+  {
+    "phase": "before",
+    "viewport": "1440x900",
+    "routeId": "diaristas",
+    "routeName": "Painel de Diaristas",
+    "url": "http://localhost:8080/operacional/diaristas",
+    "appShellBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1116,
+      "height": 804.625
+    },
+    "childBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1116,
+      "height": 804.625
+    },
+    "hasHorizontalScroll": false,
+    "screenshotFile": "Y:\\2026\\ERP ESC LOG\\Orbe\\scratch\\screenshots_before\\diaristas_1440x900.png"
+  },
+  {
+    "phase": "before",
+    "viewport": "1440x900",
+    "routeId": "aprovacoes",
+    "routeName": "Central de Aprovações",
+    "url": "http://localhost:8080/rh/aprovacoes",
+    "appShellBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1116,
+      "height": 1127
+    },
+    "childBox": {
+      "x": 280,
+      "y": 80,
+      "width": 1116,
+      "height": 1127
+    },
+    "hasHorizontalScroll": false,
+    "screenshotFile": "Y:\\2026\\ERP ESC LOG\\Orbe\\scratch\\screenshots_before\\aprovacoes_1440x900.png"
+  },
+  {
+    "phase": "before",
+    "viewport": "1920x1080",
+    "routeId": "dashboard",
+    "routeName": "Dashboard Executivo (Ref)",
+    "url": "http://localhost:8080/operacional/dashboard",
+    "appShellBox": {
+      "x": 298,
+      "y": 80,
+      "width": 1560,
+      "height": 1145.875
+    },
+    "childBox": {
+      "x": 298,
+      "y": 80,
+      "width": 1560,
+      "height": 1145.875
+    },
+    "hasHorizontalScroll": false,
+    "screenshotFile": "Y:\\2026\\ERP ESC LOG\\Orbe\\scratch\\screenshots_before\\dashboard_1920x1080.png"
+  },
+  {
+    "phase": "before",
+    "viewport": "1920x1080",
+    "routeId": "torre",
+    "routeName": "Torre Operacional",
+    "url": "http://localhost:8080/operacional/pipeline",
+    "appShellBox": {
+      "x": 298,
+      "y": 80,
+      "width": 1560,
+      "height": 923
+    },
+    "childBox": {
+      "x": 298,
+      "y": 80,
+      "width": 1560,
+      "height": 923
+    },
+    "hasHorizontalScroll": false,
+    "screenshotFile": "Y:\\2026\\ERP ESC LOG\\Orbe\\scratch\\screenshots_before\\torre_1920x1080.png"
+  },
+  {
+    "phase": "before",
+    "viewport": "1920x1080",
+    "routeId": "dre",
+    "routeName": "Resultado Operacional (DRE)",
+    "url": "http://localhost:8080/financeiro/dre",
+    "appShellBox": {
+      "x": 298,
+      "y": 80,
+      "width": 1560,
+      "height": 1140.125
+    },
+    "childBox": {
+      "x": 298,
+      "y": 80,
+      "width": 1560,
+      "height": 1140.125
+    },
+    "hasHorizontalScroll": false,
+    "screenshotFile": "Y:\\2026\\ERP ESC LOG\\Orbe\\scratch\\screenshots_before\\dre_1920x1080.png"
+  },
+  {
+    "phase": "before",
+    "viewport": "1920x1080",
+    "routeId": "diaristas",
+    "routeName": "Painel de Diaristas",
+    "url": "http://localhost:8080/operacional/diaristas",
+    "appShellBox": {
+      "x": 298,
+      "y": 80,
+      "width": 1560,
+      "height": 733.625
+    },
+    "childBox": {
+      "x": 298,
+      "y": 80,
+      "width": 1560,
+      "height": 733.625
+    },
+    "hasHorizontalScroll": false,
+    "screenshotFile": "Y:\\2026\\ERP ESC LOG\\Orbe\\scratch\\screenshots_before\\diaristas_1920x1080.png"
+  },
+  {
+    "phase": "before",
+    "viewport": "1920x1080",
+    "routeId": "aprovacoes",
+    "routeName": "Central de Aprovações",
+    "url": "http://localhost:8080/rh/aprovacoes",
+    "appShellBox": {
+      "x": 298,
+      "y": 80,
+      "width": 1560,
+      "height": 1127
+    },
+    "childBox": {
+      "x": 298,
+      "y": 80,
+      "width": 1560,
+      "height": 1127
+    },
+    "hasHorizontalScroll": false,
+    "screenshotFile": "Y:\\2026\\ERP ESC LOG\\Orbe\\scratch\\screenshots_before\\aprovacoes_1920x1080.png"
+  }
+]

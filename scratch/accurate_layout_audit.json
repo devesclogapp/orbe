@@ -1,0 +1,986 @@
+[
+  {
+    "module": "Dashboard Executivo (Referência)",
+    "route": "/operacional/dashboard",
+    "file": "src/pages/Dashboard.tsx",
+    "innerClasses": "space-y-4 pb-12 w-full max-w-[1560px] mx-auto pt-1 animate-in fade-in-50 duration-200",
+    "explicitMaxW": "1560px",
+    "extraPadX": 0,
+    "causa": "Gabarito canônico do Design System (max-w-[1560px] mx-auto)",
+    "precisaCorrecao": "Não (Referência)",
+    "prioridade": "—",
+    "tipoDivergencia": "REFERÊNCIA",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Torre Operacional",
+    "route": "/operacional/pipeline",
+    "file": "src/pages/PipelineOperacional.tsx",
+    "innerClasses": "space-y-6 max-w-[1700px] mx-auto pb-16 px-4 md:px-6",
+    "explicitMaxW": "1700px",
+    "extraPadX": 24,
+    "causa": "max-w-[1700px] conflitante com container pai (1560px) + padding horizontal duplicado (24px)",
+    "precisaCorrecao": "Sim",
+    "prioridade": "P1",
+    "tipoDivergencia": "PADDING_DUPLICADO_E_CONFLITO_MAXW",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1014,
+        "refWidth": 1062,
+        "diff": -48,
+        "marginLR": 0,
+        "padL": 48,
+        "padR": 48
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1088,
+        "refWidth": 1136,
+        "diff": -48,
+        "marginLR": 0,
+        "padL": 48,
+        "padR": 48
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1512,
+        "refWidth": 1560,
+        "diff": -48,
+        "marginLR": 28,
+        "padL": 48,
+        "padR": 48
+      }
+    ]
+  },
+  {
+    "module": "Operações por Volume",
+    "route": "/operacoes-volume",
+    "file": "src/pages/Operacoes.tsx",
+    "innerClasses": "flex-1 min-h-0 flex flex-col w-full space-y-4",
+    "explicitMaxW": null,
+    "extraPadX": 0,
+    "causa": "Conforme: Herança direta do container AppShell (max-w-[1560px] mx-auto w-full)",
+    "precisaCorrecao": "Não (Opcional uniformizar wrapper)",
+    "prioridade": "P3",
+    "tipoDivergencia": "CONFORME_HERDADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Serviços Extras",
+    "route": "/operacional/servicos-extras",
+    "file": "src/pages/Operacional/ServicosExtrasRecebidos.tsx",
+    "innerClasses": "flex-1 min-h-0 flex flex-col w-full space-y-4",
+    "explicitMaxW": null,
+    "extraPadX": 0,
+    "causa": "Conforme: Herança direta do container AppShell (max-w-[1560px] mx-auto w-full)",
+    "precisaCorrecao": "Não (Opcional uniformizar wrapper)",
+    "prioridade": "P3",
+    "tipoDivergencia": "CONFORME_HERDADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Custos Extras",
+    "route": "/operacional/custos-extras",
+    "file": "src/pages/Operacional/CustosExtrasRecebidos.tsx",
+    "innerClasses": "space-y-6 pb-16",
+    "explicitMaxW": null,
+    "extraPadX": 0,
+    "causa": "Conforme: Herança direta do container AppShell (max-w-[1560px] mx-auto w-full)",
+    "precisaCorrecao": "Não (Opcional uniformizar wrapper)",
+    "prioridade": "P3",
+    "tipoDivergencia": "CONFORME_HERDADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Ponto & Jornadas CLT",
+    "route": "/clt/pontos",
+    "file": "src/pages/Clt/PontoJornadasClt.tsx",
+    "innerClasses": "space-y-4",
+    "explicitMaxW": null,
+    "extraPadX": 0,
+    "causa": "Conforme: Herança direta do container AppShell (max-w-[1560px] mx-auto w-full)",
+    "precisaCorrecao": "Não (Opcional uniformizar wrapper)",
+    "prioridade": "P3",
+    "tipoDivergencia": "CONFORME_HERDADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Fechamento Mensal CLT",
+    "route": "/banco-horas/fechamento",
+    "file": "src/pages/BancoHoras/FechamentoMensalCLT.tsx",
+    "innerClasses": "flex flex-col gap-3.5 lg:h-[calc(100dvh-104px)] min-h-0",
+    "explicitMaxW": null,
+    "extraPadX": 0,
+    "causa": "Conforme: Herança direta do container AppShell (max-w-[1560px] mx-auto w-full)",
+    "precisaCorrecao": "Não (Opcional uniformizar wrapper)",
+    "prioridade": "P3",
+    "tipoDivergencia": "CONFORME_HERDADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Diaristas (Painel)",
+    "route": "/operacional/diaristas",
+    "file": "src/pages/Rh/RhDiaristasPainel.tsx",
+    "innerClasses": "max-w-[1560px] mx-auto p-4 md:p-6 space-y-6",
+    "explicitMaxW": "1560px",
+    "extraPadX": 24,
+    "causa": "Padding horizontal duplicado no filho (p-4 md:p-6) dentro de AppShell",
+    "precisaCorrecao": "Sim",
+    "prioridade": "P1",
+    "tipoDivergencia": "PADDING_DUPLICADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1014,
+        "refWidth": 1062,
+        "diff": -48,
+        "marginLR": 0,
+        "padL": 48,
+        "padR": 48
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1088,
+        "refWidth": 1136,
+        "diff": -48,
+        "marginLR": 0,
+        "padL": 48,
+        "padR": 48
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1512,
+        "refWidth": 1560,
+        "diff": -48,
+        "marginLR": 28,
+        "padL": 48,
+        "padR": 48
+      }
+    ]
+  },
+  {
+    "module": "Intermitentes",
+    "route": "/operacional/intermitentes",
+    "file": "src/pages/Operacional/IntermitentesRecebidos.tsx",
+    "innerClasses": "space-y-5",
+    "explicitMaxW": null,
+    "extraPadX": 0,
+    "causa": "Conforme: Herança direta do container AppShell (max-w-[1560px] mx-auto w-full)",
+    "precisaCorrecao": "Não (Opcional uniformizar wrapper)",
+    "prioridade": "P3",
+    "tipoDivergencia": "CONFORME_HERDADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Central de Aprovações",
+    "route": "/rh/aprovacoes",
+    "file": "src/pages/Rh/AprovacoesRh.tsx",
+    "innerClasses": "max-w-[1560px] mx-auto p-4 md:p-6 space-y-5",
+    "explicitMaxW": "1560px",
+    "extraPadX": 24,
+    "causa": "Padding horizontal duplicado no filho (p-4 md:p-6) dentro de AppShell",
+    "precisaCorrecao": "Sim",
+    "prioridade": "P1",
+    "tipoDivergencia": "PADDING_DUPLICADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1014,
+        "refWidth": 1062,
+        "diff": -48,
+        "marginLR": 0,
+        "padL": 48,
+        "padR": 48
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1088,
+        "refWidth": 1136,
+        "diff": -48,
+        "marginLR": 0,
+        "padL": 48,
+        "padR": 48
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1512,
+        "refWidth": 1560,
+        "diff": -48,
+        "marginLR": 28,
+        "padL": 48,
+        "padR": 48
+      }
+    ]
+  },
+  {
+    "module": "Central de Inconsistências",
+    "route": "/inconsistencias",
+    "file": "src/pages/Inconsistencias.tsx",
+    "innerClasses": "space-y-6",
+    "explicitMaxW": null,
+    "extraPadX": 0,
+    "causa": "Conforme: Herança direta do container AppShell (max-w-[1560px] mx-auto w-full)",
+    "precisaCorrecao": "Não (Opcional uniformizar wrapper)",
+    "prioridade": "P3",
+    "tipoDivergencia": "CONFORME_HERDADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Fechamento de Ciclos",
+    "route": "/fechamento",
+    "file": "src/pages/Fechamento.tsx",
+    "innerClasses": "space-y-6",
+    "explicitMaxW": null,
+    "extraPadX": 0,
+    "causa": "Conforme: Herança direta do container AppShell (max-w-[1560px] mx-auto w-full)",
+    "precisaCorrecao": "Não (Opcional uniformizar wrapper)",
+    "prioridade": "P3",
+    "tipoDivergencia": "CONFORME_HERDADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Receitas Operacionais",
+    "route": "/financeiro/receitas",
+    "file": "src/pages/Financeiro/ReceitasPipeline.tsx",
+    "innerClasses": "space-y-5 max-w-[1700px] mx-auto pb-12",
+    "explicitMaxW": "1700px",
+    "extraPadX": 0,
+    "causa": "max-w-[1700px] inócuo/conflitante com container pai do AppShell (1560px)",
+    "precisaCorrecao": "Sim (Padronização preventiva)",
+    "prioridade": "P2",
+    "tipoDivergencia": "CONFLITO_MAXW",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Despesas & Contas a Pagar",
+    "route": "/financeiro",
+    "file": "src/pages/CentralFinanceira.tsx",
+    "innerClasses": "space-y-6",
+    "explicitMaxW": null,
+    "extraPadX": 0,
+    "causa": "Conforme: Herança direta do container AppShell (max-w-[1560px] mx-auto w-full)",
+    "precisaCorrecao": "Não (Opcional uniformizar wrapper)",
+    "prioridade": "P3",
+    "tipoDivergencia": "CONFORME_HERDADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Central Bancária",
+    "route": "/bancario",
+    "file": "src/pages/CentralBancaria.tsx",
+    "innerClasses": "space-y-4 pb-12 w-full max-w-[1560px] mx-auto pt-1 animate-in fade-in-50 duration-200",
+    "explicitMaxW": "1560px",
+    "extraPadX": 0,
+    "causa": "Conforme: Wrapper explícito idêntico ao Dashboard Executivo (max-w-[1560px] mx-auto)",
+    "precisaCorrecao": "Não",
+    "prioridade": "—",
+    "tipoDivergencia": "CONFORME_EXPLICITO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Inadimplência & Cobrança",
+    "route": "/financeiro/inadimplencia",
+    "file": "src/pages/Financeiro/Inadimplencia.tsx",
+    "innerClasses": "w-full max-w-[1560px] mx-auto space-y-5 pb-12 animate-in fade-in-50 duration-200",
+    "explicitMaxW": "1560px",
+    "extraPadX": 0,
+    "causa": "Conforme: Wrapper explícito idêntico ao Dashboard Executivo (max-w-[1560px] mx-auto)",
+    "precisaCorrecao": "Não",
+    "prioridade": "—",
+    "tipoDivergencia": "CONFORME_EXPLICITO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Resultado Operacional (DRE)",
+    "route": "/financeiro/dre",
+    "file": "src/pages/Financeiro/RelatorioDRE.tsx",
+    "innerClasses": "mx-auto max-w-[1700px] w-full px-4 sm:px-6 md:px-8 space-y-5 pb-20 animate-in fade-in-50 duration-300",
+    "explicitMaxW": "1700px",
+    "extraPadX": 32,
+    "causa": "max-w-[1700px] conflitante com container pai (1560px) + padding horizontal duplicado (32px)",
+    "precisaCorrecao": "Sim",
+    "prioridade": "P1",
+    "tipoDivergencia": "PADDING_DUPLICADO_E_CONFLITO_MAXW",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 998,
+        "refWidth": 1062,
+        "diff": -64,
+        "marginLR": 0,
+        "padL": 56,
+        "padR": 56
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1072,
+        "refWidth": 1136,
+        "diff": -64,
+        "marginLR": 0,
+        "padL": 56,
+        "padR": 56
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1496,
+        "refWidth": 1560,
+        "diff": -64,
+        "marginLR": 28,
+        "padL": 56,
+        "padR": 56
+      }
+    ]
+  },
+  {
+    "module": "Central de Relatórios",
+    "route": "/relatorios",
+    "file": "src/pages/Relatorios/CentralRelatoriosOficial.tsx",
+    "innerClasses": "space-y-6 pb-20",
+    "explicitMaxW": null,
+    "extraPadX": 0,
+    "causa": "Conforme: Herança direta do container AppShell (max-w-[1560px] mx-auto w-full)",
+    "precisaCorrecao": "Não (Opcional uniformizar wrapper)",
+    "prioridade": "P3",
+    "tipoDivergencia": "CONFORME_HERDADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Central de Cadastros",
+    "route": "/cadastros",
+    "file": "src/pages/CentralCadastros.tsx",
+    "innerClasses": "space-y-5",
+    "explicitMaxW": null,
+    "extraPadX": 0,
+    "causa": "Conforme: Herança direta do container AppShell (max-w-[1560px] mx-auto w-full)",
+    "precisaCorrecao": "Não (Opcional uniformizar wrapper)",
+    "prioridade": "P3",
+    "tipoDivergencia": "CONFORME_HERDADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Regras & Tabelas Operacionais",
+    "route": "/cadastros/regras-operacionais",
+    "file": "src/pages/RegrasOperacionais.tsx",
+    "innerClasses": "space-y-4 pb-12 w-full max-w-[1560px] mx-auto pt-1 animate-in fade-in-50 duration-200",
+    "explicitMaxW": "1560px",
+    "extraPadX": 0,
+    "causa": "Conforme: Wrapper explícito idêntico ao Dashboard Executivo (max-w-[1560px] mx-auto)",
+    "precisaCorrecao": "Não",
+    "prioridade": "—",
+    "tipoDivergencia": "CONFORME_EXPLICITO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Preferências",
+    "route": "/configuracoes",
+    "file": "src/pages/Configuracoes.tsx",
+    "innerClasses": "space-y-4 pb-12 w-full max-w-[1560px] mx-auto pt-1 animate-in fade-in-50 duration-200",
+    "explicitMaxW": "1560px",
+    "extraPadX": 0,
+    "causa": "Conforme: Wrapper explícito idêntico ao Dashboard Executivo (max-w-[1560px] mx-auto)",
+    "precisaCorrecao": "Não",
+    "prioridade": "—",
+    "tipoDivergencia": "CONFORME_EXPLICITO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Intermitentes (Lotes)",
+    "route": "/operacional/intermitentes/lotes",
+    "file": "src/pages/Operacional/IntermitentesLotes.tsx",
+    "innerClasses": "[tag: TooltipProvider, no class]",
+    "explicitMaxW": null,
+    "extraPadX": 0,
+    "causa": "Conforme: Herança direta do container AppShell (max-w-[1560px] mx-auto w-full)",
+    "precisaCorrecao": "Não (Opcional uniformizar wrapper)",
+    "prioridade": "P3",
+    "tipoDivergencia": "CONFORME_HERDADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Diaristas (Cadastros)",
+    "route": "/rh/diaristas/cadastros",
+    "file": "src/pages/Rh/RhDiaristasGestao.tsx",
+    "innerClasses": "flex items-center justify-between mb-4",
+    "explicitMaxW": null,
+    "extraPadX": 0,
+    "causa": "Conforme: Herança direta do container AppShell (max-w-[1560px] mx-auto w-full)",
+    "precisaCorrecao": "Não (Opcional uniformizar wrapper)",
+    "prioridade": "P3",
+    "tipoDivergencia": "CONFORME_HERDADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  },
+  {
+    "module": "Visualizador de Relatório",
+    "route": "/relatorios/:reportId",
+    "file": "src/pages/Relatorios/RelatorioVisualizadorOficial.tsx",
+    "innerClasses": "w-full space-y-4 pb-12 animate-in fade-in-50 duration-200",
+    "explicitMaxW": null,
+    "extraPadX": 0,
+    "causa": "Conforme: Herança direta do container AppShell (max-w-[1560px] mx-auto w-full)",
+    "precisaCorrecao": "Não (Opcional uniformizar wrapper)",
+    "prioridade": "P3",
+    "tipoDivergencia": "CONFORME_HERDADO",
+    "viewports": [
+      {
+        "viewport": "1366×768",
+        "effectiveWidth": 1062,
+        "refWidth": 1062,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1440×900",
+        "effectiveWidth": 1136,
+        "refWidth": 1136,
+        "diff": 0,
+        "marginLR": 0,
+        "padL": 24,
+        "padR": 24
+      },
+      {
+        "viewport": "1920×1080",
+        "effectiveWidth": 1560,
+        "refWidth": 1560,
+        "diff": 0,
+        "marginLR": 28,
+        "padL": 24,
+        "padR": 24
+      }
+    ]
+  }
+]

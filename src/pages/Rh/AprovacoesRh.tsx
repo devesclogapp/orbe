@@ -21,7 +21,8 @@ import {
   ChevronRight,
   Eye,
   RefreshCw,
-  Loader2
+  Loader2,
+  ShieldCheck
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -653,13 +654,17 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
   const isDevolvidosView = filtroRapidoKpi === "devolvidos" || situacaoFiltro === "DEVOLVIDO";
 
   return (
-    <AppShell>
-      <div className="max-w-[1560px] mx-auto p-4 md:p-6 space-y-5">
+    <AppShell
+      title="Central de Aprovações"
+      subtitle="Fila transversal de decisões que aguardam autorização para o fluxo continuar."
+    >
+      <div className="space-y-5 pb-12 w-full max-w-[1560px] mx-auto animate-in fade-in-50 duration-200">
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-border/40">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-display font-bold text-foreground tracking-tight">
+              <h1 className="text-xl font-display font-bold text-foreground tracking-tight flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-royal-blue dark:text-royal-blue-light shrink-0" />
                 Central de Aprovações
               </h1>
               {isLocked && (

@@ -489,7 +489,7 @@ export default function Operacoes() {
               <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider block">
                 Operações no Período
               </span>
-              <div className="text-lg font-bold text-foreground font-mono">
+              <div className="text-2xl font-bold font-display text-foreground tracking-tight">
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin my-1" /> : kpis.total}
               </div>
             </div>
@@ -513,7 +513,7 @@ export default function Operacoes() {
               <span className="text-[11px] text-amber-700 dark:text-amber-400 font-medium uppercase tracking-wider block">
                 Requer Validação
               </span>
-              <div className="text-lg font-bold text-amber-700 dark:text-amber-400 font-mono">
+              <div className="text-2xl font-bold font-display text-amber-700 dark:text-amber-400 tracking-tight">
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin my-1" /> : kpis.aguardandoValidacao}
               </div>
             </div>
@@ -537,7 +537,7 @@ export default function Operacoes() {
               <span className="text-[11px] text-rose-700 dark:text-rose-400 font-medium uppercase tracking-wider block">
                 Com Restrição
               </span>
-              <div className="text-lg font-bold text-rose-700 dark:text-rose-400 font-mono">
+              <div className="text-2xl font-bold font-display text-rose-700 dark:text-rose-400 tracking-tight">
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin my-1" /> : kpis.comRestricao}
               </div>
             </div>
@@ -561,7 +561,7 @@ export default function Operacoes() {
               <span className="text-[11px] text-indigo-700 dark:text-indigo-400 font-medium uppercase tracking-wider block">
                 Prontas p/ Faturar
               </span>
-              <div className="text-lg font-bold text-foreground font-mono">
+              <div className="text-2xl font-bold font-display text-foreground tracking-tight">
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin my-1" /> : kpis.prontasFaturamento}
               </div>
             </div>

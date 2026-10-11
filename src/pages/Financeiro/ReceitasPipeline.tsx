@@ -384,7 +384,7 @@ export default function ReceitasPipeline() {
 
     return (
         <AppShell
-            title="Central de Receitas & Contas a Receber"
+            title="Receitas Operacionais"
             subtitle={pageSubtitle}
             badge={pageBadge}
         >

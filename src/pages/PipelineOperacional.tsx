@@ -164,10 +164,10 @@ export default function PipelineOperacional() {
 
   return (
     <AppShell
-      title="Torre de Controle Operacional"
+      title="Torre Operacional"
       subtitle="Monitoramento executivo de fluxos operacionais e despesas em tempo real"
     >
-      <div className="space-y-6 max-w-[1700px] mx-auto pb-16 px-4 md:px-6">
+      <div className="space-y-6 pb-16 w-full max-w-[1560px] mx-auto animate-in fade-in-50 duration-200">
         {/* ─── 1. BARRA DE CONTROLE & FILTROS CANÔNICOS ─── */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 py-3.5 px-4 rounded-xl border border-border/70 bg-card dark:bg-[#111419] dark:border-white/[0.05] shadow-xs">
           <div className="flex flex-wrap items-center gap-3">

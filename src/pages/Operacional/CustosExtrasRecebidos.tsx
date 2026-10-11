@@ -408,28 +408,19 @@ export default function CustosExtrasRecebidos() {
       <div className="space-y-6 pb-16">
         {/* CABEÇALHO OPERACIONAL */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-royal-blue/10 dark:bg-royal-blue/20 text-royal-blue dark:text-royal-blue-light">
-                <Wallet className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl font-display">
-                    Custos Extras
-                  </h1>
-                  <Badge
-                    variant="outline"
-                    className="border-royal-blue/30 bg-royal-blue/10 text-royal-blue dark:text-royal-blue-light text-[10px] font-bold px-1.5 py-0"
-                  >
-                    OFICIAL
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Acompanhe despesas extraordinárias, validações e obrigações financeiras.
-                </p>
-              </div>
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                <Wallet className="w-5 h-5 text-royal-blue dark:text-royal-blue-light shrink-0" />
+                Custos Extras
+              </h1>
+              <Badge variant="outline" className="text-[10px] tracking-wide uppercase font-semibold">
+                Oficial
+              </Badge>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Acompanhe despesas extraordinárias, validações e obrigações financeiras.
+            </p>
           </div>
 
           {/* CONTROLES DO CABEÇALHO */}
@@ -484,7 +475,7 @@ export default function CustosExtrasRecebidos() {
               </span>
               <Coins className="h-4 w-4 text-royal-blue dark:text-royal-blue-light" />
             </div>
-            <div className="text-2xl font-bold font-mono text-foreground tracking-tight">
+            <div className="font-display text-2xl font-bold text-foreground tracking-tight">
               {formatCurrency(kpis.totalValor)}
             </div>
             <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
@@ -509,7 +500,7 @@ export default function CustosExtrasRecebidos() {
               </span>
               <AlertTriangle className="h-4 w-4 text-amber-500" />
             </div>
-            <div className="text-2xl font-bold font-mono text-foreground tracking-tight">
+            <div className="font-display text-2xl font-bold text-foreground tracking-tight">
               {formatCurrency(kpis.requerAcaoValor)}
             </div>
             <div className="text-xs text-muted-foreground mt-1 flex items-center justify-between">
@@ -539,7 +530,7 @@ export default function CustosExtrasRecebidos() {
               </span>
               <Receipt className="h-4 w-4 text-indigo-500" />
             </div>
-            <div className="text-2xl font-bold font-mono text-foreground tracking-tight">
+            <div className="font-display text-2xl font-bold text-foreground tracking-tight">
               {formatCurrency(kpis.aPagarValor)}
             </div>
             <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
@@ -564,7 +555,7 @@ export default function CustosExtrasRecebidos() {
               </span>
               <CheckCircle2 className="h-4 w-4 text-emerald-500" />
             </div>
-            <div className="text-2xl font-bold font-mono text-foreground tracking-tight">
+            <div className="font-display text-2xl font-bold text-foreground tracking-tight">
               {formatCurrency(kpis.pagosValor)}
             </div>
             <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">

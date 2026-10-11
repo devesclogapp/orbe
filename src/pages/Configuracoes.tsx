@@ -422,7 +422,7 @@ const Configuracoes = () => {
 
   if (loadingSettings) {
     return (
-      <AppShell title="Preferências & Perfil" subtitle="Carregando configurações...">
+      <AppShell title="Preferências" subtitle="Carregando configurações...">
         <div className="flex items-center justify-center p-20">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
@@ -432,7 +432,7 @@ const Configuracoes = () => {
 
   return (
     <AppShell
-      title="Preferências & Perfil"
+      title="Preferências"
       subtitle="Personalize sua experiência de uso, tema visual e dados do perfil corporativo"
     >
       <div className="space-y-4 pb-12 w-full max-w-[1560px] mx-auto pt-1 animate-in fade-in-50 duration-200">
