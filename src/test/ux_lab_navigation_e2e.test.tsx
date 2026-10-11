@@ -35,7 +35,7 @@ describe("Navegação Integrada do UX LAB", () => {
     expect(UX_LAB_ROUTES["inadimplencia"]).toBe("/ux-lab/inadimplencia");
     expect(UX_LAB_ROUTES["design-system"]).toBe("/ux-lab/design-system");
     expect(UX_LAB_ROUTES["diaristas"]).toBeUndefined();
-    expect(UX_LAB_ROUTES["banco-horas"]).toBeUndefined();
+    expect(UX_LAB_ROUTES["banco-horas"]).toBe("/clt/pontos?tab=saldos_bh");
   });
 
   it("2. Clicar em itens na Sidebar dispara callback e navegação sem travar telas", () => {

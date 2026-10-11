@@ -64,15 +64,18 @@ describe('FIX — CUSTOS EXTRAS: RESTAURAÇÃO DA ESTEIRA ADMIN E SEGREGAÇÃO',
       expect(appContent).not.toContain('path="/custos-extras/aprovacoes" element={<AuthGuard><CustosExtrasRecebidos');
     });
 
-    it('Sidebar.tsx deve associar Aprovações de Custos Extras a processamento_rh (coerente com a mesa de aprovação)', () => {
+    it('Sidebar.tsx e access-control devem associar Aprovações de Custos Extras a processamento_rh (coerente com a mesa de aprovação)', () => {
       const sidebarPath = path.resolve(__dirname, '../components/layout/Sidebar.tsx');
       const sidebarContent = fs.readFileSync(sidebarPath, 'utf-8');
 
-      const custosExtrasIndex = sidebarContent.indexOf('id: "custos_extras"');
-      const nextSectionIndex = sidebarContent.indexOf('// --- MÓDULOS TRANSVERSAIS', custosExtrasIndex);
-      const custosExtrasBlock = sidebarContent.substring(custosExtrasIndex, nextSectionIndex);
+      // 1. Sidebar oficial converge aprovações no grupo Aprovações & Fechamento sob processamento_rh
+      expect(sidebarContent).toContain('to: "/rh/aprovacoes"');
+      expect(sidebarContent).toContain('module: "processamento_rh"');
 
-      expect(custosExtrasBlock).toContain('{ icon: Shield, label: "Aprovações", to: "/custos-extras/aprovacoes", module: "processamento_rh" }');
+      // 2. A rota específica de aprovações de custos extras é estritamente vinculada a processamento_rh
+      const rule = getRouteAccessRule('/custos-extras/aprovacoes');
+      expect(rule).toBeDefined();
+      expect(rule?.module).toBe('processamento_rh');
     });
   });
 

@@ -1,4 +1,5 @@
 import { matchPath } from "react-router-dom";
+import { RELATORIOS_CATALOGO_OFICIAL } from "@/services/adapters/relatoriosOficialAdapter";
 
 type RouteMeta = {
   pattern: string;
@@ -85,6 +86,7 @@ const routeMeta: RouteMeta[] = [
 
   // Governança / Relatórios
   { pattern: "/relatorios", label: "Central de Relatórios", section: "Cadastros & Sistema" },
+  { pattern: "/relatorios/:reportId", label: "Visualização de Relatório", section: "Cadastros & Sistema", parentPath: "/relatorios" },
   { pattern: "/relatorios/legado", label: "Relatórios (legado)", section: "Cadastros & Sistema", parentPath: "/relatorios" },
   { pattern: "/relatorios/detalhe/:id", label: "Visualização de Relatório", section: "Cadastros & Sistema", parentPath: "/relatorios" },
   { pattern: "/relatorios/agendamentos", label: "Agendamentos", section: "Cadastros & Sistema", parentPath: "/relatorios" },
@@ -108,8 +110,16 @@ const routeMeta: RouteMeta[] = [
 export const getRouteMeta = (pathname: string) =>
   routeMeta.find((item) => matchPath({ path: item.pattern, end: true }, pathname));
 
-export const getRouteLabel = (pathname: string, fallback?: string) =>
-  getRouteMeta(pathname)?.label || fallback || pathname;
+export const getRouteLabel = (pathname: string, fallback?: string) => {
+  const reportMatch = matchPath({ path: "/relatorios/:reportId", end: true }, pathname);
+  if (reportMatch?.params?.reportId) {
+    const report = RELATORIOS_CATALOGO_OFICIAL.find(
+      (r) => r.id === reportMatch.params.reportId || r.code.toLowerCase() === reportMatch.params.reportId?.toLowerCase()
+    );
+    if (report) return report.title;
+  }
+  return getRouteMeta(pathname)?.label || fallback || pathname;
+};
 
 export const getBackTarget = (pathname: string, explicitBackPath?: string) =>
   explicitBackPath || getRouteMeta(pathname)?.parentPath;
@@ -122,17 +132,26 @@ export const getBreadcrumbs = (pathname: string, currentLabel?: string) => {
   let current = getRouteMeta(pathname);
   let depth = 0;
 
+  let resolvedCurrentLabel = currentLabel;
+  const reportMatch = matchPath({ path: "/relatorios/:reportId", end: true }, pathname);
+  if (!resolvedCurrentLabel && reportMatch?.params?.reportId) {
+    const report = RELATORIOS_CATALOGO_OFICIAL.find(
+      (r) => r.id === reportMatch.params.reportId || r.code.toLowerCase() === reportMatch.params.reportId?.toLowerCase()
+    );
+    if (report) resolvedCurrentLabel = report.title;
+  }
+
   while (current && depth < 8) {
     chain.unshift({
-      label: current.pattern === pathname && currentLabel ? currentLabel : current.label,
+      label: depth === 0 && resolvedCurrentLabel ? resolvedCurrentLabel : (current.pattern === pathname && currentLabel ? currentLabel : current.label),
       path: current.pattern.includes(":") ? undefined : current.pattern,
     });
     current = current.parentPath ? getRouteMeta(current.parentPath) : undefined;
     depth += 1;
   }
 
-  if (chain.length === 0 && currentLabel) {
-    chain.push({ label: currentLabel });
+  if (chain.length === 0 && (resolvedCurrentLabel || currentLabel)) {
+    chain.push({ label: resolvedCurrentLabel || currentLabel! });
   }
 
   if (chain.length > 0) {

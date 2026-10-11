@@ -253,7 +253,6 @@ const App = () => (
                             <Route path="/financeiro/remessa/historico" element={<AuthGuard><HistoricoRemessas /></AuthGuard>} />
                             <Route path="/financeiro/retorno" element={<AuthGuard><RetornoBancario /></AuthGuard>} />
                             <Route path="/financeiro/contas-bancarias" element={<AuthGuard><ContasBancarias /></AuthGuard>} />
-                            <Route path="/financeiro/dre" element={<AuthGuard><RelatorioDRE /></AuthGuard>} />
 
                             {/* Portal Cliente V3 */}
                             <Route path="/cliente/dashboard" element={<PortalGuard><ClientDashboard /></PortalGuard>} />

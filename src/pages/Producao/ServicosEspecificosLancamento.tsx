@@ -23,6 +23,7 @@ import { EmpresaService, UnidadeOperacionalService, FornecedorService, Transport
 import { ServicosEspecificosRegrasService, ServicosEspecificosLancamentoService } from '@/services/domain/servicos_especificos.service';
 import { FornecedorValorServicoService } from '@/services/domain/core.service';
 import { formatCurrency } from '@/lib/utils';
+import { useContextualReturn } from '@/hooks/useContextualReturn';
 
 export default function ServicosEspecificosLancamento() {
     const { tenantId } = useTenant();
