@@ -27,6 +27,9 @@ class EnvironmentQueryFilterClass {
         return q.eq(column, '00000000-0000-0000-0000-000000000000') as T;
       }
       return q.in(column, testIds) as T;
+    } else if (env === 'todos') {
+      // Visão conjunta: exibe tanto registros de produção quanto de homologação do tenant
+      return q as T;
     } else {
       if (testIds.length === 0) {
         return q as T; // Nenhum ID HML para excluir. Continua a query normal.

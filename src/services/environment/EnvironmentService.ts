@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 
-export type EnvironmentMode = 'production' | 'homologacao';
+export type EnvironmentMode = 'production' | 'homologacao' | 'todos';
 
 export type TestEmpresaCacheEntry = {
   ids: string[];
@@ -35,7 +35,9 @@ class EnvironmentServiceClass {
       return 'production';
     }
     const env = localStorage.getItem('esc-log-environment');
-    return (env === 'HOMOLOGACAO' || env === 'homologacao') ? 'homologacao' : 'production';
+    if (env === 'HOMOLOGACAO' || env === 'homologacao') return 'homologacao';
+    if (env === 'TODOS' || env === 'todos') return 'todos';
+    return 'production';
   }
 
   async getTestEmpresaIds(tenantId: string): Promise<string[]> {

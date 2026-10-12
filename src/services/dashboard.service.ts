@@ -281,6 +281,7 @@ class DashboardConsolidadoServiceClass {
     // Configuração do Isolamento de Ambiente - CHECKPOINT 06 
     const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
     const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    const isTodos = env === 'TODOS' || env === 'todos';
     
     const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
     const testIds = testEmpresas?.map(e => e.id) || [];
@@ -293,11 +294,13 @@ class DashboardConsolidadoServiceClass {
     // Helper functions to inject the correct where clause based on the environment
     const applySeg = (q: any) => {
       if (isHomologacao) return q.in('empresa_id', safeTestIds);
+      if (isTodos) return q;
       return q.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
     };
 
     const applyCnabSeg = (q: any) => {
       if (isHomologacao) return q.or(`modo.eq.homologacao,and(modo.is.null,conta_bancaria_id.in.(${safeContaTestIds.join(',')}))`);
+      if (isTodos) return q;
       return q.or(`modo.eq.producao,and(modo.is.null,conta_bancaria_id.not.in.(${safeContaTestIds.join(',')}))`);
     };
     
@@ -885,12 +888,14 @@ class DashboardConsolidadoServiceClass {
 
     const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
     const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    const isTodos = env === 'TODOS' || env === 'todos';
     const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
     const testIds = testEmpresas?.map(e => e.id) || [];
     const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
 
     const applySeg = (q: any) => {
       if (isHomologacao) return q.in('empresa_id', safeTestIds);
+      if (isTodos) return q;
       return q.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
     };
 
@@ -1087,12 +1092,14 @@ class DashboardConsolidadoServiceClass {
 
     const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
     const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
+    const isTodos = env === 'TODOS' || env === 'todos';
     const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
     const testIds = testEmpresas?.map(e => e.id) || [];
     const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
 
     const applySeg = (q: any) => {
       if (isHomologacao) return q.in('empresa_id', safeTestIds);
+      if (isTodos) return q;
       return q.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
     };
 

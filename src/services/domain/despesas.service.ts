@@ -11,8 +11,8 @@ import {
 import { CnabRemessaArquivoService } from '../cnab/cnabRemessaArquivo.service';
 
 import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError, operationalClient, requireAuthenticatedUserId } from './base.service';
-
-
+import { EnvironmentService } from '../environment/EnvironmentService';
+import { EnvironmentQueryFilter } from '../environment/EnvironmentQueryFilter';
 
 class CustoExtraOperacionalServiceClass {
   async getMonthsWithData(empresaId?: string, tenantId?: string | null) {
@@ -20,6 +20,15 @@ class CustoExtraOperacionalServiceClass {
       .from('custos_extras_operacionais')
       .select('data');
     
+    const currentTenantId = tenantId || await getCurrentTenantId();
+    const testIds = await EnvironmentService.getTestEmpresaIds(currentTenantId);
+    query = EnvironmentQueryFilter.applyEmpresaScope(query as any, {
+      tenantId: currentTenantId,
+      column: 'empresa_id',
+      includeNullInProduction: false,
+      testIds
+    });
+
     if (empresaId && empresaId !== 'all') {
       query = query.eq('empresa_id', empresaId);
     }
@@ -42,6 +51,14 @@ class CustoExtraOperacionalServiceClass {
   }
 
   async update(id: string, payload: Record<string, unknown>) {
+    const tenantId = await getCurrentTenantId();
+    if (payload.empresa_id) {
+      await EnvironmentService.assertEmpresaAllowed({
+        tenantId,
+        empresaId: payload.empresa_id as string,
+      });
+    }
+
     const { data, error } = await operationalClient
       .from('custos_extras_operacionais')
       .update(payload)
@@ -93,7 +110,16 @@ class CustoExtraOperacionalServiceClass {
       .select('*, empresas:empresa_id(nome), forma_pagamento_ref:forma_pagamento_id(nome), unidades:unidade_id(nome)')
       .eq('data', date);
 
-    if (empresaId) {
+    const tenantIdScope = await getCurrentTenantId();
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantIdScope);
+    query = EnvironmentQueryFilter.applyEmpresaScope(query as any, {
+      tenantId: tenantIdScope,
+      column: 'empresa_id',
+      includeNullInProduction: false,
+      testIds
+    });
+
+    if (empresaId && empresaId !== 'all') {
       query = query.eq('empresa_id', empresaId);
     }
 
@@ -128,12 +154,8 @@ class CustoExtraOperacionalServiceClass {
   }
 
   async getAll(empresaId?: string, tenantId?: string | null) {
-    let empresaIds = empresaId ? [empresaId] : undefined;
-    
-    if (!empresaId && tenantId) {
-      empresaIds = await this.getEmpresaIdsFromTenant(tenantId);
-      if (!empresaIds || empresaIds.length === 0) return [];
-    }
+    const currentTenantId = tenantId || await getCurrentTenantId();
+    const testIds = await EnvironmentService.getTestEmpresaIds(currentTenantId);
 
     let query = operationalClient
       .from('custos_extras_operacionais')
@@ -144,9 +166,14 @@ class CustoExtraOperacionalServiceClass {
       .order('data', { ascending: false })
       .order('criado_em', { ascending: false });
 
-    if (empresaIds && empresaIds.length > 0) {
-      query = query.in('empresa_id', empresaIds);
-    } else if (empresaId) {
+    query = EnvironmentQueryFilter.applyEmpresaScope(query as any, {
+      tenantId: currentTenantId,
+      column: 'empresa_id',
+      includeNullInProduction: false,
+      testIds
+    });
+
+    if (empresaId && empresaId !== 'all') {
       query = query.eq('empresa_id', empresaId);
     }
 
@@ -156,9 +183,19 @@ class CustoExtraOperacionalServiceClass {
   }
 
   async getByCompetencia(competencia: string, empresaId?: string) {
+    const tenantIdScope = await getCurrentTenantId();
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantIdScope);
+
     let query = operationalClient
       .from('custos_extras_operacionais')
       .select('*, empresas:empresa_id(nome), forma_pagamento_ref:forma_pagamento_id(nome), unidades:unidade_id(nome), favorecido_colaborador:favorecido_colaborador_id(nome), favorecido_fornecedor:favorecido_fornecedor_id(nome)');
+
+    query = EnvironmentQueryFilter.applyEmpresaScope(query as any, {
+      tenantId: tenantIdScope,
+      column: 'empresa_id',
+      includeNullInProduction: false,
+      testIds
+    });
 
     if (competencia) {
       const parts = competencia.split('-');
@@ -177,7 +214,7 @@ class CustoExtraOperacionalServiceClass {
     }
     query = query.order('data', { ascending: false });
 
-    if (empresaId) query = query.eq('empresa_id', empresaId);
+    if (empresaId && empresaId !== 'all') query = query.eq('empresa_id', empresaId);
 
     const { data: rawData, error } = await query;
     if (error) {
@@ -232,6 +269,18 @@ class CustoExtraOperacionalServiceClass {
       // se não conseguir, usa o que vier no payload
     }
 
+    const effectiveTenantId = tenantId || (items[0]?.tenant_id as string);
+    if (effectiveTenantId) {
+      for (const item of items) {
+        if (item.empresa_id) {
+          await EnvironmentService.assertEmpresaAllowed({
+            tenantId: effectiveTenantId,
+            empresaId: item.empresa_id as string,
+          });
+        }
+      }
+    }
+
     // Sanitiza todos os itens para converter strings vazias em null
     const sanitizedItems = items.map(item => {
       const base = tenantId ? { ...item, tenant_id: tenantId } : item;
@@ -248,6 +297,12 @@ class CustoExtraOperacionalServiceClass {
   }
 
   async replaceImportedBatch(empresaId: string, items: Record<string, unknown>[]) {
+    const tenantId = await getCurrentTenantId();
+    await EnvironmentService.assertEmpresaAllowed({
+      tenantId,
+      empresaId,
+    });
+
     const { data, error } = await operationalClient.rpc('replace_imported_custos_extras_operacionais', {
       p_empresa_id: empresaId,
       p_items: items,

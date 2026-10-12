@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { BaseService, cleanUuid, getCurrentTenantId, operationalClient, sanitizePayload, requireAuthenticatedUserId } from '../domain/base.service';
+import { EnvironmentService } from '../environment/EnvironmentService';
+import { EnvironmentQueryFilter } from '../environment/EnvironmentQueryFilter';
 import type { ReceitaOperacional, ReceitaOperacionalItem, ModalidadeReceita } from '@/types/receitas.types';
 
 class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
@@ -8,11 +10,7 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
   }
 
   async getPipelinePainel(tenantId: string, empresaId?: string, competencia?: string) {
-    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
-    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
-    const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
-    const testIds = testEmpresas?.map(e => e.id) || [];
-    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
 
     let query = supabase
       .from('receitas_operacionais')
@@ -37,14 +35,15 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
       `)
       .eq('tenant_id', tenantId);
 
+    query = EnvironmentQueryFilter.applyEmpresaScope(query as any, {
+      tenantId,
+      column: 'empresa_id',
+      includeNullInProduction: false,
+      testIds
+    });
+
     if (empresaId && empresaId !== 'all') {
       query = query.eq('empresa_id', empresaId);
-    } else {
-      if (isHomologacao) {
-         query = query.in('empresa_id', safeTestIds);
-      } else {
-         query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
-      }
     }
     
     if (competencia) {
@@ -286,6 +285,15 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
     let query = operationalClient
       .from('servicos_extras_operacionais')
       .select('data');
+
+    const tenantIdScope = await getCurrentTenantId();
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantIdScope);
+    query = EnvironmentQueryFilter.applyEmpresaScope(query as any, {
+      tenantId: tenantIdScope,
+      column: 'empresa_id',
+      includeNullInProduction: false,
+      testIds
+    });
     
     if (empresaId && empresaId !== 'all') {
       query = query.eq('empresa_id', empresaId);
@@ -303,6 +311,14 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
   }
 
   async update(id: string, payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    if (payload.empresa_id) {
+      await EnvironmentService.assertEmpresaAllowed({
+        tenantId,
+        empresaId: payload.empresa_id,
+      });
+    }
+
     const { data, error } = await operationalClient
       .from('servicos_extras_operacionais')
       .update(payload)
@@ -323,11 +339,8 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
   }
 
   async getWithEmpresas(empresaId?: string, competencia?: string) {
-    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
-    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
-    const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
-    const testIds = testEmpresas?.map(e => e.id) || [];
-    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+    const tenantIdScope = await getCurrentTenantId();
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantIdScope);
 
     try {
       let query = operationalClient
@@ -338,15 +351,16 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
           formas_pagamento_operacional(nome, modalidade),
           tipos_servico_operacional(nome)
         `);
+
+      query = EnvironmentQueryFilter.applyEmpresaScope(query as any, {
+        tenantId: tenantIdScope,
+        column: 'empresa_id',
+        includeNullInProduction: false,
+        testIds
+      });
       
       if (empresaId && empresaId !== 'all') {
         query = query.eq('empresa_id', empresaId);
-      } else {
-        if (isHomologacao) {
-           query = query.in('empresa_id', safeTestIds);
-        } else {
-           query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
-        }
       }
       if (competencia) {
         const parts = competencia.split('-');
@@ -440,6 +454,13 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
     const tenantId = await getCurrentTenantId();
     const userId = await requireAuthenticatedUserId();
     
+    if (payload.empresa_id) {
+      await EnvironmentService.assertEmpresaAllowed({
+        tenantId,
+        empresaId: payload.empresa_id,
+      });
+    }
+
     // Garantir que campos obrigatórios de pipeline e total estejam presentes
     const payloadClean = sanitizePayload({
       ...payload,

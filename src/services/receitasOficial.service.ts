@@ -281,6 +281,7 @@ class ReceitasOficialServiceClass {
   ): Promise<ReceitaItemUI[]> {
     const env = typeof window !== "undefined" ? localStorage.getItem("esc-log-environment") : null;
     const isHomologacao = env === "HOMOLOGACAO" || env === "homologacao";
+    const isTodos = env === "TODOS" || env === "todos";
     const { data: testEmpresas } = await supabase.from("empresas").select("id").eq("is_teste", true);
     const testIds = testEmpresas?.map((e) => e.id) || [];
     const safeTestIds = testIds.length > 0 ? testIds : ["00000000-0000-0000-0000-000000000000"];
@@ -317,7 +318,7 @@ class ReceitasOficialServiceClass {
     } else {
       if (isHomologacao) {
         query = query.in("empresa_id", safeTestIds);
-      } else {
+      } else if (!isTodos) {
         query = query.or(`empresa_id.not.in.(${safeTestIds.join(",")}),empresa_id.is.null`);
       }
     }
