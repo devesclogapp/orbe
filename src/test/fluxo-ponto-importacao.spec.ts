@@ -112,18 +112,22 @@ import {
   type PontoPreCadastroRow,
 } from "@/services/preCadastroColaborador.service";
 
-describe("Fluxo de Importação de Pontos — Pré-Cadastro", () => {
+describe("Fluxo de Importação de Pontos — Pré-Cadastro (P0-01)", () => {
   beforeEach(() => {
     resetCtx();
     autoIncrementId = 1;
   });
 
-  it("cria empresa e colaboradores automaticamente quando base está limpa", async () => {
+  it("Cenário 1: Empresa válida — colaborador processado normalmente", async () => {
+    ctx.existingEmpresas = [
+      { id: "emp-legitima-1", nome: "Empresa Legítima LTDA" },
+    ];
+
     const rows: PontoPreCadastroRow[] = [
       {
         colaborador_id: null,
         empresa_id: null,
-        empresa_nome: "Empresa Nova LTDA",
+        empresa_nome: "Empresa Legítima LTDA",
         nome_colaborador: "João Silva",
         cpf_colaborador: "12345678901",
         matricula_colaborador: "001",
@@ -132,7 +136,7 @@ describe("Fluxo de Importação de Pontos — Pré-Cadastro", () => {
       {
         colaborador_id: null,
         empresa_id: null,
-        empresa_nome: "Empresa Nova LTDA",
+        empresa_nome: "Empresa Legítima LTDA",
         nome_colaborador: "Maria Santos",
         cpf_colaborador: "98765432100",
         matricula_colaborador: "002",
@@ -142,21 +146,152 @@ describe("Fluxo de Importação de Pontos — Pré-Cadastro", () => {
 
     const result = await ensurePreCadastrosFromImportedPontos(rows, "planilha", "ponto");
 
-    // Should create 1 empresa (deduplicated)
-    expect(result.empresasCriadas).toBe(1);
+    // Zero empresas criadas (empresa legítima já existia)
+    expect(result.empresasCriadas).toBe(0);
 
-    // Should detect 2 new collaborators
+    // Detecta e cria 2 colaboradores vinculados à empresa válida
     expect(result.novosDetectados).toBe(2);
     expect(result.preCadastrosCriados).toBe(2);
 
-    // Both rows should have colaborador_id set
+    // Ambas as linhas têm colaborador_id e empresa_id resolvidos
     expect(result.rowsWithColaboradorId.length).toBe(2);
     result.rowsWithColaboradorId.forEach((row) => {
       expect(row.colaborador_id).toBeTruthy();
+      expect(row.empresa_id).toBe("emp-legitima-1");
     });
+
+    // Nenhuma empresa foi inserida
+    const insertedEmpresas = ctx.insertedRecords.filter((r) => r.table === "empresas");
+    expect(insertedEmpresas.length).toBe(0);
   });
 
-  it("deduplica colaboradores com mesmo CPF no mesmo batch", async () => {
+  it("Cenário 2: Empresa desconhecida — nenhuma empresa fictícia criada; registro tratado como pendente", async () => {
+    ctx.existingEmpresas = [
+      { id: "emp-legitima-1", nome: "Empresa Legítima LTDA" },
+    ];
+
+    const rows: PontoPreCadastroRow[] = [
+      {
+        colaborador_id: null,
+        empresa_id: null,
+        empresa_nome: "Departamento Desconhecido RHID",
+        nome_colaborador: "Desconhecido 1",
+        cpf_colaborador: "11122233344",
+        matricula_colaborador: "991",
+        cargo_colaborador: "Operador",
+      },
+      {
+        colaborador_id: null,
+        empresa_id: null,
+        empresa_nome: "Departamento Desconhecido RHID",
+        nome_colaborador: "Desconhecido 2",
+        cpf_colaborador: "55566677788",
+        matricula_colaborador: "992",
+        cargo_colaborador: "Auxiliar",
+      },
+    ];
+
+    const result = await ensurePreCadastrosFromImportedPontos(rows, "planilha", "ponto");
+
+    // Nenhuma empresa fictícia criada
+    expect(result.empresasCriadas).toBe(0);
+
+    // Nenhum colaborador novo ativado indevidamente
+    expect(result.novosDetectados).toBe(0);
+    expect(result.preCadastrosCriados).toBe(0);
+
+    // Registros isolados como pendentes / inconsistentes sem empresa incorreta
+    expect(result.rowsWithColaboradorId.length).toBe(2);
+    result.rowsWithColaboradorId.forEach((row) => {
+      expect(row.colaborador_id).toBeNull();
+      expect(row.empresa_id).toBeNull();
+      expect((row as any).status_processamento).toBe("INCONSISTENTE");
+      expect((row as any).status).toBe("Pendente");
+      expect((row as any).motivo_inconsistencia).toContain("Departamento Desconhecido RHID");
+    });
+
+    // Zero inserts de empresas ou colaboradores no banco
+    expect(ctx.insertedRecords.length).toBe(0);
+  });
+
+  it("Cenário 3: Arquivo misto — registros válidos processados e registros inválidos isolados", async () => {
+    ctx.existingEmpresas = [
+      { id: "emp-legitima-1", nome: "Empresa Legítima LTDA" },
+    ];
+
+    const rows: PontoPreCadastroRow[] = [
+      // Linha 1: Válida
+      {
+        colaborador_id: null,
+        empresa_id: null,
+        empresa_nome: "Empresa Legítima LTDA",
+        nome_colaborador: "João Válido",
+        cpf_colaborador: "10020030040",
+        matricula_colaborador: "101",
+        cargo_colaborador: "Operador",
+      },
+      // Linha 2: Inválida / Empresa desconhecida
+      {
+        colaborador_id: null,
+        empresa_id: null,
+        empresa_nome: "Filial Fantasma 99",
+        nome_colaborador: "Fantasma da Silva",
+        cpf_colaborador: "99988877766",
+        matricula_colaborador: "999",
+        cargo_colaborador: "Indefinido",
+      },
+      // Linha 3: Válida
+      {
+        colaborador_id: null,
+        empresa_id: null,
+        empresa_nome: "Empresa Legítima LTDA",
+        nome_colaborador: "Maria Válida",
+        cpf_colaborador: "50060070080",
+        matricula_colaborador: "102",
+        cargo_colaborador: "Analista",
+      },
+    ];
+
+    const result = await ensurePreCadastrosFromImportedPontos(rows, "planilha", "ponto");
+
+    // Zero empresas criadas
+    expect(result.empresasCriadas).toBe(0);
+
+    // Apenas os 2 colaboradores válidos foram detectados e criados
+    expect(result.novosDetectados).toBe(2);
+    expect(result.preCadastrosCriados).toBe(2);
+
+    expect(result.rowsWithColaboradorId.length).toBe(3);
+
+    // Linha 1: Processada normalmente
+    const linha1 = result.rowsWithColaboradorId[0];
+    expect(linha1.colaborador_id).toBeTruthy();
+    expect(linha1.empresa_id).toBe("emp-legitima-1");
+
+    // Linha 2: Isolada como pendente / inconsistente sem poluir o banco
+    const linha2 = result.rowsWithColaboradorId[1];
+    expect(linha2.colaborador_id).toBeNull();
+    expect(linha2.empresa_id).toBeNull();
+    expect((linha2 as any).status_processamento).toBe("INCONSISTENTE");
+    expect((linha2 as any).motivo_inconsistencia).toContain("Filial Fantasma 99");
+
+    // Linha 3: Processada normalmente
+    const linha3 = result.rowsWithColaboradorId[2];
+    expect(linha3.colaborador_id).toBeTruthy();
+    expect(linha3.empresa_id).toBe("emp-legitima-1");
+
+    // No banco, apenas os 2 colaboradores válidos foram inseridos (nenhuma empresa)
+    const insertedEmpresas = ctx.insertedRecords.filter((r) => r.table === "empresas");
+    const insertedColaboradores = ctx.insertedRecords.filter((r) => r.table === "colaboradores");
+    expect(insertedEmpresas.length).toBe(0);
+    expect(insertedColaboradores.length).toBe(2);
+  });
+
+  it("deduplica colaboradores com mesmo CPF no mesmo batch para empresa válida", async () => {
+    ctx.existingEmpresas = [
+      { id: "emp-legitima-1", nome: "Empresa X" },
+    ];
+
     const rows: PontoPreCadastroRow[] = [
       {
         colaborador_id: null,
@@ -180,11 +315,10 @@ describe("Fluxo de Importação de Pontos — Pré-Cadastro", () => {
 
     const result = await ensurePreCadastrosFromImportedPontos(rows, "planilha", "ponto");
 
-    // Should only create 1 collaborator (deduped by CPF)
+    expect(result.empresasCriadas).toBe(0);
     expect(result.novosDetectados).toBe(1);
     expect(result.preCadastrosCriados).toBe(1);
 
-    // Both rows should point to same colaborador
     expect(result.rowsWithColaboradorId[0].colaborador_id).toBe(
       result.rowsWithColaboradorId[1].colaborador_id,
     );

@@ -94,56 +94,16 @@ const findEmpresaByName = (
   return null;
 };
 
-const generatePlaceholderCnpj = (): string => {
-  // Prefix "00000" makes it clearly identifiable as auto-generated.
-  // Suffix uses timestamp + random to guarantee uniqueness.
-  const ts = Date.now().toString().slice(-6);
-  const rand = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
-  return `00000${ts}${rand}`;
-};
-
-const createMinimalEmpresa = async (
-  tenantId: string,
-  nomeOriginal: string,
+/**
+ * @deprecated Bloqueado por governança (P0-01). Nenhuma empresa fictícia deve ser auto-criada.
+ */
+export const createMinimalEmpresa = async (
+  _tenantId: string,
+  _nomeOriginal: string,
 ): Promise<EmpresaLookup> => {
-  const nome = nomeOriginal.trim();
-  const cnpjPlaceholder = generatePlaceholderCnpj();
-
-  const payload = {
-    tenant_id: tenantId,
-    nome,
-    cnpj: cnpjPlaceholder,
-    status: "ativa",
-    origem: "ponto",
-    cadastro_provisorio: true,
-    unidade: "Não informado",
-    cidade: "Não informado",
-  };
-
-  const { data, error } = await (supabase as any)
-    .from("empresas")
-    .insert(payload)
-    .select("id, nome")
-    .single();
-
-  if (error) {
-    // If CNPJ collision (extremely unlikely), retry once with a new value
-    if (error.code === "23505" && String(error.message ?? "").includes("cnpj")) {
-      const retryPayload = { ...payload, cnpj: generatePlaceholderCnpj() };
-      const { data: retryData, error: retryError } = await (supabase as any)
-        .from("empresas")
-        .insert(retryPayload)
-        .select("id, nome")
-        .single();
-
-      if (retryError) throw retryError;
-      return retryData as EmpresaLookup;
-    }
-
-    throw error;
-  }
-
-  return data as EmpresaLookup;
+  throw new Error(
+    "Criação automática de empresas desativada por governança (P0-01). As empresas devem ser cadastradas previamente na Central de Cadastros.",
+  );
 };
 
 async function getCurrentTenantId(): Promise<string> {
@@ -302,7 +262,7 @@ export async function ensurePreCadastroColaboradorFromPonto(params: {
   colaboradoresExistentes?: ColaboradorLookup[];
 }): Promise<ColaboradorLookup | null> {
   const nome = params.nome.trim();
-  if (!nome) {
+  if (!nome || !params.empresaId) {
     return null;
   }
 
@@ -394,7 +354,6 @@ export async function ensurePreCadastrosFromImportedPontos<T extends PontoPreCad
 
   const empresas = (empresasData ?? []) as EmpresaLookup[];
   const empresaLookup = buildEmpresaLookup(empresas);
-  const empresaCreateCache = new Map<string, EmpresaLookup>(); // dedupe created empresas by normalized name
 
   const colaboradores = (data ?? []) as ColaboradorLookup[];
   const maps = buildMaps(colaboradores);
@@ -421,29 +380,35 @@ export async function ensurePreCadastrosFromImportedPontos<T extends PontoPreCad
     // Resolve empresa_id from empresa_nome when missing
     // -----------------------------------------------------------
     if (!empresaId && empresaNome) {
-      const empresaNomeKey = normalizeCompanyText(empresaNome);
-
-      // 1. Try matching existing empresa by name
+      // 1. Tenta correspondência estrita com empresa existente e legitimamente cadastrada
       const found = findEmpresaByName(empresaNome, empresaLookup);
       if (found) {
         empresaId = found.id;
-      } else if (empresaNomeKey) {
-        // 2. Check if we already created it in this batch
-        const cached = empresaCreateCache.get(empresaNomeKey);
-        if (cached) {
-          empresaId = cached.id;
-        } else {
-          // 3. Create minimal empresa
-          const newEmpresa = await createMinimalEmpresa(tenantId, empresaNome);
-          empresaId = newEmpresa.id;
-          empresaLookup.set(empresaNomeKey, newEmpresa);
-          empresaCreateCache.set(empresaNomeKey, newEmpresa);
-          empresasCriadas += 1;
-        }
+        (row as any).empresa_id = empresaId;
       }
+    }
 
-      // Update the row so the ponto record also gets the resolved empresa_id
-      (row as any).empresa_id = empresaId;
+    // -----------------------------------------------------------
+    // P0-01: Bloqueio estrito de criação automática de empresas fictícias
+    // -----------------------------------------------------------
+    if (!empresaId) {
+      // Registro não resolvido: encaminhar como pendente/inconsistente sem criar empresa fictícia
+      // e sem vincular a nenhuma empresa incorreta.
+      const motivo = empresaNome
+        ? `Empresa/Departamento não reconhecido: "${empresaNome}". Requer cadastro prévio da empresa ou mapeamento de departamento.`
+        : "Registro sem identificação de empresa ou departamento vinculador.";
+
+      (row as any).empresa_id = null;
+      (row as any).status_processamento = "INCONSISTENTE";
+      (row as any).status = (row as any).status || "Pendente";
+      (row as any).motivo_inconsistencia = motivo;
+
+      rowsWithColaboradorId.push({
+        ...row,
+        colaborador_id: row.colaborador_id ?? null,
+        empresa_id: null,
+      });
+      continue;
     }
 
     const dedupeKey = cpf 
