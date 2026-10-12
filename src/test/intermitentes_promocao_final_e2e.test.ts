@@ -632,29 +632,22 @@ describe('PROMOÇÃO FINAL INTERMITENTES — TESTES E2E E REGRAS DE INTEGRIDADE'
   it('7. getSituacaoBadge renderiza badge "Pago" com variante visual emerald quando status é PAGO', () => {
     const badgePago = getSituacaoBadge('PAGO');
     expect(badgePago).toBeDefined();
-    // Elemento React com children "Pago" e classe bg-emerald-600
-    expect(badgePago.props.children).toBe('Pago');
-    expect(badgePago.props.className).toContain('bg-emerald-600');
+    // Elemento OrbeStatusBadge com label "Pago" e status "success"
+    expect(badgePago.props.label).toBe('Pago');
+    expect(badgePago.props.status).toBe('success');
 
     // CNAB_GERADO deve ser "Aprovado"
     const badgeCnab = getSituacaoBadge('CNAB_GERADO');
-    expect(badgeCnab.props.children).toBe('Aprovado');
-    expect(badgeCnab.props.className).toContain('emerald');
+    expect(badgeCnab.props.label).toBe('Aprovado');
+    expect(badgeCnab.props.status).toBe('success');
   });
 
   // 8. PAGO → Status Financeiro Pago/Conciliado
   it('8. getFinanceiroStatusBadge renderiza "Pago / Conciliado" quando status é PAGO', () => {
     const badgeFin = getFinanceiroStatusBadge('PAGO');
     expect(badgeFin).toBeDefined();
-    expect(badgeFin.props.className).toContain('bg-emerald-50');
-    expect(badgeFin.props.className).toContain('text-emerald-700');
-
-    // Conteúdo contém "Pago / Conciliado"
-    const textChildren = badgeFin.props.children;
-    const hasPagoText = React.Children.toArray(textChildren).some(
-      (child: any) => typeof child === 'string' && child.includes('Pago / Conciliado')
-    );
-    expect(hasPagoText).toBe(true);
+    expect(badgeFin.props.status).toBe('success');
+    expect(badgeFin.props.label).toBe('Pago / Conciliado');
   });
 
   // 8.1 Defesa na leitura em intermitentes.service.ts
@@ -854,22 +847,14 @@ describe('PROMOÇÃO FINAL INTERMITENTES — TESTES E2E E REGRAS DE INTEGRIDADE'
     // Drawer Header Badge para PAGO
     const drawerBadge = getLoteDrawerBadge('PAGO');
     expect(drawerBadge).toBeDefined();
-    expect(drawerBadge.props.className).toContain('bg-emerald-600');
-    expect(drawerBadge.props.className).toContain('text-white');
-    const drawerBadgeHasPago = React.Children.toArray(drawerBadge.props.children).some(
-      (child: any) => typeof child === 'string' && child.includes('Pago')
-    );
-    expect(drawerBadgeHasPago).toBe(true);
+    expect(drawerBadge.props.status).toBe('success');
+    expect(drawerBadge.props.label).toBe('Pago');
 
     // Listagem "Status RH" para lote PAGO continua "Aprovado RH" (preservação obrigatória)
     const rhStatusBadge = getRhStatusBadge('PAGO');
     expect(rhStatusBadge).toBeDefined();
-    expect(rhStatusBadge.props.className).toContain('bg-emerald-50');
-    expect(rhStatusBadge.props.className).toContain('text-emerald-700');
-    const rhBadgeHasAprovadoRh = React.Children.toArray(rhStatusBadge.props.children).some(
-      (child: any) => typeof child === 'string' && child.includes('Aprovado RH')
-    );
-    expect(rhBadgeHasAprovadoRh).toBe(true);
+    expect(rhStatusBadge.props.status).toBe('success');
+    expect(rhStatusBadge.props.label).toBe('Aprovado RH');
   });
 
   // 11. Drawer Primário Pipeline: PAGO ativa todas as 5 etapas como done e todos os 4 conectores verdes
@@ -936,7 +921,8 @@ describe('PROMOÇÃO FINAL INTERMITENTES — TESTES E2E E REGRAS DE INTEGRIDADE'
   it('14. Preserva comportamento coerente dos estados intermediários (VALIDADO_RH, FECHADO_FINANCEIRO, CNAB_GERADO)', () => {
     // 14.1 VALIDADO_RH
     const badgeRh = getLoteDrawerBadge('VALIDADO_RH');
-    expect(badgeRh.props.children.some((c: any) => typeof c === 'string' && c.includes('Aprovado RH'))).toBe(true);
+    expect(badgeRh.props.status).toBe('success');
+    expect(badgeRh.props.label).toBe('Aprovado RH');
     const pipeRh = getIntermitentesPipelineStages('VALIDADO_RH');
     expect(pipeRh.allCompleted).toBe(false);
     expect(pipeRh.stages[2].status).toBe('done'); // Validação RH feita
@@ -951,7 +937,8 @@ describe('PROMOÇÃO FINAL INTERMITENTES — TESTES E2E E REGRAS DE INTEGRIDADE'
 
     // 14.2 FECHADO_FINANCEIRO / AGUARDANDO_PAGAMENTO
     const badgeFin = getLoteDrawerBadge('FECHADO_FINANCEIRO');
-    expect(badgeFin.props.children.some((c: any) => typeof c === 'string' && c.includes('Aprovado Financeiro'))).toBe(true);
+    expect(badgeFin.props.status).toBe('info');
+    expect(badgeFin.props.label).toBe('Aprovado Financeiro');
     const pipeFin = getIntermitentesPipelineStages('FECHADO_FINANCEIRO');
     expect(pipeFin.allCompleted).toBe(false);
     expect(pipeFin.stages[3].status).toBe('done'); // Financeiro feito
@@ -965,7 +952,8 @@ describe('PROMOÇÃO FINAL INTERMITENTES — TESTES E2E E REGRAS DE INTEGRIDADE'
 
     // 14.3 CNAB_GERADO
     const badgeCnab = getLoteDrawerBadge('CNAB_GERADO');
-    expect(badgeCnab.props.children.some((c: any) => typeof c === 'string' && c.includes('Remessa Gerada'))).toBe(true);
+    expect(badgeCnab.props.status).toBe('info');
+    expect(badgeCnab.props.label).toBe('Remessa Gerada');
     const pipeCnab = getIntermitentesPipelineStages('CNAB_GERADO');
     expect(pipeCnab.allCompleted).toBe(false);
     expect(pipeCnab.stages[3].status).toBe('done');

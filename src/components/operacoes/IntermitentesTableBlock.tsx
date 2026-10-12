@@ -2,8 +2,9 @@ import { useMemo, useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Pencil, ChevronLeft, ChevronRight, FileSpreadsheet } from "lucide-react";
+import { Pencil, ChevronLeft, ChevronRight, FileSpreadsheet, AlertTriangle } from "lucide-react";
 import { cn, decimalParaHora } from "@/lib/utils";
+import { OrbeStatusBadge, OrbeSemanticStatus } from "@/components/ux-lab/design-system/OrbeStatusBadge";
 
 export type IntermitenteItem = {
     id: string;
@@ -24,6 +25,9 @@ export type IntermitenteItem = {
     total?: number | null;
     status_pipeline?: string | null;
     origem?: string | null;
+    motivo_devolucao?: string | null;
+    observacoes?: string | null;
+    lote_fechamento_id?: string | null;
 };
 
 export type IntermitentesTableBlockProps = {
@@ -44,19 +48,50 @@ const formatDate = (value?: string | null) => {
     return date.toLocaleDateString("pt-BR");
 };
 
-const getStatusBadgeVariant = (status?: string | null) => {
-    const st = (status || "").toUpperCase();
-    if (st === "APROVADO_RH" || st === "VALIDADO_RH" || st === "APROVADO") {
-        return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20";
+/**
+ * FIX-INT-05 / ETAPA 04A: Padronização Canônica de Status dos Intermitentes
+ * Utiliza o componente oficial OrbeStatusBadge do Design System.
+ * Mapeia todos os estados suportados pelo domínio de forma unívoca, sem agrupamento artificial,
+ * sem animações pulsantes exclusivas e sem inventar equivalências para status desconhecidos.
+ */
+export function getIntermitenteStatusBadge(status?: string | null) {
+    const raw = (status || "").trim().toUpperCase();
+    switch (raw) {
+        case "RECEBIDO":
+            return <OrbeStatusBadge status="info" label="RECEBIDO" />;
+        case "FECHADO":
+            return <OrbeStatusBadge status="warning" label="FECHADO" />;
+        case "EM_LOTE":
+            return <OrbeStatusBadge status="warning" label="EM LOTE" />;
+        case "AGUARDANDO_RH":
+        case "AGUARDANDO_VALIDACAO_RH":
+            return <OrbeStatusBadge status="warning" label="AGUARDANDO RH" />;
+        case "EM_ANALISE_RH":
+            return <OrbeStatusBadge status="warning" label="EM ANÁLISE RH" />;
+        case "VALIDADO_RH":
+            return <OrbeStatusBadge status="success" label="VALIDADO RH" />;
+        case "APROVADO_RH":
+        case "APROVADO":
+            return <OrbeStatusBadge status="success" label="APROVADO RH" />;
+        case "ENVIADO_FINANCEIRO":
+            return <OrbeStatusBadge status="info" label="ENVIADO AO FINANCEIRO" />;
+        case "FECHADO_FINANCEIRO":
+            return <OrbeStatusBadge status="info" label="FECHADO FINANCEIRO" />;
+        case "PAGO":
+            return <OrbeStatusBadge status="success" label="PAGO" />;
+        case "DEVOLVIDO":
+            return <OrbeStatusBadge status="danger" label="DEVOLVIDO" />;
+        case "REJEITADO":
+        case "REJEITADO_RH":
+            return <OrbeStatusBadge status="danger" label="REJEITADO RH" />;
+        case "CANCELADO":
+            return <OrbeStatusBadge status="neutral" label="CANCELADO" />;
+        case "":
+            return <OrbeStatusBadge status="neutral" label="SEM STATUS" showDot={false} />;
+        default:
+            return <OrbeStatusBadge status="neutral" label={raw} showDot={false} />;
     }
-    if (st === "DEVOLVIDO" || st === "REJEITADO") {
-        return "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20";
-    }
-    if (st === "EM_LOTE" || st === "AGUARDANDO_VALIDACAO_RH" || st === "FECHADO") {
-        return "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20";
-    }
-    return "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20";
-};
+}
 
 export function IntermitentesTableBlock({ data, onEdit, pageSizeDefault = 25 }: IntermitentesTableBlockProps) {
     const [currentPage, setCurrentPage] = useState(1);
@@ -158,15 +193,22 @@ export function IntermitentesTableBlock({ data, onEdit, pageSizeDefault = 25 }: 
                                                 : "—"}
                                         </td>
                                         <td className="px-3 py-2 text-center whitespace-nowrap">
-                                            <Badge
-                                                variant="outline"
-                                                className={cn(
-                                                    "text-[10px] font-medium px-2 py-0.5 rounded-md border",
-                                                    getStatusBadgeVariant(item.status_pipeline)
+                                            <div className="inline-flex items-center justify-center gap-1.5">
+                                                {getIntermitenteStatusBadge(item.status_pipeline)}
+                                                {(item.motivo_devolucao || (item.status_pipeline === "DEVOLVIDO" && item.observacoes)) && (
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <span className="inline-flex items-center text-rose-600 dark:text-rose-400 cursor-help" aria-label="Motivo da devolução">
+                                                                <AlertTriangle className="h-3.5 w-3.5" />
+                                                            </span>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="top" className="max-w-xs text-xs font-normal">
+                                                            <p className="font-semibold text-rose-500 mb-0.5">Motivo da Devolução:</p>
+                                                            <p>{item.motivo_devolucao || item.observacoes}</p>
+                                                        </TooltipContent>
+                                                    </Tooltip>
                                                 )}
-                                            >
-                                                {item.status_pipeline?.toUpperCase().replace(/_/g, ' ') || 'RECEBIDO'}
-                                            </Badge>
+                                            </div>
                                         </td>
                                         <td className="px-2.5 py-2 text-center whitespace-nowrap">
                                             <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border/50">

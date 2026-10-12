@@ -25,6 +25,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { IntermitentesTableBlock, IntermitenteItem } from "@/components/operacoes/IntermitentesTableBlock";
 import { ExecutiveMetricCard } from "@/components/dashboard/ExecutiveMetricCard";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import {
@@ -103,6 +104,8 @@ const IntermitentesRecebidos = () => {
     const [filterText, setFilterText] = useState("");
     const [lotesFechados, setLotesFechados] = useState<any[] | null>(null);
     const [activeTab, setActiveTab] = useState("pendentes");
+    const [showFecharConfirmDialog, setShowFecharConfirmDialog] = useState(false);
+    const [isClosingLock, setIsClosingLock] = useState(false);
 
     // Sincroniza dinamicamente se novos parâmetros contextuais forem recebidos via navegação
     useEffect(() => {
@@ -180,11 +183,33 @@ const IntermitentesRecebidos = () => {
         },
     });
 
-    // Filtragem no cliente por abas e busca
+    // FIX-INT-04: Mapear motivos de devolução dos lotes para os itens filhos
+    const lotesDevolvidosMap = useMemo(() => {
+        const map = new Map<string, string>();
+        (lotesDevolvidos || []).forEach((lote: any) => {
+            if (lote.id && lote.observacoes) {
+                map.set(lote.id, lote.observacoes);
+            }
+        });
+        return map;
+    }, [lotesDevolvidos]);
+
+    const intermitentesComMotivo: IntermitenteItem[] = useMemo(() => {
+        return intermitentes.map(item => {
+            const motivoLote = item.lote_fechamento_id ? lotesDevolvidosMap.get(item.lote_fechamento_id) : undefined;
+            return {
+                ...item,
+                motivo_devolucao: item.motivo_devolucao || motivoLote || (item.status_pipeline === 'DEVOLVIDO' ? item.observacoes : null),
+            };
+        });
+    }, [intermitentes, lotesDevolvidosMap]);
+
+    // Filtragem no cliente por abas (Pendentes, Devolvidos e Histórico) e busca textual
     const filteredData = useMemo(() => {
-        return intermitentes.filter(item => {
+        return intermitentesComMotivo.filter(item => {
             if (activeTab === "pendentes" && item.status_pipeline !== 'RECEBIDO') return false;
-            if (activeTab === "historico" && item.status_pipeline === 'RECEBIDO') return false;
+            if (activeTab === "devolvidos" && item.status_pipeline !== 'DEVOLVIDO' && item.status_pipeline !== 'REJEITADO_RH') return false;
+            if (activeTab === "historico" && (item.status_pipeline === 'RECEBIDO' || item.status_pipeline === 'DEVOLVIDO' || item.status_pipeline === 'REJEITADO_RH')) return false;
 
             if (!filterText) return true;
             const search = filterText.toLowerCase();
@@ -195,15 +220,33 @@ const IntermitentesRecebidos = () => {
 
             return colabName.includes(search) || empName.includes(search) || cargo.includes(search) || convocacao.includes(search);
         });
-    }, [intermitentes, filterText, activeTab]);
+    }, [intermitentesComMotivo, filterText, activeTab]);
 
     const totalAbertosGeral = useMemo(() => {
-        return intermitentes.filter(d => !d.lote_fechamento_id && d.status_pipeline === 'RECEBIDO').length;
-    }, [intermitentes]);
+        return intermitentesComMotivo.filter(d => !d.lote_fechamento_id && d.status_pipeline === 'RECEBIDO').length;
+    }, [intermitentesComMotivo]);
+
+    const totalDevolvidosGeral = useMemo(() => {
+        return intermitentesComMotivo.filter(d => d.status_pipeline === 'DEVOLVIDO' || d.status_pipeline === 'REJEITADO_RH').length;
+    }, [intermitentesComMotivo]);
 
     const totalFechadosGeral = useMemo(() => {
-        return intermitentes.filter(d => d.status_pipeline !== 'RECEBIDO').length;
-    }, [intermitentes]);
+        return intermitentesComMotivo.filter(d => d.status_pipeline !== 'RECEBIDO' && d.status_pipeline !== 'DEVOLVIDO' && d.status_pipeline !== 'REJEITADO_RH').length;
+    }, [intermitentesComMotivo]);
+
+    // Lançamentos elegíveis especificamente para fechamento da empresa selecionada
+    const pendentesEmpresaAbertos = useMemo(() => {
+        if (filterEmpresaId === "all") return [];
+        return intermitentesComMotivo.filter(d =>
+            d.empresa_id === filterEmpresaId &&
+            !d.lote_fechamento_id &&
+            d.status_pipeline === 'RECEBIDO'
+        );
+    }, [intermitentesComMotivo, filterEmpresaId]);
+
+    const valorTotalPendentesFechamento = useMemo(() => {
+        return pendentesEmpresaAbertos.reduce((acc, item) => acc + Number(item.total || 0), 0);
+    }, [pendentesEmpresaAbertos]);
 
     const kpis = useMemo(() => {
         const totalRegistros = filteredData.length;
@@ -256,8 +299,23 @@ const IntermitentesRecebidos = () => {
                 observacoes: "Fechamento automático via painel de Intermitentes Recebidos."
             });
         },
-        onSuccess: (data) => {
-            setLotesFechados(data);
+        onSuccess: async (data) => {
+            // FIX-INT-01: Consulta imediatamente o resumo analítico persistido no banco
+            try {
+                const resumos = await Promise.all(
+                    (data || []).map(async (lote) => {
+                        const resumo = await IntermitentesLoteService.getResumoLoteIntermitente(lote.id);
+                        return {
+                            ...lote,
+                            resumoPersistido: resumo,
+                        };
+                    })
+                );
+                setLotesFechados(resumos);
+            } catch (err) {
+                console.warn("[IntermitentesRecebidos] Falha ao enriquecer resumo persistido:", err);
+                setLotesFechados(data);
+            }
             queryClient.invalidateQueries({ queryKey: ["intermitentes-recebidos"] });
             setActiveTab("historico");
         },
@@ -266,30 +324,36 @@ const IntermitentesRecebidos = () => {
         }
     });
 
-    const reabrirLoteMutation = useMutation({
-        mutationFn: async (id: string) => {
-            return await IntermitentesLoteService.reabrirLote(id);
-        },
-        onSuccess: () => {
-            toast.success("Lote reaberto com sucesso. Os registros retornaram para a fila.");
-            queryClient.invalidateQueries({ queryKey: ["intermitentes-recebidos"] });
-            queryClient.invalidateQueries({ queryKey: ["lotes-intermitentes-devolvidos"] });
-            queryClient.invalidateQueries({ queryKey: ["rh-financeiro-lotes"] });
-            queryClient.invalidateQueries({ queryKey: ["lotes-intermitentes-financeiro"] });
-        },
-        onError: (err: any) => {
-            toast.error("Erro ao reabrir lote.", { description: err?.message || "" });
+    // FIX-INT-03: Função com trava anti-duplo clique e prevenção de requisições concorrentes
+    const handleExecuteFechamento = async () => {
+        if (isClosingLock || fecharPeriodoMutation.isPending) return;
+        setIsClosingLock(true);
+        try {
+            await fecharPeriodoMutation.mutateAsync();
+            setShowFecharConfirmDialog(false);
+        } catch (err) {
+            // Tratado no onError da mutation
+        } finally {
+            setIsClosingLock(false);
         }
-    });
+    };
+
+    // Reabertura de lote com confirmação modal canônica
+    const handleExecuteReabertura = async () => {
+        if (!loteParaReabrir || reabrirLoteMutation.isPending) return;
+        try {
+            await reabrirLoteMutation.mutateAsync(loteParaReabrir.id);
+            setLoteParaReabrir(null);
+        } catch (err) {
+            // Tratado no onError da mutation
+        }
+    };
 
     const editItemMutation = useMutation({
         mutationFn: async () => {
             if (!editingItem) return;
             return await IntermitentesLoteService.atualizarLancamento(editingItem.id, {
                 empresa_id: editEmpresaId === "all" ? null : editEmpresaId,
-                total: parseFloat(editTotal.replace(",", ".")) || 0,
-                horas_trabalhadas: parseFloat(editHoras.replace(",", ".")) || 0,
-                status_pipeline: 'RECEBIDO'
             });
         },
         onSuccess: () => {
@@ -590,20 +654,14 @@ const IntermitentesRecebidos = () => {
                                             Devolvido em: {new Date(lote.updated_at).toLocaleString('pt-BR')}
                                         </div>
                                     </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/40 text-xs h-8"
-                                        disabled={reabrirLoteMutation.isPending}
-                                        onClick={() => {
-                                            if (confirm("Deseja realmente reabrir este período? Os registros voltarão para a fila operacional.")) {
-                                                reabrirLoteMutation.mutate(lote.id);
-                                            }
-                                        }}
-                                    >
-                                        <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                                        Reabrir Período
-                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                        <Badge
+                                            variant="outline"
+                                            className="border-rose-500/30 text-rose-700 dark:text-rose-400 bg-rose-500/10 text-xs px-2.5 py-1"
+                                        >
+                                            Sob Saneamento Exclusivo do RH
+                                        </Badge>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -614,17 +672,26 @@ const IntermitentesRecebidos = () => {
                 <div className="bg-card border border-border rounded-xl overflow-hidden shadow-xs">
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                         <div className="p-3.5 border-b border-border bg-muted/30 flex flex-wrap items-center justify-between gap-3">
-                            {/* Abas com Contadores */}
+                            {/* Abas com Contadores (FIX-INT-04: Aba dedicada para Devolvidos) */}
                             <div className="flex items-center gap-3">
                                 <TabsList className="bg-muted/80 h-9 p-1">
                                     <TabsTrigger
                                         value="pendentes"
+                                        onClick={() => setActiveTab("pendentes")}
                                         className="text-xs uppercase font-semibold tracking-wider data-[state=active]:bg-background data-[state=active]:shadow-xs px-3"
                                     >
                                         Pendentes ({totalAbertosGeral})
                                     </TabsTrigger>
                                     <TabsTrigger
+                                        value="devolvidos"
+                                        onClick={() => setActiveTab("devolvidos")}
+                                        className="text-xs uppercase font-semibold tracking-wider data-[state=active]:bg-background data-[state=active]:shadow-xs px-3 text-rose-600 dark:text-rose-400"
+                                    >
+                                        Devolvidos ({totalDevolvidosGeral})
+                                    </TabsTrigger>
+                                    <TabsTrigger
                                         value="historico"
+                                        onClick={() => setActiveTab("historico")}
                                         className="text-xs uppercase font-semibold tracking-wider data-[state=active]:bg-background data-[state=active]:shadow-xs px-3"
                                     >
                                         Histórico ({totalFechadosGeral})
@@ -632,34 +699,33 @@ const IntermitentesRecebidos = () => {
                                 </TabsList>
                             </div>
 
-                            {/* Botão de Fechamento de Período (Preservando Regra Canônica) */}
+                            {/* Botão de Fechamento de Período (FIX-INT-03: Modal Canônico e Anti-duplo Clique) */}
                             <Button
                                 className={cn(
                                     "gap-2 font-semibold uppercase tracking-wider text-xs h-9",
-                                    filterEmpresaId === "all"
+                                    filterEmpresaId === "all" || activeTab !== "pendentes"
                                         ? "bg-muted text-muted-foreground cursor-not-allowed hover:bg-muted"
                                         : "bg-emerald-600 hover:bg-emerald-700 text-white"
                                 )}
                                 size="sm"
-                                disabled={isLoading || kpis.pendentesEnvio === 0 || fecharPeriodoMutation.isPending || filterEmpresaId === "all"}
+                                disabled={isLoading || kpis.pendentesEnvio === 0 || fecharPeriodoMutation.isPending || isClosingLock || filterEmpresaId === "all" || activeTab !== "pendentes"}
                                 onClick={() => {
                                     if (filterEmpresaId === "all") {
                                         toast.warning("Para fechar o período, selecione uma empresa no filtro.");
                                         return;
                                     }
-                                    const nomeEmpresa = selectedEmpresaObj?.nome || "a empresa selecionada";
-                                    if (confirm(`Confirmar o fechamento de ${kpis.pendentesEnvio} lançamentos em aberto da empresa ${nomeEmpresa} neste período? Eles serão enviados para Validação do RH.`)) {
-                                        fecharPeriodoMutation.mutate();
-                                    }
+                                    setShowFecharConfirmDialog(true);
                                 }}
                             >
-                                {fecharPeriodoMutation.isPending ? (
+                                {fecharPeriodoMutation.isPending || isClosingLock ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                 ) : (
                                     <CheckCircle2 className="h-4 w-4" />
                                 )}
                                 {filterEmpresaId === "all" ? (
                                     "Selecione uma Empresa para Fechar"
+                                ) : activeTab !== "pendentes" ? (
+                                    "Vá para Aba Pendentes para Fechar"
                                 ) : (
                                     `Fechar Período Intermitente (${kpis.pendentesEnvio} abertos)`
                                 )}
@@ -682,19 +748,31 @@ const IntermitentesRecebidos = () => {
                                     </p>
                                 </div>
                             ) : (
-                                <IntermitentesTableBlock
-                                    data={filteredData}
-                                    onEdit={
-                                        activeTab === 'pendentes'
-                                            ? (item) => {
-                                                setEditingItem(item);
-                                                setEditEmpresaId(item.empresa_id || "all");
-                                                setEditTotal(item.total ? String(item.total).replace(".", ",") : "0,00");
-                                                setEditHoras(item.horas_trabalhadas ? String(item.horas_trabalhadas).replace(".", ",") : "0");
-                                            }
-                                            : undefined
-                                    }
-                                />
+                                <>
+                                    {activeTab === "devolvidos" && filteredData.length > 0 && (
+                                        <div className="mx-4 mt-3 mb-1 p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg flex items-center justify-between text-xs text-rose-700 dark:text-rose-400">
+                                            <div className="flex items-center gap-2">
+                                                <AlertTriangle className="h-4 w-4 shrink-0" />
+                                                <span>
+                                                    <strong>Lançamentos Devolvidos pelo RH:</strong> Estes apontamentos encontram-se sob análise e saneamento exclusivo do RH. A visualização pela equipe operacional é estritamente informativa de status.
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <IntermitentesTableBlock
+                                        data={filteredData}
+                                        onEdit={
+                                            activeTab === 'pendentes'
+                                                ? (item) => {
+                                                    setEditingItem(item);
+                                                    setEditEmpresaId(item.empresa_id || "all");
+                                                    setEditTotal(item.total ? String(item.total).replace(".", ",") : "0,00");
+                                                    setEditHoras(item.horas_trabalhadas ? String(item.horas_trabalhadas).replace(".", ",") : "0");
+                                                }
+                                                : undefined
+                                        }
+                                    />
+                                </>
                             )}
                         </div>
                     </Tabs>
@@ -715,28 +793,89 @@ const IntermitentesRecebidos = () => {
                     </DialogHeader>
                     {lotesFechados && lotesFechados.length > 0 && (
                         <div className="space-y-3 my-2">
-                            {lotesFechados.map((loteFechado, i) => (
-                                <div key={loteFechado.id || i} className="bg-muted/40 p-3.5 rounded-lg space-y-2 text-xs border border-border">
-                                    <div className="flex justify-between border-b border-border/50 pb-1.5">
-                                        <span className="text-muted-foreground">Lote:</span>
-                                        <span className="font-semibold font-mono text-primary">
-                                            INT-{loteFechado.competencia}-{loteFechado.id?.substring(0, 4).toUpperCase()}
-                                        </span>
+                            {lotesFechados.map((loteFechado, i) => {
+                                const resumo = loteFechado.resumoPersistido;
+                                return (
+                                    <div key={loteFechado.id || i} className="bg-muted/40 p-3.5 rounded-lg space-y-2.5 text-xs border border-border">
+                                        <div className="flex justify-between border-b border-border/50 pb-1.5">
+                                            <span className="text-muted-foreground">Lote:</span>
+                                            <span className="font-semibold font-mono text-primary">
+                                                INT-{loteFechado.competencia}-{loteFechado.id?.substring(0, 4).toUpperCase()}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between border-b border-border/50 pb-1.5">
+                                            <span className="text-muted-foreground">Registros Vinculados:</span>
+                                            <span className="font-semibold">{resumo?.quantidadeRegistros ?? loteFechado.quantidade_registros}</span>
+                                        </div>
+                                        <div className="flex justify-between border-b border-border/50 pb-1.5">
+                                            <span className="text-muted-foreground">Valor Total Apurado:</span>
+                                            <span className="font-semibold text-emerald-600 font-mono">
+                                                {formatCurrency(resumo?.valorTotal ?? loteFechado.valor_total)}
+                                            </span>
+                                        </div>
+                                        {resumo && (
+                                            <>
+                                                <div className="flex justify-between border-b border-border/50 pb-1.5">
+                                                    <span className="text-muted-foreground">Colaboradores Únicos:</span>
+                                                    <span className="font-semibold">{resumo.quantidadeColaboradores}</span>
+                                                </div>
+                                                <div className="flex justify-between border-b border-border/50 pb-1.5">
+                                                    <span className="text-muted-foreground">Jornada Total:</span>
+                                                    <span className="font-semibold font-mono">{decimalParaHora(resumo.totalHoras)}</span>
+                                                </div>
+                                                <div className="flex justify-between border-b border-border/50 pb-1.5">
+                                                    <span className="text-muted-foreground">Integridade dos Totais:</span>
+                                                    <span className={cn(
+                                                        "font-semibold text-[11px]",
+                                                        resumo.lotePayloadMatches && resumo.loteValorMatches
+                                                            ? "text-emerald-600 dark:text-emerald-400"
+                                                            : "text-amber-600 dark:text-amber-400"
+                                                    )}>
+                                                        {resumo.lotePayloadMatches && resumo.loteValorMatches
+                                                            ? "✓ Totais Consistentes"
+                                                            : "⚠️ Divergência na âncora"}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between border-b border-border/50 pb-1.5">
+                                                    <span className="text-muted-foreground">Registro de Auditoria:</span>
+                                                    <span className={cn(
+                                                        "font-semibold text-[11px]",
+                                                        loteFechado.auditoriaConfirmada
+                                                            ? "text-emerald-600 dark:text-emerald-400"
+                                                            : loteFechado.auditoriaAviso
+                                                            ? "text-amber-600 dark:text-amber-400"
+                                                            : "text-muted-foreground"
+                                                    )}>
+                                                        {loteFechado.auditoriaConfirmada
+                                                            ? "✓ Auditoria Confirmada"
+                                                            : loteFechado.auditoriaAviso
+                                                            ? "⚠️ Auditoria Pendente"
+                                                            : "Auditoria Registrada"}
+                                                    </span>
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-1 pt-1 pb-1 border-b border-border/50 text-[10px] text-center font-mono">
+                                                    <div className="bg-background/80 p-1 rounded border border-border/60">
+                                                        <span className="text-muted-foreground block text-[9px] uppercase font-sans">Processados</span>
+                                                        <strong className="text-emerald-600">{resumo.itensProcessados}</strong>
+                                                    </div>
+                                                    <div className="bg-background/80 p-1 rounded border border-border/60">
+                                                        <span className="text-muted-foreground block text-[9px] uppercase font-sans">Devolvidos</span>
+                                                        <strong className="text-rose-600">{resumo.itensDevolvidos}</strong>
+                                                    </div>
+                                                    <div className="bg-background/80 p-1 rounded border border-border/60">
+                                                        <span className="text-muted-foreground block text-[9px] uppercase font-sans">Pendentes</span>
+                                                        <strong className="text-amber-600">{resumo.itensPendentes}</strong>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+                                        <div className="flex justify-between pt-0.5">
+                                            <span className="text-muted-foreground">Status Atual:</span>
+                                            <span className="font-semibold text-amber-600">Aguardando validação RH</span>
+                                        </div>
                                     </div>
-                                    <div className="flex justify-between border-b border-border/50 pb-1.5">
-                                        <span className="text-muted-foreground">Registros:</span>
-                                        <span className="font-semibold">{loteFechado.quantidade_registros}</span>
-                                    </div>
-                                    <div className="flex justify-between border-b border-border/50 pb-1.5">
-                                        <span className="text-muted-foreground">Valor Total:</span>
-                                        <span className="font-semibold text-emerald-600 font-mono">{formatCurrency(loteFechado.valor_total)}</span>
-                                    </div>
-                                    <div className="flex justify-between pt-0.5">
-                                        <span className="text-muted-foreground">Status Atual:</span>
-                                        <span className="font-semibold text-amber-600">Aguardando validação RH</span>
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                     <DialogFooter>
@@ -775,23 +914,23 @@ const IntermitentesRecebidos = () => {
                             </Select>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
-                                <Label className="text-xs font-semibold">Horas Trabalhadas</Label>
-                                <Input
-                                    value={editHoras}
-                                    onChange={(e) => setEditHoras(e.target.value)}
-                                    placeholder="Ex: 8,50"
-                                    className="h-9 bg-background border-border text-xs"
-                                />
+                            <div className="space-y-1.5 p-2.5 rounded-lg bg-muted/40 border border-border">
+                                <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">Horas da Convocação</Label>
+                                <span className="text-sm font-mono font-bold text-foreground block">
+                                    {decimalParaHora(Number(editingItem?.horas_trabalhadas || 0))}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground font-mono block">
+                                    {decimalParaHora(Number(editingItem?.horas_normais || 0))} norm · {decimalParaHora(Number(editingItem?.he_50 || 0))} HE50
+                                </span>
                             </div>
-                            <div className="space-y-1.5">
-                                <Label className="text-xs font-semibold">Valor Total (R$)</Label>
-                                <Input
-                                    value={editTotal}
-                                    onChange={(e) => setEditTotal(e.target.value)}
-                                    placeholder="Ex: 120,00"
-                                    className="h-9 bg-background border-border text-xs"
-                                />
+                            <div className="space-y-1.5 p-2.5 rounded-lg bg-muted/40 border border-border">
+                                <Label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">Total Convocação (R$)</Label>
+                                <span className="text-sm font-mono font-bold text-emerald-600 dark:text-emerald-400 block">
+                                    {formatCurrency(Number(editingItem?.total || 0))}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground block">
+                                    Apuração oficial Tio Digital
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -835,6 +974,96 @@ const IntermitentesRecebidos = () => {
                                 Salvar Correção
                             </Button>
                         </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ─── MODAL DE CONFIRMAÇÃO DE FECHAMENTO (FIX-INT-03) ────────────────── */}
+            <Dialog
+                open={showFecharConfirmDialog}
+                onOpenChange={(v) => {
+                    if (!fecharPeriodoMutation.isPending && !isClosingLock) {
+                        setShowFecharConfirmDialog(v);
+                    }
+                }}
+            >
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-foreground font-semibold">
+                            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                            Confirmar Fechamento de Período
+                        </DialogTitle>
+                        <DialogDescription>
+                            Revise os dados antes de consolidar o lote para a Validação do RH.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-3.5 py-2">
+                        <div className="rounded-lg border border-border/70 bg-muted/40 p-3 space-y-2 text-xs">
+                            <div className="flex justify-between items-center py-1 border-b border-border/40">
+                                <span className="text-muted-foreground">Empresa:</span>
+                                <strong className="text-foreground font-semibold">
+                                    {selectedEmpresaObj?.nome || "Empresa Selecionada"}
+                                </strong>
+                            </div>
+                            <div className="flex justify-between items-center py-1 border-b border-border/40">
+                                <span className="text-muted-foreground">Competência / Período:</span>
+                                <strong className="text-foreground font-mono">
+                                    {filterMonth}/{filterYear}
+                                </strong>
+                            </div>
+                            <div className="flex justify-between items-center py-1 border-b border-border/40">
+                                <span className="text-muted-foreground">Lançamentos em Aberto:</span>
+                                <strong className="text-foreground font-mono">
+                                    {pendentesEmpresaAbertos.length} apontamentos
+                                </strong>
+                            </div>
+                            <div className="flex justify-between items-center py-1">
+                                <span className="text-muted-foreground">Valor Total Apurado:</span>
+                                <strong className="text-emerald-600 dark:text-emerald-400 font-mono text-sm">
+                                    {formatCurrency(valorTotalPendentesFechamento)}
+                                </strong>
+                            </div>
+                        </div>
+
+                        <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
+                            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                            <div className="space-y-1">
+                                <strong className="font-semibold block">Aviso de Impacto Operacional:</strong>
+                                <p className="leading-relaxed">
+                                    Esta ação consolidará todos os lançamentos abertos da empresa selecionada neste período em um novo lote e alterará seu status para <strong>Aguardando Validação do RH</strong>. Os registros não poderão ser editados diretamente na fila operacional até uma devolução ou cancelamento.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="flex items-center justify-end gap-2 pt-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={fecharPeriodoMutation.isPending || isClosingLock}
+                            onClick={() => setShowFecharConfirmDialog(false)}
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            size="sm"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                            disabled={fecharPeriodoMutation.isPending || isClosingLock || pendentesEmpresaAbertos.length === 0}
+                            onClick={handleExecuteFechamento}
+                        >
+                            {fecharPeriodoMutation.isPending || isClosingLock ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                                    Fechando Período...
+                                </>
+                            ) : (
+                                <>
+                                    <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                                    Confirmar Fechamento
+                                </>
+                            )}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

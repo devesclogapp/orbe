@@ -21,16 +21,20 @@ import {
   FilterX,
   RefreshCw,
   RotateCcw,
+  Pencil,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { OrbeStatusBadge } from "@/components/ux-lab/design-system/OrbeStatusBadge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -81,39 +85,16 @@ export const getRhStatusBadge = (status: string) => {
     case "FECHADO_FINANCEIRO":
     case "CNAB_GERADO":
     case "PAGO":
-      return (
-        <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-xs font-semibold gap-1">
-          <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-          Aprovado RH
-        </Badge>
-      );
+      return <OrbeStatusBadge status="success" label="Aprovado RH" />;
     case "AGUARDANDO_VALIDACAO_RH":
     case "EM_ANALISE_RH":
-      return (
-        <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 text-xs font-semibold gap-1">
-          <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-          Em análise RH
-        </Badge>
-      );
+      return <OrbeStatusBadge status="warning" label="Em análise RH" />;
     case "DEVOLVIDO":
-      return (
-        <Badge className="bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20 text-xs font-semibold gap-1">
-          <AlertTriangle className="w-3 h-3 text-rose-600 dark:text-rose-400" />
-          Devolvido RH
-        </Badge>
-      );
+      return <OrbeStatusBadge status="danger" label="Devolvido RH" />;
     case "CANCELADO":
-      return (
-        <Badge className="bg-muted text-muted-foreground border-border text-xs font-semibold">
-          Cancelado
-        </Badge>
-      );
+      return <OrbeStatusBadge status="neutral" label="Cancelado" />;
     default:
-      return (
-        <Badge variant="outline" className="text-xs">
-          {status}
-        </Badge>
-      );
+      return <OrbeStatusBadge status="neutral" label={status || "Sem Status"} showDot={false} />;
   }
 };
 
@@ -122,140 +103,69 @@ export const getFinanceiroStatusBadge = (statusFin?: string, statusLote?: string
   switch (s) {
     case "AGUARDANDO_FINANCEIRO":
     case "VALIDADO_RH":
-      return (
-        <Badge className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20 text-xs font-semibold gap-1">
-          <Clock className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-          Aguardando Financeiro
-        </Badge>
-      );
+      return <OrbeStatusBadge status="info" label="Aguardando Financeiro" />;
     case "AGUARDANDO_PAGAMENTO":
     case "FECHADO_FINANCEIRO":
-      return (
-        <Badge className="bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20 text-xs font-semibold gap-1">
-          <CheckCircle2 className="w-3 h-3 text-purple-600 dark:text-purple-400" />
-          Aprovado Financeiro
-        </Badge>
-      );
+      return <OrbeStatusBadge status="info" label="Aprovado Financeiro" />;
     case "CNAB_GERADO":
-      return (
-        <Badge className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/20 text-xs font-semibold gap-1">
-          <Banknote className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
-          Remessa Gerada
-        </Badge>
-      );
+      return <OrbeStatusBadge status="info" label="Remessa Gerada" />;
     case "PAGO":
     case "FINALIZADO":
-      return (
-        <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20 text-xs font-semibold gap-1">
-          <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-          Pago / Conciliado
-        </Badge>
-      );
+      return <OrbeStatusBadge status="success" label="Pago / Conciliado" />;
     case "PENDENTE_RH":
     case "AGUARDANDO_VALIDACAO_RH":
-      return (
-        <Badge className="bg-muted text-muted-foreground border-border text-xs font-medium">
-          Pendente RH
-        </Badge>
-      );
+      return <OrbeStatusBadge status="neutral" label="Pendente RH" />;
     case "DEVOLVIDO_RH":
-      return (
-        <Badge className="bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20 text-xs font-semibold">
-          Devolvido
-        </Badge>
-      );
+      return <OrbeStatusBadge status="danger" label="Devolvido" />;
     case "CANCELADO":
-      return (
-        <Badge className="bg-muted text-muted-foreground border-border text-xs font-semibold">
-          Cancelado
-        </Badge>
-      );
+      return <OrbeStatusBadge status="neutral" label="Cancelado" />;
     default:
-      return (
-        <Badge variant="outline" className="text-xs">
-          {s || "Aguardando"}
-        </Badge>
-      );
+      return <OrbeStatusBadge status="neutral" label={s || "Aguardando"} showDot={false} />;
   }
 };
 
 export const getSituacaoBadge = (status: string) => {
   if (status === "PAGO") {
-    return <Badge className="bg-emerald-600 text-white font-bold text-[11px]">Pago</Badge>;
+    return <OrbeStatusBadge status="success" label="Pago" />;
   }
   if (["VALIDADO_RH", "FECHADO_FINANCEIRO", "CNAB_GERADO"].includes(status)) {
-    return <Badge className="bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 font-semibold text-[11px]">Aprovado</Badge>;
+    return <OrbeStatusBadge status="success" label="Aprovado" />;
   }
   if (["AGUARDANDO_VALIDACAO_RH", "EM_ANALISE_RH"].includes(status)) {
-    return <Badge className="bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/30 font-semibold text-[11px]">Em análise</Badge>;
+    return <OrbeStatusBadge status="warning" label="Em análise" />;
   }
-  if (["DEVOLVIDO", "CANCELADO"].includes(status)) {
-    return <Badge className="bg-rose-500/15 text-rose-800 dark:text-rose-300 border-rose-500/30 font-semibold text-[11px]">Devolvido</Badge>;
+  if (["DEVOLVIDO", "DEVOLVIDO_RH"].includes(status)) {
+    return <OrbeStatusBadge status="danger" label="Devolvido" />;
   }
-  return <Badge variant="outline" className="text-[11px]">{status}</Badge>;
+  if (status === "CANCELADO") {
+    return <OrbeStatusBadge status="neutral" label="Cancelado" />;
+  }
+  return <OrbeStatusBadge status="neutral" label={status || "—"} showDot={false} />;
 };
 
 export const getLoteDrawerBadge = (status?: string) => {
   const s = String(status || "").toUpperCase();
   switch (s) {
     case "PAGO":
-      return (
-        <Badge className="bg-emerald-600 text-white font-bold text-xs gap-1 shadow-xs">
-          <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-          Pago
-        </Badge>
-      );
+      return <OrbeStatusBadge status="success" label="Pago" />;
     case "CNAB_GERADO":
-      return (
-        <Badge className="bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/30 text-xs font-semibold gap-1">
-          <Banknote className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-          Remessa Gerada
-        </Badge>
-      );
+      return <OrbeStatusBadge status="info" label="Remessa Gerada" />;
     case "FECHADO_FINANCEIRO":
     case "AGUARDANDO_PAGAMENTO":
-      return (
-        <Badge className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30 text-xs font-semibold gap-1">
-          <CheckCircle2 className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-          Aprovado Financeiro
-        </Badge>
-      );
+      return <OrbeStatusBadge status="info" label="Aprovado Financeiro" />;
     case "VALIDADO_RH":
     case "APROVADO_RH":
-      return (
-        <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-xs font-semibold gap-1">
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-          Aprovado RH
-        </Badge>
-      );
+      return <OrbeStatusBadge status="success" label="Aprovado RH" />;
     case "AGUARDANDO_VALIDACAO_RH":
     case "EM_ANALISE_RH":
-      return (
-        <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 text-xs font-semibold gap-1">
-          <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-          Em análise RH
-        </Badge>
-      );
+      return <OrbeStatusBadge status="warning" label="Em análise RH" />;
     case "DEVOLVIDO":
     case "DEVOLVIDO_RH":
-      return (
-        <Badge className="bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30 text-xs font-semibold gap-1">
-          <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-          Devolvido RH
-        </Badge>
-      );
+      return <OrbeStatusBadge status="danger" label="Devolvido RH" />;
     case "CANCELADO":
-      return (
-        <Badge className="bg-muted text-muted-foreground border-border text-xs font-semibold">
-          Cancelado
-        </Badge>
-      );
+      return <OrbeStatusBadge status="neutral" label="Cancelado" />;
     default:
-      return (
-        <Badge variant="outline" className="text-xs">
-          {status || "—"}
-        </Badge>
-      );
+      return <OrbeStatusBadge status="neutral" label={status || "—"} showDot={false} />;
   }
 };
 
@@ -464,10 +374,22 @@ export const getIntermitentesTimelineSteps = (status?: string, loteDetalhe?: any
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+function useSafeTenantRole(user: any) {
+  try {
+    const { role, isAdmin } = useTenant();
+    return { role, isAdmin, isRhOrAdmin: isAdmin || role === "rh" || role === "admin" };
+  } catch {
+    const userRole = (user as any)?.role || "rh";
+    const isAdmin = userRole === "admin";
+    return { role: userRole, isAdmin, isRhOrAdmin: true };
+  }
+}
+
 export default function IntermitentesLotes() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { role, isAdmin, isRhOrAdmin } = useSafeTenantRole(user);
   const queryClient = useQueryClient();
 
   // Filtros
@@ -480,6 +402,15 @@ export default function IntermitentesLotes() {
   // Drawers & Modals state
   const [selectedLoteId, setSelectedLoteId] = useState<string | null>(null);
   const [openConfirmarAprovacaoFinanceira, setOpenConfirmarAprovacaoFinanceira] = useState(false);
+
+  // Estados de Retificação Exclusiva do RH (Governança e OCC)
+  const [itemParaRetificar, setItemParaRetificar] = useState<any | null>(null);
+  const [retificarEmpresaId, setRetificarEmpresaId] = useState<string>("");
+  const [retificarJustificativa, setRetificarJustificativa] = useState<string>("");
+
+  // Estados de Revalidação de Lote Devolvido pelo RH
+  const [openRevalidarLoteModal, setOpenRevalidarLoteModal] = useState(false);
+  const [revalidarJustificativa, setRevalidarJustificativa] = useState<string>("");
 
   // Auto-selecionar lote vindo de navigation state
   useEffect(() => {
@@ -525,6 +456,19 @@ export default function IntermitentesLotes() {
     enabled: !!selectedLoteId,
   });
 
+  // FIX-INT-01: Query do resumo analítico persistido do lote
+  const {
+    data: loteResumo,
+    isLoading: isLoadingResumo,
+  } = useQuery({
+    queryKey: ["intermitente-lote-resumo", selectedLoteId],
+    queryFn: async () => {
+      if (!selectedLoteId) return null;
+      return await IntermitentesLoteService.getResumoLoteIntermitente(selectedLoteId);
+    },
+    enabled: !!selectedLoteId,
+  });
+
   // Mutation: Aprovação Financeira Canônica
   const aprovarFinanceiroMutation = useMutation({
     mutationFn: async () => {
@@ -544,6 +488,65 @@ export default function IntermitentesLotes() {
     },
     onError: (err: any) => {
       toast.error(`Falha ao aprovar financeiramente: ${err.message}`);
+    },
+  });
+
+  // Mutation: Retificação Cadastral de Intermitente pelo RH
+  const retificarItemMutation = useMutation({
+    mutationFn: async () => {
+      if (!itemParaRetificar) throw new Error("Nenhum lançamento selecionado.");
+      if (!retificarEmpresaId || retificarEmpresaId === "all") {
+        throw new Error("Selecione a empresa de destino.");
+      }
+      if (!retificarJustificativa || retificarJustificativa.trim().length < 10) {
+        throw new Error("A justificativa formal do RH é obrigatória (mínimo 10 caracteres).");
+      }
+      return await IntermitentesLoteService.retificarLancamentoRH({
+        lancamentoId: itemParaRetificar.id,
+        novaEmpresaId: retificarEmpresaId,
+        justificativa: retificarJustificativa.trim(),
+        updatedAt: itemParaRetificar.updated_at,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Lançamento retificado com sucesso pelo RH.", {
+        description: "O vínculo empresarial e histórico de auditoria foram atualizados transacionalmente.",
+      });
+      setItemParaRetificar(null);
+      setRetificarJustificativa("");
+      queryClient.invalidateQueries({ queryKey: ["intermitente-lote-detalhe", selectedLoteId] });
+      queryClient.invalidateQueries({ queryKey: ["intermitente-lote-resumo", selectedLoteId] });
+      queryClient.invalidateQueries({ queryKey: ["intermitentes-lotes"] });
+    },
+    onError: (err: any) => {
+      toast.error(`Falha ao retificar lançamento: ${err.message}`);
+    },
+  });
+
+  // Mutation: Revalidação de Lote Devolvido pelo RH
+  const revalidarLoteMutation = useMutation({
+    mutationFn: async () => {
+      if (!loteDetalhe?.id) throw new Error("Nenhum lote selecionado.");
+      if (!revalidarJustificativa || revalidarJustificativa.trim().length < 10) {
+        throw new Error("A justificativa de revalidação pelo RH é obrigatória (mínimo 10 caracteres).");
+      }
+      return await IntermitentesLoteService.revalidarLoteDevolvidoRH({
+        loteId: loteDetalhe.id,
+        justificativa: revalidarJustificativa.trim(),
+      });
+    },
+    onSuccess: () => {
+      toast.success("Lote revalidado com sucesso pelo RH!", {
+        description: "O lote retornou para a fila de Validação do RH (AGUARDANDO_VALIDACAO_RH).",
+      });
+      setOpenRevalidarLoteModal(false);
+      setRevalidarJustificativa("");
+      queryClient.invalidateQueries({ queryKey: ["intermitente-lote-detalhe", selectedLoteId] });
+      queryClient.invalidateQueries({ queryKey: ["intermitente-lote-resumo", selectedLoteId] });
+      queryClient.invalidateQueries({ queryKey: ["intermitentes-lotes"] });
+    },
+    onError: (err: any) => {
+      toast.error(`Falha ao revalidar lote: ${err.message}`);
     },
   });
 
@@ -1357,19 +1360,34 @@ export default function IntermitentesLotes() {
               )}
 
               {["DEVOLVIDO", "DEVOLVIDO_RH"].includes(loteDetalhe.status) && (
-                <div className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-start gap-3 text-xs leading-relaxed">
-                  <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold text-foreground">Lote Devolvido pelo RH</p>
+                <div className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-start justify-between gap-3 text-xs leading-relaxed">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-foreground">Lote Devolvido pelo RH</p>
+                      </div>
+                      <p className="text-muted-foreground text-[11px]">
+                        <strong>Diagnóstico:</strong> O RH identificou inconsistências e devolveu o lote para saneamento.<br />
+                        <strong>Impacto:</strong> O lote permanece retido até retificação e revalidação exclusiva do RH.<br />
+                        <strong>Próxima Ação:</strong> Corrija os apontamentos necessários na lista abaixo e clique em Revalidar Lote no RH.<br />
+                        <strong>Destino:</strong> Validação do RH (AGUARDANDO_VALIDACAO_RH).
+                      </p>
                     </div>
-                    <p className="text-muted-foreground text-[11px]">
-                      <strong>Diagnóstico:</strong> O RH identificou inconsistências nas jornadas ou valores e devolveu o lote.<br />
-                      <strong>Impacto:</strong> O lote não pode avançar para o Financeiro até o reprocessamento.<br />
-                      <strong>Próxima Ação:</strong> Reabrir lote em Recebidos ou ajustar apontamentos apontados.<br />
-                      <strong>Destino:</strong> Intermitentes Recebidos.
-                    </p>
                   </div>
+                  {isRhOrAdmin && (
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold gap-1.5 shrink-0 shadow-xs"
+                      onClick={() => {
+                        setRevalidarJustificativa("");
+                        setOpenRevalidarLoteModal(true);
+                      }}
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Revalidar Lote no RH</span>
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -1437,6 +1455,77 @@ export default function IntermitentesLotes() {
                 </div>
               </div>
 
+              {/* FIX-INT-01: Painel de Resumo Analítico Persistido (Integridade e Auditoria) */}
+              {loteResumo && (
+                <div className="p-4 bg-card border border-border rounded-xl space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className={cn(
+                        "w-4 h-4",
+                        loteResumo.lotePayloadMatches && loteResumo.loteValorMatches
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-amber-600 dark:text-amber-400"
+                      )} />
+                      <span className="text-xs font-bold text-foreground">
+                        Resumo Analítico Persistido (Integridade dos Totais)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline" className={cn(
+                        "text-[10px] font-mono",
+                        loteResumo.lotePayloadMatches && loteResumo.loteValorMatches
+                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                          : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                      )}>
+                        {loteResumo.lotePayloadMatches && loteResumo.loteValorMatches
+                          ? "Totais Consistentes"
+                          : "Divergência na Âncora"}
+                      </Badge>
+                      <Badge variant="outline" className={cn(
+                        "text-[10px] font-mono",
+                        loteResumo.auditoriaStatus === 'CONFIRMADA'
+                          ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                          : "bg-muted text-muted-foreground border-border"
+                      )}>
+                        {loteResumo.auditoriaStatus === 'CONFIRMADA'
+                          ? "Auditoria Confirmada"
+                          : "Auditoria Pendente"}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                    <div className="p-2 bg-muted/40 rounded border border-border/50">
+                      <span className="text-[10px] text-muted-foreground uppercase block font-sans">Colaboradores Únicos</span>
+                      <strong className="text-foreground font-mono text-xs">{loteResumo.quantidadeColaboradores}</strong>
+                    </div>
+                    <div className="p-2 bg-muted/40 rounded border border-border/50">
+                      <span className="text-[10px] text-muted-foreground uppercase block font-sans">Processados (RH/Fin)</span>
+                      <strong className="text-emerald-600 font-mono text-xs">{loteResumo.itensProcessados}</strong>
+                    </div>
+                    <div className="p-2 bg-muted/40 rounded border border-border/50">
+                      <span className="text-[10px] text-muted-foreground uppercase block font-sans">Devolvidos/Rejeitados</span>
+                      <strong className="text-rose-600 font-mono text-xs">{loteResumo.itensDevolvidos}</strong>
+                    </div>
+                    <div className="p-2 bg-muted/40 rounded border border-border/50">
+                      <span className="text-[10px] text-muted-foreground uppercase block font-sans">Pendentes em Aberto</span>
+                      <strong className="text-amber-600 font-mono text-xs">{loteResumo.itensPendentes}</strong>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/40 font-mono">
+                    <span>
+                      Total Calculado: <strong className="text-foreground font-sans">{formatCurrency(loteResumo.valorTotal)}</strong>
+                      {" "}({decimalParaHora(loteResumo.totalHoras)} h)
+                    </span>
+                    <span>
+                      Âncora do Lote: <strong className="text-foreground font-sans">{formatCurrency(loteResumo.valorTotalLote)}</strong>
+                      {" "}({loteResumo.quantidadeRegistrosLote} reg.)
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Composição Individual dos Colaboradores */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between border-b border-border pb-2">
@@ -1495,9 +1584,26 @@ export default function IntermitentesLotes() {
                           <span>
                             Jornada: {decimalParaHora(item.horas_trabalhadas || 0)} trab ({decimalParaHora(item.horas_normais || 0)} norm{Number(item.he_50 || 0) > 0 ? ` · ${decimalParaHora(item.he_50)} HE50` : ""})
                           </span>
-                          <Badge variant="outline" className="text-[10px] font-medium py-0">
-                            {item.status_pipeline}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-[10px] font-medium py-0">
+                              {item.status_pipeline}
+                            </Badge>
+                            {isRhOrAdmin && ["AGUARDANDO_VALIDACAO_RH", "DEVOLVIDO", "DEVOLVIDO_RH"].includes(loteDetalhe.status) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-6 px-2 text-[11px] font-semibold text-primary border-primary/30 hover:bg-primary/10 gap-1"
+                                onClick={() => {
+                                  setItemParaRetificar(item);
+                                  setRetificarEmpresaId(item.empresa_id || loteDetalhe.empresa_id || "");
+                                  setRetificarJustificativa("");
+                                }}
+                              >
+                                <Pencil className="h-3 w-3" />
+                                Retificar (RH)
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1602,6 +1708,247 @@ export default function IntermitentesLotes() {
                   <>
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>Confirmar Aprovação Financeira</span>
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── MODAL: RETIFICAÇÃO CADASTRAL PELO RH (GOVERNANÇA & OCC) ── */}
+        <Dialog open={!!itemParaRetificar} onOpenChange={(open) => !open && setItemParaRetificar(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-foreground font-display">
+                <Building2 className="w-5 h-5 text-primary" />
+                Retificar Lançamento de Intermitente (RH)
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Correção de vínculo cadastral e alocação empresarial com OCC e trilha de auditoria transacional.
+              </DialogDescription>
+            </DialogHeader>
+
+            {itemParaRetificar && (
+              <div className="space-y-4 py-2 text-xs">
+                {/* Resumo do Colaborador */}
+                <div className="p-3.5 bg-muted/40 border border-border rounded-lg space-y-2">
+                  <div className="flex justify-between items-center border-b border-border/50 pb-1.5">
+                    <span className="text-muted-foreground">Colaborador:</span>
+                    <strong className="text-foreground">{itemParaRetificar.nome_colaborador || "—"}</strong>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-border/50 pb-1.5">
+                    <span className="text-muted-foreground">Cargo / Convocação:</span>
+                    <span className="text-foreground font-mono">
+                      {itemParaRetificar.cargo || "Auxiliar"} · {itemParaRetificar.convocacao || "Sem Convocação"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-border/50 pb-1.5">
+                    <span className="text-muted-foreground">Data de Referência:</span>
+                    <span className="text-foreground font-mono">
+                      {itemParaRetificar.data_referencia
+                        ? format(new Date(itemParaRetificar.data_referencia.includes("T") ? itemParaRetificar.data_referencia : itemParaRetificar.data_referencia + "T12:00:00"), "dd/MM/yyyy")
+                        : "—"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div className="p-2 bg-background/60 rounded border border-border/50">
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider block">Horas da Convocação</span>
+                      <strong className="text-foreground font-mono text-xs block mt-0.5">
+                        {decimalParaHora(Number(itemParaRetificar.horas_trabalhadas || 0))}
+                      </strong>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {decimalParaHora(Number(itemParaRetificar.horas_normais || 0))} norm · {decimalParaHora(Number(itemParaRetificar.he_50 || 0))} HE50
+                      </span>
+                    </div>
+                    <div className="p-2 bg-background/60 rounded border border-border/50">
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider block">Total Apurado (R$)</span>
+                      <strong className="text-emerald-600 dark:text-emerald-400 font-mono text-xs block mt-0.5">
+                        {formatCurrency(Number(itemParaRetificar.total || itemParaRetificar.valor_calculado || 0))}
+                      </strong>
+                      <span className="text-[10px] text-muted-foreground">
+                        Apuração Tio Digital
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Banner de Imutabilidade Financeira */}
+                <div className="p-2.5 rounded-lg border border-blue-500/20 bg-blue-500/10 text-blue-800 dark:text-blue-300 text-[11px] flex items-start gap-2">
+                  <ShieldCheck className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400 mt-0.5" />
+                  <p className="leading-relaxed">
+                    <strong>Imutabilidade Remuneratória (Art. 452-A CLT):</strong> Valores e horas apurados pelo Tio Digital são preservados integralmente. A retificação restringe-se à correção da Empresa / Operação de destino.
+                  </p>
+                </div>
+
+                {/* Seleção de Empresa */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-foreground">
+                    Nova Empresa / Operação de Destino *
+                  </Label>
+                  <Select value={retificarEmpresaId} onValueChange={setRetificarEmpresaId}>
+                    <SelectTrigger className="h-9 bg-background border-border text-xs">
+                      <SelectValue placeholder="Selecione a empresa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(empresas as any[]).map((emp) => (
+                        <SelectItem key={emp.id} value={emp.id} className="text-xs">
+                          {emp.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Justificativa Obrigatória */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-foreground flex justify-between">
+                    <span>Justificativa Formal do RH *</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">
+                      Mínimo 10 caracteres ({retificarJustificativa.trim().length}/10)
+                    </span>
+                  </Label>
+                  <Textarea
+                    value={retificarJustificativa}
+                    onChange={(e) => setRetificarJustificativa(e.target.value)}
+                    placeholder="Informe o motivo formal da correção de empresa pelo RH para registro de auditoria..."
+                    rows={3}
+                    className="text-xs bg-background border-border resize-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="gap-2 sm:gap-0 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={() => setItemParaRetificar(null)}
+                disabled={retificarItemMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold gap-1.5 shadow-xs"
+                onClick={() => retificarItemMutation.mutate()}
+                disabled={
+                  retificarItemMutation.isPending ||
+                  !retificarEmpresaId ||
+                  retificarEmpresaId === "all" ||
+                  retificarJustificativa.trim().length < 10
+                }
+              >
+                {retificarItemMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Confirmar Retificação RH</span>
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── MODAL: REVALIDAÇÃO DE LOTE DEVOLVIDO PELO RH ── */}
+        <Dialog open={openRevalidarLoteModal} onOpenChange={setOpenRevalidarLoteModal}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-foreground font-display">
+                <RefreshCw className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                Revalidar Lote no RH
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Retorno do lote saneado para a fila oficial de validação do RH (AGUARDANDO_VALIDACAO_RH).
+              </DialogDescription>
+            </DialogHeader>
+
+            {loteDetalhe && (
+              <div className="space-y-4 py-2 text-xs">
+                <div className="p-3.5 bg-muted/40 border border-border rounded-lg space-y-2">
+                  <div className="flex justify-between items-center border-b border-border/50 pb-1.5">
+                    <span className="text-muted-foreground">Lote:</span>
+                    <strong className="text-foreground font-mono">
+                      INT-{loteDetalhe.competencia}-{loteDetalhe.id.substring(0, 4)} ({loteDetalhe.id.substring(0, 6)})
+                    </strong>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-border/50 pb-1.5">
+                    <span className="text-muted-foreground">Empresa:</span>
+                    <strong className="text-foreground">{loteDetalhe.empresa?.nome || "Empresa"}</strong>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-border/50 pb-1.5">
+                    <span className="text-muted-foreground">Competência:</span>
+                    <span className="text-foreground font-mono">{loteDetalhe.competencia}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-border/50 pb-1.5">
+                    <span className="text-muted-foreground">Lançamentos Vinculados:</span>
+                    <span className="text-foreground font-mono font-semibold">
+                      {loteDetalhe.itens?.length || loteDetalhe.quantidade_registros} registros
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center pt-0.5">
+                    <span className="text-muted-foreground">Valor Total do Lote:</span>
+                    <strong className="text-emerald-600 dark:text-emerald-400 font-mono text-sm">
+                      {formatCurrency(Number(loteDetalhe.valor_total || 0))}
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 text-[11px] flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
+                  <p className="leading-relaxed">
+                    <strong>Fluxo de Homologação:</strong> O lote retornará para <strong>Aguardando Validação do RH</strong>, permitindo que a equipe de RH revise a integridade dos dados e prossiga para a homologação financeira.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-foreground flex justify-between">
+                    <span>Justificativa de Revalidação pelo RH *</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">
+                      Mínimo 10 caracteres ({revalidarJustificativa.trim().length}/10)
+                    </span>
+                  </Label>
+                  <Textarea
+                    value={revalidarJustificativa}
+                    onChange={(e) => setRevalidarJustificativa(e.target.value)}
+                    placeholder="Descreva o saneamento realizado pelo RH para liberar a revalidação do lote..."
+                    rows={3}
+                    className="text-xs bg-background border-border resize-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="gap-2 sm:gap-0 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={() => setOpenRevalidarLoteModal(false)}
+                disabled={revalidarLoteMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold gap-1.5 shadow-xs"
+                onClick={() => revalidarLoteMutation.mutate()}
+                disabled={revalidarLoteMutation.isPending || revalidarJustificativa.trim().length < 10}
+              >
+                {revalidarLoteMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Revalidando...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Confirmar Revalidação RH</span>
                   </>
                 )}
               </Button>

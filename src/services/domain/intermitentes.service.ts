@@ -50,6 +50,8 @@ export interface IntermitenteLoteFechamento {
   created_at: string;
   updated_at: string;
   empresa?: { nome: string } | null;
+  auditoriaConfirmada?: boolean;
+  auditoriaAviso?: string;
 }
 
 export interface PendenciaCompletudeLoteItem {
@@ -200,7 +202,67 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
 
       if (updateError) throw updateError;
       
-      lotesGerados.push(lote as IntermitenteLoteFechamento);
+      // Registrar evento de auditoria institucional (INTERMITENTE_LOTE / FECHAR_PERIODO)
+      let auditoriaConfirmada = false;
+      let auditoriaAviso: string | undefined;
+
+      try {
+        const { AuditoriaService } = await import('../v4.service');
+        const auditResult = await AuditoriaService.log(
+          'FECHAR_PERIODO',
+          'intermitentes',
+          'medio',
+          {
+            acao_legada: 'INTERMITENTE_LOTE',
+            lote_id: lote.id,
+            empresa_id: empresaId,
+            competencia,
+            periodo_inicio: params.periodoInicio,
+            periodo_fim: params.periodoFim,
+            quantidade_registros,
+            valor_total,
+            fechado_por: params.fechadoPor,
+            tenant_id: tenantId,
+          }
+        );
+        // Comprova se houve retorno de objeto persistido com ID
+        if (auditResult && (auditResult as any).id) {
+          auditoriaConfirmada = true;
+        } else {
+          auditoriaAviso = 'Log de auditoria registrado sem retorno de confirmação de ID.';
+        }
+      } catch (auditErr: any) {
+        console.warn('[IntermitentesLoteService] Falha ao registrar auditoria central:', auditErr?.message || auditErr);
+        auditoriaAviso = `Falha na gravação de auditoria central: ${auditErr?.message || 'erro não especificado'}`;
+        
+        // Tenta fallback com supabase.rpc('log_audit') se existir
+        try {
+          const rpcRes = await this.supabase.rpc('log_audit', {
+            p_action: 'FECHAR_PERIODO',
+            p_details: JSON.stringify({
+              modulo: 'intermitentes',
+              lote_id: lote.id,
+              empresa_id: empresaId,
+              competencia,
+              quantidade_registros,
+              valor_total,
+              fechado_por: params.fechadoPor,
+            })
+          });
+          if (rpcRes && !rpcRes.error) {
+            auditoriaConfirmada = true;
+            auditoriaAviso = undefined;
+          }
+        } catch {
+          // Fallback não bloqueia mas mantém o aviso de rastreabilidade
+        }
+      }
+
+      lotesGerados.push({
+        ...lote,
+        auditoriaConfirmada,
+        auditoriaAviso,
+      } as IntermitenteLoteFechamento);
     }
 
     return lotesGerados;
@@ -396,25 +458,62 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
 
     // Calcular montantes exatos dos itens agrupados para validar auditorialmente 
     // se os inserts correspondem perfeitamente à âncora do Lote pai.
-    const uniqueColabs = new Set(data.itens.map(i => i.colaborador_id || i.nome_colaborador));
-    const realTotalHoras = data.itens.reduce((acc, curr) => acc + Number(curr.horas_trabalhadas || 0), 0);
-    const realTotalValor = data.itens.reduce((acc, curr) => acc + Number(curr.total || 0), 0);
-    const itensOrfaosOuVazados = data.itens.filter(i => i.status_pipeline !== 'EM_ANALISE_RH' && i.status_pipeline !== 'RECEBIDO').length;
+    const uniqueColabs = new Set(data.itens.map((i: any) => i.colaborador_id || i.nome_colaborador));
+    const realTotalHoras = data.itens.reduce((acc: number, curr: any) => acc + Number(curr.horas_trabalhadas || 0), 0);
+    const realTotalValor = data.itens.reduce((acc: number, curr: any) => acc + Number(curr.total || 0), 0);
+    
+    // Contagem de status suportados pelo domínio
+    const itensProcessados = data.itens.filter((i: any) => 
+      ['EM_ANALISE_RH', 'APROVADO_RH', 'ENVIADO_FINANCEIRO', 'PAGO'].includes(i.status_pipeline)
+    ).length;
+    const itensPendentes = data.itens.filter((i: any) => i.status_pipeline === 'RECEBIDO').length;
+    const itensDevolvidos = data.itens.filter((i: any) => i.status_pipeline === 'DEVOLVIDO' || i.status_pipeline === 'REJEITADO_RH').length;
+    const itensBloqueados = data.itens.filter((i: any) => !i.colaborador_id || !i.empresa_id).length;
+    const itensOrfaosOuVazados = data.itens.filter((i: any) => i.status_pipeline !== 'EM_ANALISE_RH' && i.status_pipeline !== 'RECEBIDO').length;
+
+    // Verificar se existe registro de auditoria formal persistido para este lote
+    let auditoriaStatus: 'CONFIRMADA' | 'PENDENTE_OU_INDETERMINADA' = 'PENDENTE_OU_INDETERMINADA';
+    try {
+      const { data: auditRows } = await this.supabase
+        .from('auditoria')
+        .select('id, acao, created_at')
+        .eq('acao', 'FECHAR_PERIODO')
+        .contains('detalhes', { lote_id: loteId })
+        .limit(1);
+
+      if (auditRows && auditRows.length > 0) {
+        auditoriaStatus = 'CONFIRMADA';
+      }
+    } catch {
+      // Se não for possível consultar ou a coluna não existir, mantém estado indeterminado
+      auditoriaStatus = 'PENDENTE_OU_INDETERMINADA';
+    }
 
     return {
       loteId: data.id,
       status: data.status,
       tenantId: data.tenant_id,
+      empresaId: data.empresa_id,
+      empresaNome: data.empresa?.nome || null,
+      competencia: data.competencia,
       periodoInicio: data.periodo_inicio,
       periodoFim: data.periodo_fim,
       quantidadeRegistros: data.itens.length, // Lançamentos que desceram com o Lote de fechamento
+      quantidadeRegistrosLote: data.quantidade_registros, // Quantidade gravada na âncora
       quantidadeColaboradores: uniqueColabs.size,
       totalHoras: Number(realTotalHoras.toFixed(2)),
       valorTotal: Number(realTotalValor.toFixed(2)),
+      valorTotalLote: Number(Number(data.valor_total || 0).toFixed(2)),
+      itensProcessados,
+      itensPendentes,
+      itensDevolvidos,
+      itensBloqueados,
       criadoPor: data.created_by,
       criadoEm: data.created_at,
       lotePayloadMatches: data.itens.length === data.quantidade_registros,
-      loteInconsistencies: itensOrfaosOuVazados
+      loteValorMatches: Math.abs(realTotalValor - Number(data.valor_total || 0)) < 0.01,
+      loteInconsistencies: itensOrfaosOuVazados,
+      auditoriaStatus,
     };
   }
 
@@ -1135,30 +1234,61 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       valorTotal:     resultado.valor_total,
     };
   }
-  async atualizarLancamento(id: string, payload: Partial<{
+  async atualizarLancamento(id: string, payload: {
     empresa_id: string | null;
-    horas_trabalhadas: number;
-    horas_normais: number;
-    he_50: number;
-    he_100: number;
-    hora_noturna: number;
-    total: number;
-    status_pipeline: string;
-  }>) {
+  }) {
     const { data: userAuth } = await this.supabase.auth.getUser();
     if (!userAuth?.user) throw new Error("Usuário não autenticado.");
-    
-    // Atualiza o registro principal
+
+    // Atualização cadastral preliminar estritamente para empresa_id
     const { error } = await this.supabase
       .from('lancamentos_intermitentes')
       .update({
-        ...payload,
+        empresa_id: payload.empresa_id,
         updated_at: new Date().toISOString()
       })
       .eq('id', id);
 
     if (error) throw error;
     return true;
+  }
+
+  async retificarLancamentoRH(params: {
+    lancamentoId: string;
+    novaEmpresaId: string;
+    novasHoras?: number | null;
+    justificativa: string;
+    updatedAt?: string;
+  }) {
+    const { data: userAuth } = await this.supabase.auth.getUser();
+    if (!userAuth?.user) throw new Error("Usuário não autenticado.");
+
+    const { data, error } = await (this.supabase.rpc as any)('rpc_rh_retificar_intermitente', {
+      p_lancamento_id: params.lancamentoId,
+      p_nova_empresa_id: params.novaEmpresaId,
+      p_novas_horas: params.novasHoras ?? null,
+      p_justificativa: params.justificativa,
+      p_updated_at: params.updatedAt || null,
+    });
+
+    if (error) throw error;
+    return data;
+  }
+
+  async revalidarLoteDevolvidoRH(params: {
+    loteId: string;
+    justificativa: string;
+  }) {
+    const { data: userAuth } = await this.supabase.auth.getUser();
+    if (!userAuth?.user) throw new Error("Usuário não autenticado.");
+
+    const { data, error } = await (this.supabase.rpc as any)('rpc_rh_revalidar_lote_devolvido', {
+      p_lote_id: params.loteId,
+      p_justificativa: params.justificativa,
+    });
+
+    if (error) throw error;
+    return data;
   }
 }
 
