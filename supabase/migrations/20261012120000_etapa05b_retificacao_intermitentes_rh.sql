@@ -259,6 +259,7 @@ DECLARE
     v_lote_atual RECORD;
     v_lote_id UUID;
     v_cnab_count INTEGER;
+    v_desvincular_lote BOOLEAN := false;
 BEGIN
     -- 1. IDENTIFICAÇÃO E AUTORIZAÇÃO EXCLUSIVA DE PERFIL (FAIL-CLOSED)
     v_user_id := auth.uid();
@@ -359,8 +360,15 @@ BEGIN
     -- Ativa flag transacional local para passar pelo trigger guardião
     PERFORM set_config('orbe.in_rpc_retificacao', 'true', true);
 
+    -- Determina com segurança se haverá desvinculação de lote (somente se houver lote vinculado e empresa diverge)
+    IF v_lote_id IS NOT NULL THEN
+        IF v_lote_atual.empresa_id <> p_nova_empresa_id THEN
+            v_desvincular_lote := true;
+        END IF;
+    END IF;
+
     -- 9. EXECUÇÃO TRANSACIONAL DA CORREÇÃO DE EMPRESA
-    IF v_lote_id IS NOT NULL AND v_lote_atual.empresa_id <> p_nova_empresa_id THEN
+    IF v_desvincular_lote THEN
         -- A. Desvincula do lote da Empresa A e realoca para Empresa B
         UPDATE public.lancamentos_intermitentes
         SET
@@ -418,8 +426,8 @@ BEGIN
             'empresa_id', p_nova_empresa_id,
             'horas_trabalhadas', v_lanc.horas_trabalhadas,
             'total', v_lanc.total,
-            'lote_fechamento_id', CASE WHEN v_lote_id IS NOT NULL AND v_lote_atual.empresa_id <> p_nova_empresa_id THEN NULL ELSE v_lanc.lote_fechamento_id END,
-            'status_pipeline', CASE WHEN v_lote_id IS NOT NULL AND v_lote_atual.empresa_id <> p_nova_empresa_id THEN 'RECEBIDO' ELSE v_lanc.status_pipeline END
+            'lote_fechamento_id', CASE WHEN v_desvincular_lote THEN NULL ELSE v_lanc.lote_fechamento_id END,
+            'status_pipeline', CASE WHEN v_desvincular_lote THEN 'RECEBIDO' ELSE v_lanc.status_pipeline END
         ),
         'RPC_RH_RETIFICAR_INTERMITENTE'
     );
@@ -430,7 +438,7 @@ BEGIN
         'empresa_id', p_nova_empresa_id,
         'total', v_lanc.total,
         'lote_anterior_id', v_lote_id,
-        'desvinculado_por_empresa_divergente', (v_lote_id IS NOT NULL AND v_lote_atual.empresa_id <> p_nova_empresa_id)
+        'desvinculado_por_empresa_divergente', v_desvincular_lote
     );
 END;
 $$;
