@@ -51,13 +51,21 @@ export class CNABBase {
       }
       valorEsperadoLote = Number(rhLot.valor_total || 0);
 
+      // Buscar classificação canônica da empresa do lote no banco
+      const { data: empLote } = await supabase
+        .from('empresas')
+        .select('id, is_teste')
+        .eq('id', rhLot.empresa_id)
+        .maybeSingle();
+      const loteIsTeste = empLote?.is_teste === true;
+
       // Banking data lives directly on colaboradores — no separate dados_bancarios table
       const { data: itensRh, error } = await supabase
         .from('rh_financeiro_lote_itens')
         .select(`
           id, valor_calculado,
           colaboradores (
-            id, nome, cpf,
+            id, nome, cpf, is_teste, empresa_id,
             banco_codigo, agencia, agencia_digito, conta, digito_conta, tipo_conta
           )
         `)
@@ -65,21 +73,36 @@ export class CNABBase {
         
       if (error) throw new Error(`Erro ao buscar itens do RH: ${error.message}`);
       
+      // Validação estrita de contaminação cruzada: nenhum colaborador de teste em lote real e vice-versa
+      for (const item of (itensRh || [])) {
+        const col = (item as any)?.colaboradores;
+        if (col && typeof col.is_teste === 'boolean' && col.is_teste !== loteIsTeste) {
+          throw new Error(`BLOQUEIO DE SEGURANÇA CNAB: Colaborador ${col.nome || col.id} (${col.is_teste ? 'HOMOLOGAÇÃO' : 'PRODUÇÃO'}) diverge da classificação da remessa (${loteIsTeste ? 'HOMOLOGAÇÃO' : 'PRODUÇÃO'}).`);
+        }
+      }
+
       faturas = (itensRh || []).map(item => ({
         id: item.id,
         valor: item.valor_calculado || 0,
         colaboradores: item.colaboradores
       }));
     } else {
-      const { data: lf } = await supabase.from('lotes_remessa').select('valor_total').eq('id', loteId).maybeSingle();
+      const { data: lf } = await supabase.from('lotes_remessa').select('valor_total, empresa_id').eq('id', loteId).maybeSingle();
       if(lf) valorEsperadoLote = Number(lf.valor_total || 0);
+
+      const targetEmpresaId = lf?.empresa_id || conta?.empresa_id;
+      let loteIsTeste = false;
+      if (targetEmpresaId) {
+        const { data: empDb } = await supabase.from('empresas').select('is_teste').eq('id', targetEmpresaId).maybeSingle();
+        loteIsTeste = empDb?.is_teste === true;
+      }
 
       let query = supabase
         .from('faturas')
         .select(`
           id, valor, competencia, empresa_id,
           colaboradores (
-            id, nome, cpf,
+            id, nome, cpf, is_teste, empresa_id,
             banco_codigo, agencia, agencia_digito, conta, digito_conta, tipo_conta
           )
         `)
@@ -97,6 +120,15 @@ export class CNABBase {
   
       const { data: faturasDb, error } = await query;
       if (error) throw new Error(`Erro ao buscar faturas do lote: ${error.message}`);
+
+      // Validação estrita de integridade para faturas
+      for (const fat of (faturasDb || [])) {
+        const col = (fat as any)?.colaboradores;
+        if (col && typeof col.is_teste === 'boolean' && col.is_teste !== loteIsTeste) {
+          throw new Error(`BLOQUEIO DE SEGURANÇA CNAB: Fatura ${fat.id} possui colaborador (${col.is_teste ? 'HOMOLOGAÇÃO' : 'PRODUÇÃO'}) com classificação divergente da remessa.`);
+        }
+      }
+
       faturas = faturasDb || [];
     }
   

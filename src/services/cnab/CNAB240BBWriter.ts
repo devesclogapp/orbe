@@ -227,10 +227,33 @@ export class CNAB240BBWriter implements ICNAB240Writer {
       inconsistencias.push(`Erro no Trailer Arquivo: ${(e as Error).message}`);
     }
 
-    const content = linhas.join('\r\n') + '\r\n';
+    let content: string;
+    let fileName: string;
     const padZero = (n: number) => n.toString().padStart(2, '0');
     const seqFormatado = String(sequencialGlobal).padStart(6, '0');
-    const fileName = `CNAB240_BB_${now.getFullYear()}${padZero(now.getMonth() + 1)}${padZero(now.getDate())}_SEQ${seqFormatado}.txt`;
+
+    // Se for HOMOLOGAÇÃO, NÃO disponibilizar arquivo posicional bancário para transmissão
+    if (modo === 'homologacao') {
+      fileName = `SIMULACAO_HOMOLOGACAO_BB_${now.getFullYear()}${padZero(now.getMonth() + 1)}${padZero(now.getDate())}_SEQ${seqFormatado}.txt`;
+      content = [
+        '================================================================================',
+        'ORBE ERP — RELATÓRIO DE SIMULAÇÃO DE REMESSA CNAB (AMBIENTE DE HOMOLOGAÇÃO)',
+        'ESTE ARQUIVO NÃO É UM ARQUIVO POSICIONAL FEBRABAN E NÃO PODE SER TRANSMITIDO AO BANCO',
+        '================================================================================',
+        `EMPRESA: ${conta.empresas?.nome || 'EMPRESA HOMOLOGACAO'}`,
+        `BANCO: BANCO DO BRASIL (001)`,
+        `DATA GERAÇÃO: ${now.toISOString()}`,
+        `SEQUENCIAL SIMULADO: ${seqFormatado}`,
+        `TOTAL DE REGISTROS SIMULADOS: ${totalTitulosValidos}`,
+        `VALOR TOTAL CALCULADO: R$ ${totalValorLote.toFixed(2)}`,
+        '--------------------------------------------------------------------------------',
+        'STATUS: SIMULAÇÃO CONCLUÍDA — ARQUIVO BANCÁRIO DE TRANSMISSÃO BLOQUEADO',
+        '================================================================================',
+      ].join('\r\n') + '\r\n';
+    } else {
+      content = linhas.join('\r\n') + '\r\n';
+      fileName = `CNAB240_BB_${now.getFullYear()}${padZero(now.getMonth() + 1)}${padZero(now.getDate())}_SEQ${seqFormatado}.txt`;
+    }
 
     const itensParaRpc = faturas.map(fura => {
       const rec = fura as any;
@@ -292,7 +315,14 @@ export class CNAB240BBWriter implements ICNAB240Writer {
 
   static async redownload(arquivoId: string): Promise<{ content: string; fileName: string } | null> {
     const arquivo = await CnabRemessaArquivoService.buscarPorId(arquivoId);
-    if (!arquivo || !arquivo.conteudo_arquivo) return null;
+    if (!arquivo) return null;
+
+    // Bloqueio de Segurança Bancária: Arquivos de homologação não podem ser baixados em formato bancário
+    if (arquivo.modo === 'homologacao') {
+      throw new Error('Bloqueio de Segurança Bancária: Remessas geradas no ambiente de Homologação não podem ser baixadas em formato bancário de transmissão.');
+    }
+
+    if (!arquivo.conteudo_arquivo) return null;
 
     await CnabRemessaArquivoService.marcarComoBaixado(arquivoId);
 

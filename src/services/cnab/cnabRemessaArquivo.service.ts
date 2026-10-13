@@ -454,6 +454,13 @@ export const CnabRemessaArquivoService = {
     const arquivo = await this.buscarPorId(arquivoId);
     if (!arquivo) throw new Error('Arquivo CNAB não encontrado');
 
+    // Bloqueio de Segurança Bancária: Arquivos de homologação não possuem download bancário habilitado
+    if (arquivo.modo === 'homologacao') {
+      throw new Error(
+        'Bloqueio de Segurança Bancária: Remessas geradas no ambiente de Homologação não podem ser baixadas em formato bancário de transmissão.'
+      );
+    }
+
     if (arquivo.status === 'gerado') {
       const { error } = await supabase
         .from('cnab_remessas_arquivos')
@@ -475,6 +482,12 @@ export const CnabRemessaArquivoService = {
   async marcarComoEnviadoManual(arquivoId: string, observacoes?: string): Promise<void> {
     const arquivo = await this.buscarPorId(arquivoId);
     if (!arquivo) throw new Error('Arquivo CNAB não encontrado');
+
+    // Bloqueio de Segurança: Remessas de homologação não podem ser transmitidas ou enviadas como operação bancária real
+    if (arquivo.modo === 'homologacao') {
+      throw new Error('Bloqueio de Segurança: Remessas geradas no ambiente de Homologação não podem ser transmitidas ou marcadas como enviadas ao banco real.');
+    }
+
     if (arquivo.status === 'enviado_manual') return;
 
     const { data: { user } } = await supabase.auth.getUser();
@@ -505,6 +518,12 @@ export const CnabRemessaArquivoService = {
   async marcarComoHomologado(arquivoId: string, observacoes?: string): Promise<void> {
     const arquivo = await this.buscarPorId(arquivoId);
     if (!arquivo) throw new Error('Arquivo CNAB não encontrado');
+
+    // Remessas legítimas de produção não transitam pelo status 'homologado'
+    if (arquivo.modo === 'producao') {
+      throw new Error('Operação inválida: Remessas do ambiente de Produção não utilizam status de homologação.');
+    }
+
     if (arquivo.status === 'homologado') return;
 
     const { data: { user } } = await supabase.auth.getUser();

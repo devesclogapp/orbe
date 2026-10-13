@@ -311,13 +311,32 @@ export class CNAB240ItauWriter implements ICNAB240Writer {
 
     linhas.push(garantir240(trailerArquivo, 'Trailer Arquivo'));
 
-    // Montar buffer final TXT
-    const content = linhas.join('\r\n') + '\r\n';
-    
-    // Nomenclatura isolada e aderente ao ITAU
+    let content: string;
+    let fileName: string;
     const seqFormatado = String(sequencialGlobal).padStart(6, '0');
-    // CNAB240_ITAU_YYYYMMDD_SEQ000001.txt
-    const fileName = `CNAB240_ITAU_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_SEQ${seqFormatado}.txt`;
+
+    // Se for HOMOLOGAÇÃO, NÃO disponibilizar arquivo posicional bancário para transmissão
+    if (modo === 'homologacao') {
+      fileName = `SIMULACAO_HOMOLOGACAO_ITAU_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_SEQ${seqFormatado}.txt`;
+      content = [
+        '================================================================================',
+        'ORBE ERP — RELATÓRIO DE SIMULAÇÃO DE REMESSA CNAB (AMBIENTE DE HOMOLOGAÇÃO)',
+        'ESTE ARQUIVO NÃO É UM ARQUIVO POSICIONAL FEBRABAN E NÃO PODE SER TRANSMITIDO AO BANCO',
+        '================================================================================',
+        `EMPRESA: ${conta.empresas?.nome || 'EMPRESA HOMOLOGACAO'}`,
+        `BANCO: BANCO ITAÚ (341)`,
+        `DATA GERAÇÃO: ${now.toISOString()}`,
+        `SEQUENCIAL SIMULADO: ${seqFormatado}`,
+        `TOTAL DE REGISTROS SIMULADOS: ${totalQtdRegistrosArquivo}`,
+        `VALOR TOTAL CALCULADO: R$ ${totalValorLote.toFixed(2)}`,
+        '--------------------------------------------------------------------------------',
+        'STATUS: SIMULAÇÃO CONCLUÍDA — ARQUIVO BANCÁRIO DE TRANSMISSÃO BLOQUEADO',
+        '================================================================================',
+      ].join('\r\n') + '\r\n';
+    } else {
+      content = linhas.join('\r\n') + '\r\n';
+      fileName = `CNAB240_ITAU_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_SEQ${seqFormatado}.txt`;
+    }
 
     let arquivoRegistrado: any;
 

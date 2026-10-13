@@ -62,38 +62,34 @@ export const MotorFinanceiro = {
       const nextYear = Number(month) === 12 ? Number(year) + 1 : Number(year);
       const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
 
-      const { data: operacoes, error: opError } = await supabase
+      let opQuery = supabase
         .from('operacoes_producao')
         .select(`
           id, valor_total, valor_faturamento_nf, quantidade, 
           tipo_calculo_snapshot, custo_com_iss, valor_descarga, 
           colaborador_id, transportadora_id, status_pagamento, empresa_id,
-          tenant_id, status, empresas!empresa_id ( is_teste ),
+          tenant_id, status, deleted_at, empresas!empresa_id ( is_teste ),
           production_entry_collaborators ( collaborator_id )
         `)
         .eq('empresa_id', empresaId)
-        .eq('tenant_id', tenantId)
+        .eq('tenant_id', tenantId);
+
+      if (typeof (opQuery as any).is === 'function') {
+        opQuery = (opQuery as any).is('deleted_at', null);
+      }
+
+      const { data: operacoes, error: opError } = await opQuery
         .gte('data_operacao', `${competencia}-01`)
         .lt('data_operacao', nextMonthStr);
 
-      if (opError) throw opError;
-
-      // Filtro rigoroso: Não faturar operações não autorizadas (bloqueadas no Hub RH ou Canceladas)
-      const invalidStatuses = ["RECEBIDO", "PENDENTE", "REPROVADO", "DEVOLVIDO", "DEVOLVIDO_RH", "CANCELADO", "EM_RESTRICAO", "AGUARDANDO_RH"];
-      const operacoesValidadas = (operacoes || []).filter((op: any) => {
-         const s = String(op.status || "pendente").toUpperCase();
-         return !invalidStatuses.includes(s);
-      });
-
-      EngineLogger.info(`[MotorFinanceiro] Operações válidas para fechamento: ${operacoesValidadas.length} / ${operacoes?.length || 0}`, { component: 'MotorFinanceiro' });
-
-      if (operacoesValidadas.length === 0) return { success: true, message: 'Nenhuma operação elegível para faturar.' };
-      const operacoesAtivas = operacoesValidadas;
+      if (!operacoes || operacoes.length === 0) {
+        return { success: true, message: 'Nenhuma operação encontrada para o período.' };
+      }
 
       // Validar isolamento e ambiente na Origem (Fonte de Verdade = Banco)
-      // Array de mapeamentos tenant + empresa + is_teste das operações (Amostragem Total)
+      // Amostragem Total de todas as operações carregadas para o fechamento
       const scopes = new Set(
-         operacoesAtivas.map((op: any) => `${op.tenant_id}:${op.empresa_id}:${op.empresas?.is_teste}`)
+         operacoes.map((op: any) => `${op.tenant_id}:${op.empresa_id}:${op.empresas?.is_teste}`)
       );
       
       if (scopes.size !== 1) {
@@ -113,6 +109,19 @@ export const MotorFinanceiro = {
       if (ambienteVisual === 'production' && opIsTeste) {
           throw new EnvironmentScopeResolutionError('Operação PROD detectou registros HML: Operações de HOMOLOGAÇÃO devem gerar faturamento restrito e jamais vazar dados.', undefined, 'ENVIRONMENT_MISMATCH');
       }
+
+      // Filtro rigoroso: Não faturar operações não autorizadas (bloqueadas no Hub RH ou Canceladas)
+      const invalidStatuses = ["RECEBIDO", "PENDENTE", "REPROVADO", "DEVOLVIDO", "DEVOLVIDO_RH", "CANCELADO", "EM_RESTRICAO", "AGUARDANDO_RH"];
+      const operacoesValidadas = operacoes.filter((op: any) => {
+         if (op.deleted_at) return false;
+         const s = String(op.status || "pendente").toUpperCase();
+         return !invalidStatuses.includes(s);
+      });
+
+      EngineLogger.info(`[MotorFinanceiro] Operações válidas para fechamento: ${operacoesValidadas.length} / ${operacoes.length}`, { component: 'MotorFinanceiro' });
+
+      if (operacoesValidadas.length === 0) return { success: true, message: 'Nenhuma operação elegível para faturar.' };
+      const operacoesAtivas = operacoesValidadas;
 
       // 3. Consolidar por Cliente (Transportadora/Cliente da Operação)
       // Como não existe 'cliente_id' explícito na tabela, usaremos "transportadora_id" se ele atuar como cliente. Se houvesse cliente, usaríamos cliente_id.
