@@ -6,6 +6,8 @@
 --   NÃO APLICAR DIRETAMENTE EM PRODUÇÃO SEM AUTORIZAÇÃO FORMAL.
 -- ==============================================================================
 
+BEGIN;
+
 -- ------------------------------------------------------------------------------
 -- 1. TRIGGER DE DEFESA ANTI-MISTURA: receitas_operacionais_itens
 -- ------------------------------------------------------------------------------
@@ -416,7 +418,7 @@ BEGIN
             motivo_exclusao = 'HOMOLOGAÇÃO ENCERRADA: ' || trim(p_justificativa),
             status = 'EM_RESTRICAO',
             status_rh = 'DEVOLVIDO_RH',
-            updated_at = v_now
+            atualizado_em = v_now
         WHERE empresa_id = p_empresa_id
           AND tenant_id = v_tenant_id
           AND deleted_at IS NULL
@@ -447,7 +449,7 @@ BEGIN
         SET pipeline_status = 'REPROVADO',
             status_pagamento = 'CANCELADO',
             deleted_at = v_now,
-            observacoes = coalesce(observacoes, '') || v_closure_note,
+            observacao = coalesce(observacao, '') || v_closure_note,
             atualizado_em = v_now
         WHERE empresa_id = p_empresa_id
           AND tenant_id = v_tenant_id
@@ -606,3 +608,5 @@ $$;
 
 REVOKE ALL ON FUNCTION public.rpc_encerrar_homologacao_empresa FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.rpc_encerrar_homologacao_empresa TO authenticated;
+
+COMMIT;
