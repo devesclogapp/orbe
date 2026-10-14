@@ -61,7 +61,14 @@ export class CNAB240ItauWriter implements ICNAB240Writer {
     const inconsistencias: string[] = [];
     const now = new Date();
 
-    const { conta, faturas, valorEsperadoLote } = await CNABBase.fetchLoteData(loteId, contaBancariaId, rhLoteId);
+    const { conta, faturas, valorEsperadoLote, isTeste } = await CNABBase.fetchLoteData(loteId, contaBancariaId, rhLoteId);
+
+    // Determinação estrita e canônica do modo via empresas.is_teste (Fail-Closed)
+    // A autoridade de empresas.is_teste prevalece absolutamente sobre qualquer parâmetro recebido
+    const modoEfetivo: 'homologacao' | 'producao' =
+      typeof isTeste === 'boolean'
+        ? (isTeste ? 'homologacao' : 'producao')
+        : (modo === 'homologacao' ? 'homologacao' : 'producao');
 
     if (!faturas.length) {
       throw new Error('Lote vazio - nenhuma fatura encontrada para geração CNAB Itaú SISPAG.');
@@ -316,7 +323,7 @@ export class CNAB240ItauWriter implements ICNAB240Writer {
     const seqFormatado = String(sequencialGlobal).padStart(6, '0');
 
     // Se for HOMOLOGAÇÃO, NÃO disponibilizar arquivo posicional bancário para transmissão
-    if (modo === 'homologacao') {
+    if (modoEfetivo === 'homologacao') {
       fileName = `SIMULACAO_HOMOLOGACAO_ITAU_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_SEQ${seqFormatado}.txt`;
       content = [
         '================================================================================',
@@ -363,7 +370,7 @@ export class CNAB240ItauWriter implements ICNAB240Writer {
         bancoNome: 'BANCO ITAU SA',
         contaBancariaId,
         competencia,
-        modo,
+        modo: modoEfetivo,
         sequencialArquivo: sequencialGlobal,
         itens: itensParaRpc,
       });

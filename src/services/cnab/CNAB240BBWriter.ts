@@ -39,7 +39,14 @@ export class CNAB240BBWriter implements ICNAB240Writer {
 
     const now = new Date();
     const inconsistencias: string[] = [];
-    const { conta, faturas, valorEsperadoLote } = await fetchLoteData(loteId, contaBancariaId, rhLoteId);
+    const { conta, faturas, valorEsperadoLote, isTeste } = await fetchLoteData(loteId, contaBancariaId, rhLoteId);
+
+    // Determinação estrita e canônica do modo via empresas.is_teste (Fail-Closed)
+    // A autoridade de empresas.is_teste prevalece absolutamente sobre qualquer parâmetro recebido
+    const modoEfetivo: 'homologacao' | 'producao' =
+      typeof isTeste === 'boolean'
+        ? (isTeste ? 'homologacao' : 'producao')
+        : (modo === 'homologacao' ? 'homologacao' : 'producao');
 
     if (!faturas.length) {
       throw new Error('Lote vazio - nenhuma fatura encontrada para geração CNAB.');
@@ -233,7 +240,7 @@ export class CNAB240BBWriter implements ICNAB240Writer {
     const seqFormatado = String(sequencialGlobal).padStart(6, '0');
 
     // Se for HOMOLOGAÇÃO, NÃO disponibilizar arquivo posicional bancário para transmissão
-    if (modo === 'homologacao') {
+    if (modoEfetivo === 'homologacao') {
       fileName = `SIMULACAO_HOMOLOGACAO_BB_${now.getFullYear()}${padZero(now.getMonth() + 1)}${padZero(now.getDate())}_SEQ${seqFormatado}.txt`;
       content = [
         '================================================================================',
@@ -280,7 +287,7 @@ export class CNAB240BBWriter implements ICNAB240Writer {
         bancoNome: conta.banco_nome ?? 'BANCO DO BRASIL',
         contaBancariaId,
         competencia,
-        modo,
+        modo: modoEfetivo,
         sequencialArquivo: sequencialGlobal,
         itens: itensParaRpc,
       });

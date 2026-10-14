@@ -188,6 +188,7 @@ export function CentralBancariaDrawerOficial({
           empresaId: empresaIdLimpa,
           contaId: contaIdLimpo,
           rhLoteId: item.loteId,
+          modo: item.isEmpresaTeste ? 'homologacao' : 'producao',
         });
         toast.success(`CNAB CLT gerado: ${result.fileName}`);
         triggerDownload(result.content, result.fileName);
@@ -802,6 +803,17 @@ export function CentralBancariaDrawerOficial({
               Você está prestes a gerar o arquivo posicional de remessa para envio bancário.
             </DialogDescription>
           </DialogHeader>
+
+          {item.isEmpresaTeste && (
+            <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 rounded text-xs flex items-center gap-2">
+              <span className="font-bold uppercase tracking-wider text-[10px] px-1.5 py-0.5 bg-amber-500/20 rounded">
+                Homologação
+              </span>
+              <span>
+                Ambiente de testes: será gerado relatório de simulação não-bancário.
+              </span>
+            </div>
+          )}
 
           <div className="space-y-3 py-2 text-xs">
             <div className="p-3 bg-muted/40 rounded border border-border space-y-1.5 font-mono">

@@ -16,7 +16,8 @@ export class CNABBase {
             id,
             nome,
             cidade,
-            estado
+            estado,
+            is_teste
           )
         `)
         .eq('id', contaBancariaId)
@@ -36,6 +37,7 @@ export class CNABBase {
   
     let faturas: any[] = [];
     let valorEsperadoLote = 0;
+    let loteIsTeste: boolean | undefined = undefined;
     
     if (rhLoteId) {
       // Bloco 4 Segregation: Parent lot environmental check
@@ -51,13 +53,19 @@ export class CNABBase {
       }
       valorEsperadoLote = Number(rhLot.valor_total || 0);
 
-      // Buscar classificação canônica da empresa do lote no banco
-      const { data: empLote } = await supabase
+      // Buscar classificação canônica da empresa do lote no banco (Fail-Closed)
+      const { data: empLote, error: empLoteErr } = await supabase
         .from('empresas')
         .select('id, is_teste')
         .eq('id', rhLot.empresa_id)
         .maybeSingle();
-      const loteIsTeste = empLote?.is_teste === true;
+
+      if (empLoteErr) throw new Error(`Falha técnica ao verificar empresa do lote: ${empLoteErr.message}`);
+      if (!empLote) throw new Error(`Falha de Segurança: Empresa ${rhLot.empresa_id} do lote RH não encontrada.`);
+      if (typeof empLote.is_teste !== 'boolean') {
+        throw new Error(`Falha de Integridade: Empresa ${rhLot.empresa_id} possui classificação de ambiente indefinida (is_teste nulo). Operação abortada.`);
+      }
+      loteIsTeste = empLote.is_teste;
 
       // Banking data lives directly on colaboradores — no separate dados_bancarios table
       const { data: itensRh, error } = await supabase
@@ -91,10 +99,14 @@ export class CNABBase {
       if(lf) valorEsperadoLote = Number(lf.valor_total || 0);
 
       const targetEmpresaId = lf?.empresa_id || conta?.empresa_id;
-      let loteIsTeste = false;
       if (targetEmpresaId) {
-        const { data: empDb } = await supabase.from('empresas').select('is_teste').eq('id', targetEmpresaId).maybeSingle();
-        loteIsTeste = empDb?.is_teste === true;
+        const { data: empDb, error: empDbErr } = await supabase.from('empresas').select('id, is_teste').eq('id', targetEmpresaId).maybeSingle();
+        if (empDbErr) throw new Error(`Falha técnica ao verificar empresa da remessa: ${empDbErr.message}`);
+        if (!empDb) throw new Error(`Falha de Segurança: Empresa ${targetEmpresaId} não encontrada.`);
+        if (typeof empDb.is_teste !== 'boolean') {
+          throw new Error(`Falha de Integridade: Empresa ${targetEmpresaId} possui classificação de ambiente indefinida (is_teste nulo). Operação abortada.`);
+        }
+        loteIsTeste = empDb.is_teste;
       }
 
       let query = supabase
@@ -124,14 +136,18 @@ export class CNABBase {
       // Validação estrita de integridade para faturas
       for (const fat of (faturasDb || [])) {
         const col = (fat as any)?.colaboradores;
-        if (col && typeof col.is_teste === 'boolean' && col.is_teste !== loteIsTeste) {
+        if (col && typeof col.is_teste === 'boolean' && typeof loteIsTeste === 'boolean' && col.is_teste !== loteIsTeste) {
           throw new Error(`BLOQUEIO DE SEGURANÇA CNAB: Fatura ${fat.id} possui colaborador (${col.is_teste ? 'HOMOLOGAÇÃO' : 'PRODUÇÃO'}) com classificação divergente da remessa.`);
         }
       }
 
       faturas = faturasDb || [];
     }
+
+    if (loteIsTeste === undefined && conta?.empresas && typeof conta.empresas.is_teste === 'boolean') {
+      loteIsTeste = conta.empresas.is_teste;
+    }
   
-    return { conta, faturas, valorEsperadoLote: Number(valorEsperadoLote.toFixed(2)) };
+    return { conta, faturas, valorEsperadoLote: Number(valorEsperadoLote.toFixed(2)), isTeste: loteIsTeste };
   }
 }
