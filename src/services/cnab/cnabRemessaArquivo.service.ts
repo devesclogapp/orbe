@@ -58,6 +58,7 @@ export interface RegistrarRemessaParams {
   loteId: string | null;
   diaristasLoteId?: string | null;
   intermitentesLoteId?: string | null;
+  rhLoteId?: string | null;
   empresaId?: string | null;
   nomeArquivo: string;
   conteudoArquivo: string; // texto do arquivo CNAB
@@ -138,8 +139,9 @@ async function sincronizarStatusLote(loteId: string | null | undefined, status: 
 export const CnabRemessaArquivoService = {
   // ——— Sequencial —————————————————————————————————————————
   /**
-   * Obtém o próximo sequencial CNAB de forma atômica.
-   * Usa função SQL que faz INSERT/UPDATE com lock de linha.
+   * Consulta o próximo sequencial CNAB esperado para a conta pagadora sem mutação prematura.
+   * A autoridade única de incremento atômico é a RPC rpc_registrar_cnab_remessa no banco de dados,
+   * eliminando o risco de incremento duplo e de sequenciais órfãos em caso de falha de persistência.
    */
   async getNextSequencial(contaBancariaId: string, bancoCodigo: string): Promise<number> {
     const { data: { user } } = await supabase.auth.getUser();
@@ -154,14 +156,20 @@ export const CnabRemessaArquivoService = {
 
     if (!profile?.tenant_id) throw new Error('Tenant não identificado');
 
-    const { data, error } = await supabase.rpc('get_next_cnab_sequencial', {
-      p_tenant_id: profile.tenant_id,
-      p_conta_bancaria_id: contaBancariaId,
-      p_banco_codigo: bancoCodigo,
-    });
+    // Consulta não-destrutiva do último sequencial registrado
+    const { data, error } = await supabase
+      .from('cnab_sequencial_controle')
+      .select('ultimo_sequencial')
+      .eq('conta_bancaria_id', contaBancariaId)
+      .maybeSingle();
 
-    if (error) throw new Error(`Erro ao obter sequencial CNAB: ${error.message}`);
-    return data as number;
+    if (error) {
+      console.warn('[CNAB] Aviso ao consultar cnab_sequencial_controle, fallback para 1:', error.message);
+      return 1;
+    }
+
+    const ultimo = Number(data?.ultimo_sequencial ?? 0);
+    return ultimo + 1;
   },
 
   // ——— Hash ————————————————————————————————————————————————
@@ -212,6 +220,38 @@ export const CnabRemessaArquivoService = {
     return data as CnabRemessaArquivo | null;
   },
 
+  async checkRhLoteJaRemessado(rhLoteId: string): Promise<CnabRemessaArquivo | null> {
+    if (!rhLoteId) return null;
+
+    try {
+      const q = supabase.from('cnab_remessas_arquivos');
+      if (typeof (q as any)?.select !== 'function') {
+        return null;
+      }
+      const { data, error } = await q
+        .select('*')
+        .not('status', 'eq', 'erro_homologacao')
+        .order('created_at', { ascending: false });
+
+      if (error || !data) return null;
+
+      const encontrada = (data || []).find((r: any) => {
+        if (r.lote_id === rhLoteId) return true;
+        if (r.observacoes) {
+          try {
+            const obs = typeof r.observacoes === 'string' ? JSON.parse(r.observacoes) : r.observacoes;
+            if (obs?.rh_lote_id === rhLoteId) return true;
+          } catch {}
+        }
+        return false;
+      });
+
+      return (encontrada as CnabRemessaArquivo) || null;
+    } catch {
+      return null;
+    }
+  },
+
   // ——— Registro ————————————————————————————————————————————
   /**
    * Registra um novo arquivo CNAB gerado com todos os metadados.
@@ -222,6 +262,7 @@ export const CnabRemessaArquivoService = {
       loteId,
       diaristasLoteId,
       intermitentesLoteId,
+      rhLoteId,
       empresaId: paramEmpresaId,
       nomeArquivo,
       conteudoArquivo,
@@ -250,6 +291,16 @@ export const CnabRemessaArquivoService = {
       if (existenteDiaristas) {
         throw new Error(
           `Lote de diaristas ja possui remessa CNAB gerada (arquivo: ${existenteDiaristas.nome_arquivo}, status: ${existenteDiaristas.status}). ` +
+          `Para reenviar, marque o arquivo anterior como erro primeiro.`
+        );
+      }
+    }
+
+    if (rhLoteId) {
+      const existenteRh = await this.checkRhLoteJaRemessado(rhLoteId);
+      if (existenteRh) {
+        throw new Error(
+          `Lote RH/CLT já possui remessa CNAB gerada (arquivo: ${existenteRh.nome_arquivo}, status: ${existenteRh.status}). ` +
           `Para reenviar, marque o arquivo anterior como erro primeiro.`
         );
       }
@@ -419,6 +470,7 @@ export const CnabRemessaArquivoService = {
       quantidade_itens_financeiros: qtdItensFinanceiros,
       quantidade_registros_cnab: qtdRegistrosCnab,
       quantidade_beneficiarios: params.quantidadeBeneficiarios ?? null,
+      rh_lote_id: params.rhLoteId || null,
     });
 
     await supabase.from('cnab_remessas_arquivos').update({
@@ -435,7 +487,7 @@ export const CnabRemessaArquivoService = {
       acao: 'geracao',
       detalhes: {
         nome_arquivo: nomeArquivo,
-        sequencial,
+        sequencial: rpcResponse.sequencial ?? sequencial,
         quantidade_itens_financeiros: qtdItensFinanceiros,
         quantidade_registros_cnab: qtdRegistrosCnab,
         quantidade_beneficiarios: params.quantidadeBeneficiarios,
@@ -445,7 +497,11 @@ export const CnabRemessaArquivoService = {
       },
     });
 
-    return { id: finalRemessaId, modo } as CnabRemessaArquivo;
+    return {
+      id: finalRemessaId,
+      modo,
+      sequencial_arquivo: rpcResponse.sequencial ?? sequencial,
+    } as CnabRemessaArquivo;
   },
 
   // ——— Atualização de status ———————————————————————————————

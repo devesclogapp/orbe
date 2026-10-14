@@ -243,8 +243,16 @@ export const CNABService = {
         modo: modoCanonico,
         salvarConteudo: true,
       });
-    } catch (error) {
-      await LoteRemessaService.update(lote.id, { status: 'erro' });
+
+      if (!result?.arquivoId || result.arquivoId === 'nao-registrado') {
+        throw new Error('Falha de persistência CNAB: O arquivo de remessa não possui confirmação de gravação no banco de dados.');
+      }
+    } catch (error: any) {
+      try {
+        await supabase.from('lotes_remessa').update({ status: 'erro' }).eq('id', lote.id);
+      } catch {
+        // fail-safe
+      }
       throw error;
     }
 

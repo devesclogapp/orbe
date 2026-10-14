@@ -72,6 +72,7 @@ export interface ItemObrigacaoBancariaOficial {
   remessaDataEnvio?: string;
   remessaNomeArquivo?: string;
   remessaQtdRegistros?: number;
+  remessaModo?: "homologacao" | "producao" | string;
   observacaoEnvio?: string;
   usuarioGeracaoNome?: string;
   usuarioEnvioNome?: string;
@@ -443,9 +444,23 @@ export const BancarioOficialAdapter = {
     const remessasPorLoteRh = new Map<string, any>();
     const remessasPorLoteDiarista = new Map<string, any>();
     const remessasPorLoteIntermitente = new Map<string, any>();
+    const remessasMapById = new Map<string, any>();
 
     (remessasDb || []).forEach((rem) => {
+      remessasMapById.set(rem.id, rem);
       if (rem.lote_id) remessasPorLoteRh.set(rem.lote_id, rem);
+
+      // FIX-CNAB-02: Associação via metadata observacoes.rh_lote_id
+      let obsObj: any = null;
+      try {
+        obsObj = typeof rem.observacoes === "string" ? JSON.parse(rem.observacoes) : rem.observacoes;
+      } catch {
+        obsObj = null;
+      }
+      if (obsObj?.rh_lote_id) {
+        remessasPorLoteRh.set(obsObj.rh_lote_id, rem);
+      }
+
       if (rem.diaristas_lote_id) remessasPorLoteDiarista.set(rem.diaristas_lote_id, rem);
       if (rem.intermitentes_lote_id) remessasPorLoteIntermitente.set(rem.intermitentes_lote_id, rem);
     });
@@ -521,11 +536,37 @@ export const BancarioOficialAdapter = {
     }
 
     const itensPorLoteRh = new Map<string, any[]>();
+    const loteIdPorItemId = new Map<string, string>();
     itensRhDb.forEach((it) => {
       const arr = itensPorLoteRh.get(it.lote_id) || [];
       arr.push(it);
       itensPorLoteRh.set(it.lote_id, arr);
+      if (it.id && it.lote_id) {
+        loteIdPorItemId.set(it.id, it.lote_id);
+      }
     });
+
+    // FIX-CNAB-02: Associação via cnab_remessa_itens (Camada 3 de rastreabilidade CLT)
+    const remessaIds = (remessasDb || []).map((r) => r.id);
+    const itemIdsRh = itensRhDb.map((it) => it.id);
+    if (remessaIds.length > 0 && itemIdsRh.length > 0) {
+      const { data: cnabItensDb } = await supabase
+        .from("cnab_remessa_itens")
+        .select("remessa_id, origem_id, origem_tipo")
+        .in("remessa_id", remessaIds)
+        .eq("origem_tipo", "CLT");
+
+      (cnabItensDb || []).forEach((ci: any) => {
+        const remId = ci.remessa_id || ci.remessa_arquivo_id;
+        if (ci.origem_id && remId) {
+          const rhLoteId = loteIdPorItemId.get(ci.origem_id);
+          const remObj = remessasMapById.get(remId);
+          if (rhLoteId && remObj && !remessasPorLoteRh.has(rhLoteId)) {
+            remessasPorLoteRh.set(rhLoteId, remObj);
+          }
+        }
+      });
+    }
 
     (rhLotesDb || []).forEach((lote) => {
       const remessa = remessasPorLoteRh.get(lote.id);
@@ -620,11 +661,11 @@ export const BancarioOficialAdapter = {
         empresaNome: emp?.nome || "Empresa Não Identificada",
         isEmpresaTeste: Boolean(emp?.is_teste),
         competencia: lote.competencia || "—",
-        favorecidoDescricao: `${lote.quantidade_colaboradores || lote.total_registros || 1} Colaborador(es) CLT`,
+        favorecidoDescricao: `${lote.total_colaboradores || (itensDoLote.length > 0 ? itensDoLote.length : (lote.quantidade_colaboradores || lote.total_registros || 1))} Colaborador(es) CLT`,
         favorecidoNomeMascarado: "Folha Salarial Mensal CLT",
         documentoFavorecidoMascarado: "Contas Salário Diversas",
         dadosBancariosFavorecidoMascarado: "Contas Salário / Corrente Diversas",
-        quantidadeFavorecidos: Number(lote.quantidade_colaboradores || lote.total_registros || 1),
+        quantidadeFavorecidos: Number(lote.total_colaboradores || (itensDoLote.length > 0 ? itensDoLote.length : (lote.quantidade_colaboradores || lote.total_registros || 1))),
         valorTotal: Number(lote.valor_total || 0),
         valorEsperado: Number(lote.valor_total || 0),
         valorRetornado: divergenteItem?.valor_retornado ? Number(divergenteItem.valor_retornado) : undefined,
@@ -641,6 +682,7 @@ export const BancarioOficialAdapter = {
         remessaDataEnvio: remessa?.data_envio,
         remessaNomeArquivo: remessa?.nome_arquivo,
         remessaQtdRegistros: remessa?.total_registros,
+        remessaModo: remessa?.modo || (emp?.is_teste ? "homologacao" : "producao"),
         observacaoEnvio: remessa?.observacoes || undefined,
         motivoRejeicaoCodigo: rejeicaoItem?.codigo_ocorrencia,
         motivoRejeicaoDescricao: rejeicaoItem?.descricao_ocorrencia,
@@ -793,6 +835,7 @@ export const BancarioOficialAdapter = {
         remessaDataEnvio: remessa?.data_envio,
         remessaNomeArquivo: remessa?.nome_arquivo,
         remessaQtdRegistros: remessa?.total_registros,
+        remessaModo: remessa?.modo || (emp?.is_teste ? "homologacao" : "producao"),
         observacaoEnvio: remessa?.observacoes || undefined,
         motivoRejeicaoCodigo: rejeicaoItem?.codigo_ocorrencia,
         motivoRejeicaoDescricao: rejeicaoItem?.descricao_ocorrencia,
@@ -944,6 +987,7 @@ export const BancarioOficialAdapter = {
         remessaDataEnvio: remessa?.data_envio,
         remessaNomeArquivo: remessa?.nome_arquivo,
         remessaQtdRegistros: remessa?.total_registros,
+        remessaModo: remessa?.modo || (emp?.is_teste ? "homologacao" : "producao"),
         observacaoEnvio: remessa?.observacoes || undefined,
         motivoRejeicaoCodigo: rejeicaoItem?.codigo_ocorrencia,
         motivoRejeicaoDescricao: rejeicaoItem?.descricao_ocorrencia,

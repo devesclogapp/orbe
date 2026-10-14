@@ -276,29 +276,26 @@ export class CNAB240BBWriter implements ICNAB240Writer {
 
     let arquivoRegistrado: Awaited<ReturnType<typeof CnabRemessaArquivoService.registrar>>;
 
-    try {
-      arquivoRegistrado = await CnabRemessaArquivoService.registrar({
-        loteId,
-        nomeArquivo: fileName,
-        conteudoArquivo: salvarConteudo ? content : '',
-        totalRegistros: linhas.length,
-        totalValor: totalValorLote,
-        bancoCodigo: conta.banco_codigo ?? '001',
-        bancoNome: conta.banco_nome ?? 'BANCO DO BRASIL',
-        contaBancariaId,
-        competencia,
-        modo: modoEfetivo,
-        sequencialArquivo: sequencialGlobal,
-        itens: itensParaRpc,
-      });
-    } catch (regErr: unknown) {
-      const msg = (regErr as Error).message;
-      if (msg.includes('já possui remessa') || msg.includes('idêntico')) {
-        throw regErr;
-      }
+    arquivoRegistrado = await CnabRemessaArquivoService.registrar({
+      loteId,
+      rhLoteId: rhLoteId || undefined,
+      nomeArquivo: fileName,
+      conteudoArquivo: salvarConteudo ? content : '',
+      totalRegistros: linhas.length,
+      quantidadeItensFinanceiros: itensParaRpc.length,
+      quantidadeRegistrosCnab: linhas.length,
+      totalValor: totalValorLote,
+      bancoCodigo: conta.banco_codigo ?? '001',
+      bancoNome: conta.banco_nome ?? 'BANCO DO BRASIL',
+      contaBancariaId,
+      competencia,
+      modo: modoEfetivo,
+      sequencialArquivo: sequencialGlobal,
+      itens: itensParaRpc,
+    });
 
-      inconsistencias.push(`Aviso: Não foi possível registrar metadados do arquivo: ${msg}`);
-      arquivoRegistrado = { id: 'nao-registrado' } as Awaited<ReturnType<typeof CnabRemessaArquivoService.registrar>>;
+    if (!arquivoRegistrado?.id || arquivoRegistrado.id === 'nao-registrado') {
+      throw new Error('Falha de persistência CNAB: O arquivo não foi registrado com sucesso no banco de dados.');
     }
 
     const hash = await CnabRemessaArquivoService.generateHash(content);

@@ -119,6 +119,13 @@ export function CentralBancariaDrawerOficial({
     ((ambienteAtual === "production" && item.isEmpresaTeste) ||
       (ambienteAtual === "homologacao" && !item.isEmpresaTeste));
 
+  // FIX-CNAB-03: Identificação soberana de modo a partir do campo persistido modo
+  const isHomologacao = Boolean(
+    item.remessaModo === "homologacao" ||
+    (!item.remessaModo && item.isEmpresaTeste) ||
+    (item.remessaNomeArquivo && item.remessaNomeArquivo.startsWith("SIMULACAO_HOMOLOGACAO"))
+  );
+
   const isReadyParaGerar =
     isContaValida &&
     isEmpresaValida &&
@@ -190,6 +197,9 @@ export function CentralBancariaDrawerOficial({
           rhLoteId: item.loteId,
           modo: item.isEmpresaTeste ? 'homologacao' : 'producao',
         });
+        if (!result?.arquivoId || result.arquivoId === 'nao-registrado') {
+          throw new Error('Falha de persistência: O arquivo de remessa não foi gravado no banco de dados. Download bloqueado.');
+        }
         toast.success(`CNAB CLT gerado: ${result.fileName}`);
         triggerDownload(result.content, result.fileName);
       } else if (item.origemTipo === "DIARISTAS" || item.origemTipo === "INTERMITENTES") {
@@ -337,6 +347,11 @@ export function CentralBancariaDrawerOficial({
                 {item.remessaNsa && (
                   <span className="text-[10px] font-mono text-muted-foreground border border-border px-1.5 py-0.5 rounded">
                     NSA: {String(item.remessaNsa).padStart(6, "0")}
+                  </span>
+                )}
+                {isHomologacao && (
+                  <span className="inline-flex items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide">
+                    Simulação Homologação
                   </span>
                 )}
               </div>
@@ -538,12 +553,19 @@ export function CentralBancariaDrawerOficial({
                 <div className="rounded-lg border border-border bg-card p-4 space-y-3 shadow-xs">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                      <FileCode2 className="h-4 w-4 text-blue-600" />
+                      <FileCode2 className={cn("h-4 w-4", isHomologacao ? "text-amber-600" : "text-blue-600")} />
                       <span>{item.remessaNomeArquivo || "REMESSA.TXT"}</span>
                     </span>
-                    <Badge variant="secondary" className="text-[10px] font-mono">
-                      {item.contaPagadora.bancoNome}
-                    </Badge>
+                    <div className="flex items-center gap-1.5">
+                      {isHomologacao && (
+                        <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30 font-bold uppercase">
+                          Homologação
+                        </Badge>
+                      )}
+                      <Badge variant="secondary" className="text-[10px] font-mono">
+                        {item.contaPagadora.bancoNome}
+                      </Badge>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-border/50">
@@ -564,27 +586,59 @@ export function CentralBancariaDrawerOficial({
                     </div>
                   )}
 
-                  <div className="rounded border border-amber-200/80 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-900/40 p-3 text-[11px] text-amber-800 dark:text-amber-300">
-                    <span className="font-semibold block mb-0.5">Atenção ao fluxo de envio bancário:</span>
-                    O download do arquivo no ORBE não realiza a transmissão automática. Baixe o arquivo e transmita manualmente pelo portal do {item.contaPagadora.bancoNome}. Após enviar, marque como transmitido abaixo.
-                  </div>
+                  {isHomologacao ? (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50/90 dark:bg-amber-950/30 dark:border-amber-800 p-3.5 text-xs text-amber-950 dark:text-amber-200 space-y-2">
+                      <div className="flex items-center gap-2 text-amber-900 dark:text-amber-300 font-bold">
+                        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span className="uppercase tracking-tight text-xs font-bold">
+                          SIMULAÇÃO DE HOMOLOGAÇÃO — ARQUIVO NÃO BANCÁRIO
+                        </span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-amber-900/90 dark:text-amber-200/90 font-medium">
+                        Este arquivo foi gerado exclusivamente para testes do ERP ORBE. Não possui estrutura posicional FEBRABAN válida e não deve ser transmitido ao banco.
+                      </p>
+                      <div className="pt-2 border-t border-amber-200/80 dark:border-amber-800/60 text-[11px] space-y-1 text-amber-900/80 dark:text-amber-300/80">
+                        <div>
+                          <strong>Finalidade:</strong> Validação do ciclo de fechamento, totalização e integridade dos favorecidos.
+                        </div>
+                        <div>
+                          <strong>Orientações de Auditoria:</strong> Baixe o relatório de simulação para conferência interna. Nenhuma transmissão em Internet Banking ou portal bancário deve ser executada.
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded border border-amber-200/80 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-900/40 p-3 text-[11px] text-amber-800 dark:text-amber-300">
+                      <span className="font-semibold block mb-0.5">Atenção ao fluxo de envio bancário:</span>
+                      O download do arquivo no ORBE não realiza a transmissão automática. Baixe o arquivo e transmita manualmente pelo portal do {item.contaPagadora.bancoNome}. Após enviar, marque como transmitido abaixo.
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
             {/* 3. SEÇÃO CONTEXTUAL: ENVIADO AO BANCO */}
             {item.situacao === "ENVIADO_MANUAL" && (
-              <div className="rounded-lg border border-blue-200/80 bg-blue-50/40 dark:bg-blue-950/20 dark:border-blue-900/40 p-4 space-y-2">
-                <div className="flex items-center gap-2 text-blue-900 dark:text-blue-300 font-semibold text-xs">
+              <div className={cn(
+                "rounded-lg border p-4 space-y-2",
+                isHomologacao
+                  ? "border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-900/40"
+                  : "border-blue-200/80 bg-blue-50/40 dark:bg-blue-950/20 dark:border-blue-900/40"
+              )}>
+                <div className={cn(
+                  "flex items-center gap-2 font-semibold text-xs",
+                  isHomologacao ? "text-amber-900 dark:text-amber-300" : "text-blue-900 dark:text-blue-300"
+                )}>
                   <Send className="h-4 w-4" />
-                  <span>Remessa em Trânsito Bancário</span>
+                  <span>{isHomologacao ? "Simulação de Envio Registrada" : "Remessa em Trânsito Bancário"}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  A transmissão manual desta remessa foi registrada no sistema. O ORBE aguarda o arquivo de retorno (.RET) do {item.contaPagadora.bancoNome} para conciliar as baixas.
+                  {isHomologacao
+                    ? "Esta remessa de homologação foi registrada em trânsito de testes. O ORBE aguarda o arquivo de retorno de teste para conciliação simulada."
+                    : `A transmissão manual desta remessa foi registrada no sistema. O ORBE aguarda o arquivo de retorno (.RET) do ${item.contaPagadora.bancoNome} para conciliar as baixas.`}
                 </p>
                 {item.remessaDataEnvio && (
                   <div className="text-[11px] text-muted-foreground font-mono pt-1">
-                    Transmitido em: {new Date(item.remessaDataEnvio).toLocaleString("pt-BR")}
+                    {isHomologacao ? "Registrado em: " : "Transmitido em: "}{new Date(item.remessaDataEnvio).toLocaleString("pt-BR")}
                   </div>
                 )}
               </div>
@@ -716,14 +770,17 @@ export function CentralBancariaDrawerOficial({
                   size="sm"
                   onClick={handleDownloadArquivo}
                   disabled={isSubmitting}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
+                  className={cn(
+                    "text-white text-xs font-semibold",
+                    isHomologacao ? "bg-amber-600 hover:bg-amber-700" : "bg-blue-600 hover:bg-blue-700"
+                  )}
                 >
                   {isSubmitting ? (
                     <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                   ) : (
                     <Download className="h-3.5 w-3.5 mr-1.5" />
                   )}
-                  Baixar Arquivo TXT
+                  {isHomologacao ? "Baixar Relatório de Simulação" : "Baixar Arquivo TXT"}
                 </Button>
               )}
 
@@ -737,16 +794,23 @@ export function CentralBancariaDrawerOficial({
                     className="text-xs"
                   >
                     <Download className="h-3 w-3 mr-1" />
-                    Baixar Novamente
+                    {isHomologacao ? "Baixar Relatório Novamente" : "Baixar Novamente"}
                   </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => setModalConfirmarEnvioOpen(true)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
-                  >
-                    <Send className="h-3.5 w-3.5 mr-1.5" />
-                    Marcar como Enviado
-                  </Button>
+                  {!isHomologacao ? (
+                    <Button
+                      size="sm"
+                      onClick={() => setModalConfirmarEnvioOpen(true)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
+                    >
+                      <Send className="h-3.5 w-3.5 mr-1.5" />
+                      Marcar como Enviado
+                    </Button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400 font-semibold px-2.5 py-1 bg-amber-500/10 rounded border border-amber-500/20">
+                      <ShieldCheck className="h-3.5 w-3.5 text-amber-600" />
+                      Simulação Homologada (Sem Envio Bancário)
+                    </span>
+                  )}
                 </>
               )}
 
@@ -864,18 +928,27 @@ export function CentralBancariaDrawerOficial({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base font-bold text-foreground">
-              Confirmar Transmissão Bancária
+              {isHomologacao ? "Registrar Simulação de Envio" : "Confirmar Transmissão Bancária"}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Registre a confirmação de que o arquivo foi transmitido externamente no portal do {item.contaPagadora.bancoNome}.
+              {isHomologacao
+                ? "Registre o envio simulado desta remessa de homologação para testes de conciliação."
+                : `Registre a confirmação de que o arquivo foi transmitido externamente no portal do ${item.contaPagadora.bancoNome}.`}
             </DialogDescription>
           </DialogHeader>
+
+          {isHomologacao && (
+            <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 rounded text-xs space-y-1">
+              <span className="font-bold block">Atenção:</span>
+              <span>Arquivo de simulação não-bancário. Não realize o upload deste arquivo no Internet Banking real.</span>
+            </div>
+          )}
 
           <div className="space-y-3 py-2 text-xs">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Observações do Envio (Opcional)</Label>
               <Textarea
-                placeholder="Ex: Transmitido via Internet Banking BB lote 0492 pelo operador..."
+                placeholder={isHomologacao ? "Ex: Simulação de transmissão registrada para testes..." : "Ex: Transmitido via Internet Banking BB lote 0492 pelo operador..."}
                 value={observacaoEnvio}
                 onChange={(e) => setObservacaoEnvio(e.target.value)}
                 className="text-xs resize-none"
@@ -892,7 +965,7 @@ export function CentralBancariaDrawerOficial({
               size="sm"
               onClick={handleConfirmarEnvioManual}
               disabled={isSubmitting}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+              className={cn("text-white font-semibold", isHomologacao ? "bg-amber-600 hover:bg-amber-700" : "bg-blue-600 hover:bg-blue-700")}
             >
               {isSubmitting ? (
                 <>
@@ -900,7 +973,7 @@ export function CentralBancariaDrawerOficial({
                   Registrando...
                 </>
               ) : (
-                "Confirmar Envio"
+                isHomologacao ? "Confirmar Simulação" : "Confirmar Envio"
               )}
             </Button>
           </DialogFooter>

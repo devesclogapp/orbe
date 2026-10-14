@@ -317,7 +317,7 @@ export default function CentralBancaria() {
           <div>
             <h1 className="text-base sm:text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
               <Banknote className="w-5 h-5 text-royal-blue dark:text-royal-blue-light shrink-0" />
-              Central Bancária & CNAB
+              {"Central Bancária & CNAB"}
             </h1>
             <p className="text-xs text-muted-foreground mt-0.5">
               Esteira unificada de remessas, retornos e conciliações dos pagamentos bancarizados.
@@ -683,8 +683,13 @@ export default function CentralBancaria() {
                             )}
                           </div>
                           {item.remessaNsa && (
-                            <div className="text-[10px] text-muted-foreground font-mono">
-                              NSA: {String(item.remessaNsa).padStart(6, "0")}
+                            <div className="text-[10px] text-muted-foreground font-mono flex items-center gap-1.5 mt-0.5">
+                              <span>NSA: {String(item.remessaNsa).padStart(6, "0")}</span>
+                              {(item.remessaModo === "homologacao" || item.isEmpresaTeste) && (
+                                <span className="text-[9px] font-bold text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded px-1 uppercase tracking-wider">
+                                  Simulação
+                                </span>
+                              )}
                             </div>
                           )}
                         </td>
@@ -773,7 +778,7 @@ export default function CentralBancaria() {
                               className="h-7 text-[11px] font-semibold text-foreground hover:bg-muted"
                             >
                               <Download className="mr-1 h-3 w-3 text-blue-600" />
-                              Baixar Arquivo
+                              {item.remessaModo === "homologacao" || item.isEmpresaTeste ? "Baixar Simulação" : "Baixar Arquivo"}
                             </Button>
                           )}
 
@@ -784,8 +789,17 @@ export default function CentralBancaria() {
                               onClick={() => openDrawer(item)}
                               className="h-7 text-[11px] font-semibold text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-950/40"
                             >
-                              <Send className="mr-1 h-3 w-3 text-blue-600" />
-                              Marcar Enviado
+                              {item.remessaModo === "homologacao" || item.isEmpresaTeste ? (
+                                <>
+                                  <FileCode2 className="mr-1 h-3 w-3 text-amber-600" />
+                                  Ver Simulação
+                                </>
+                              ) : (
+                                <>
+                                  <Send className="mr-1 h-3 w-3 text-blue-600" />
+                                  Marcar Enviado
+                                </>
+                              )}
                             </Button>
                           )}
 

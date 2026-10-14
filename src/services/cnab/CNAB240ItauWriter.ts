@@ -359,27 +359,26 @@ export class CNAB240ItauWriter implements ICNAB240Writer {
       };
     });
 
-    try {
-      arquivoRegistrado = await CnabRemessaArquivoService.registrar({
-        loteId,
-        nomeArquivo: fileName,
-        conteudoArquivo: salvarConteudo ? content : '',
-        totalRegistros: totalQtdRegistrosArquivo,
-        totalValor: totalValorLote,
-        bancoCodigo: '341',
-        bancoNome: 'BANCO ITAU SA',
-        contaBancariaId,
-        competencia,
-        modo: modoEfetivo,
-        sequencialArquivo: sequencialGlobal,
-        itens: itensParaRpc,
-      });
-    } catch (regErr: any) {
-      if (regErr.message.includes('já possui remessa') || regErr.message.includes('idêntico')) {
-        throw regErr;
-      }
-      inconsistencias.push(`Aviso: Não foi possível registrar metadados do arquivo: ${regErr.message}`);
-      arquivoRegistrado = { id: 'nao-registrado' };
+    arquivoRegistrado = await CnabRemessaArquivoService.registrar({
+      loteId,
+      rhLoteId: rhLoteId || undefined,
+      nomeArquivo: fileName,
+      conteudoArquivo: salvarConteudo ? content : '',
+      totalRegistros: totalQtdRegistrosArquivo,
+      quantidadeItensFinanceiros: itensParaRpc.length,
+      quantidadeRegistrosCnab: totalQtdRegistrosArquivo,
+      totalValor: totalValorLote,
+      bancoCodigo: '341',
+      bancoNome: 'BANCO ITAU SA',
+      contaBancariaId,
+      competencia,
+      modo: modoEfetivo,
+      sequencialArquivo: sequencialGlobal,
+      itens: itensParaRpc,
+    });
+
+    if (!arquivoRegistrado?.id || arquivoRegistrado.id === 'nao-registrado') {
+      throw new Error('Falha de persistência CNAB: O arquivo não foi registrado com sucesso no banco de dados.');
     }
 
     const hash = await CnabRemessaArquivoService.generateHash(content);
