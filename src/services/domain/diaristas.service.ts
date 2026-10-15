@@ -10,6 +10,7 @@ import {
 } from '../cnab/cnab240-posicional';
 import { MotorCNAB240 } from '../cnab/motorCNAB240.service';
 import { CnabRemessaArquivoService } from '../cnab/cnabRemessaArquivo.service';
+import { gerarRelatorioSimulacaoHomologacao } from '../cnab/simulacaoHomologacao.service';
 
 import { BaseService, sanitizePayload, cleanUuid, validateUuidFields, getCurrentTenantId, getTenantQueryFilter, extractReferencedTableFromFkError } from './base.service';
 import { EnvironmentService, EnvironmentScopeResolutionError } from '../environment/EnvironmentService';
@@ -1045,29 +1046,64 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       sequencialArquivo = Math.max(1, Number(ultimoSequencial?.sequencial_arquivo || 0) + 1);
     }
 
-    // ── 7. Gerar CNAB240 posicional multibanco ────────────────────────────────
-    // Tipo serviço: 20=Fornecedor (pagamentos a prestadores de serviço)
-    const resultado = MotorCNAB240.gerar(empresaRemessa, beneficiarios, {
-      tipo_servico: 20,
-      numero_arquivo: sequencialArquivo,
-    });
+    // ── 7. Determinar modo de ambiente a partir da autoridade canônica empresas.is_teste ──
+    const { data: empDb } = await this.supabase
+      .from('empresas')
+      .select('id, nome, is_teste')
+      .eq('id', lote.empresa_id || empresaId)
+      .maybeSingle();
 
-    // ── 8. Disparar registro e download ───────────────────────────────────────
+    const isEmpresaHomologacao = Boolean(empDb?.is_teste);
+    const valorTotalCalculado = beneficiarios.reduce((sum, b) => sum + b.valor, 0);
+
+    let nomeArquivoFinal: string;
+    let conteudoFinal: string;
+    let totalLinhasCnab: number;
+    let resultado: any = null;
+
+    if (isEmpresaHomologacao) {
+      // 7.1. HOMOLOGAÇÃO: Gerar exclusivamente relatório de simulação não transmissível
+      const relatorioSimulacao = gerarRelatorioSimulacaoHomologacao({
+        origem: 'DIARISTAS',
+        empresaNome: empresaRemessa.razao_social,
+        bancoCodigo: bancoRemessa,
+        bancoNome: empresaRemetente.nome_empresa_banco || contaBancariaSelecionada?.banco_nome,
+        sequencial: sequencialArquivo,
+        totalRegistros: itensParaRpc.length,
+        totalValor: valorTotalCalculado,
+        beneficiarios: beneficiarios.map(b => ({ nome: b.nome, valor: b.valor, cpf: b.cpf })),
+      });
+      nomeArquivoFinal = relatorioSimulacao.fileName;
+      conteudoFinal = relatorioSimulacao.content;
+      totalLinhasCnab = relatorioSimulacao.content.split('\r\n').length;
+    } else {
+      // 7.2. PRODUÇÃO: Gerar arquivo posicional FEBRABAN CNAB240 oficial
+      resultado = MotorCNAB240.gerar(empresaRemessa, beneficiarios, {
+        tipo_servico: 20,
+        numero_arquivo: sequencialArquivo,
+        finalidade_lote: 'PAGAMENTO DIARISTAS',
+      });
+      nomeArquivoFinal = resultado.nome_arquivo;
+      conteudoFinal = resultado.conteudo;
+      totalLinhasCnab = resultado.total_linhas;
+    }
+
+    // ── 8. Disparar registro atômico (Fail-Closed) ─────────────────────────────
     // IMPORTANTE: totalRegistros é a quantidade de itens financeiros (itensParaRpc.length),
-    // enquanto totalLinhasCnab é a quantidade de linhas físicas do arquivo posicional (resultado.total_linhas),
+    // enquanto totalLinhasCnab é a quantidade de linhas físicas do arquivo (relatório ou posicional),
     // eliminando a divergência 6 x 2!
     await CnabRemessaArquivoService.registrar({
       loteId: null,
       diaristasLoteId: loteId,
       empresaId: lote.empresa_id,
-      nomeArquivo: resultado.nome_arquivo,
-      conteudoArquivo: resultado.conteudo,
+      nomeArquivo: nomeArquivoFinal,
+      conteudoArquivo: conteudoFinal,
       totalRegistros: itensParaRpc.length,
       quantidadeItensFinanceiros: itensParaRpc.length,
-      totalLinhasCnab: resultado.total_linhas,
-      quantidadeRegistrosCnab: resultado.total_linhas,
-      quantidadeBeneficiarios: resultado.total_beneficiarios,
-      totalValor: resultado.valor_total,
+      totalLinhasCnab: totalLinhasCnab,
+      quantidadeRegistrosCnab: totalLinhasCnab,
+      quantidadeBeneficiarios: beneficiarios.length,
+      totalValor: valorTotalCalculado,
       bancoCodigo: bancoRemessa,
       bancoNome: empresaRemetente.nome_empresa_banco || contaBancariaSelecionada?.banco_nome || (bancoRemessa === '341' ? 'BANCO ITAU SA' : 'BANCO DO BRASIL'),
       contaBancariaId: contaBancariaSelecionada?.id,
@@ -1075,7 +1111,23 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       sequencialArquivo,
       itens: itensParaRpc,
     });
-    MotorCNAB240.download(resultado);
+
+    // ── 9. Download seguro somente após confirmação de persistência ────────────
+    if (isEmpresaHomologacao) {
+      if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        const blob = new Blob([conteudoFinal], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = nomeArquivoFinal;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } else if (resultado) {
+      MotorCNAB240.download(resultado);
+    }
 
     // ── 9. Atualizar status do lote ───────────────────────────────────────────
     await this.supabase

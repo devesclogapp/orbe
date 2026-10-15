@@ -82,6 +82,8 @@ export interface OpcoesCNAB240 {
   incluir_segmento_b?: boolean;
   /** Tipo serviço do lote: 20=Fornecedor, 30=Salários. Default: 20 */
   tipo_servico?: number;
+  /** Finalidade do lote no Header (máx 40 chars). Default: 'PAGAMENTO DIARISTAS' */
+  finalidade_lote?: string;
 }
 
 export interface ResultadoCNAB240 {
@@ -256,7 +258,8 @@ function buildHeaderLote(
   emp: EmpresaRemessa,
   numLote: number,
   tipoServico: number,
-  agora: Date
+  agora: Date,
+  opcoes?: OpcoesCNAB240
 ): string {
   const cnpj = num(emp.cnpj.replace(/\D/g, ''), 14);
   const tipoInscricao = '2'; // sempre CNPJ
@@ -302,7 +305,8 @@ function buildHeaderLote(
   // Pos 073-102 (30) Nome empresa
   l += alfa(emp.razao_social, 30);
   // Pos 103-142 (40) Mensagem 1 / Finalidade do lote
-  l += alfa('PAGAMENTO DIARISTAS', 40);
+  const finalidadeLoteBB = opcoes?.finalidade_lote?.trim() || 'PAGAMENTO DIARISTAS';
+  l += alfa(finalidadeLoteBB, 40);
   // Pos 143-172 (30) Logradouro
   l += alfa(emp.logradouro || '', 30);
   // Pos 173-177  (5) Número
@@ -666,7 +670,7 @@ export function gerarCNAB240BB(
   linhas.push(buildHeaderArquivo(empresa, agora, numArquivo));
 
   // ── 2. Header de Lote ─────────────────────────────────────────────────────
-  linhas.push(buildHeaderLote(empresa, numLote, tipoServico, agora));
+  linhas.push(buildHeaderLote(empresa, numLote, tipoServico, agora, opcoes));
 
   // ── 3. Detalhes ───────────────────────────────────────────────────────────
   let numSeqLote = 1;

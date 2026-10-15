@@ -267,6 +267,7 @@ export function CentralBancariaDrawerOficial({
             empresaId: empresaIdLimpa,
             geradoPor: currentUser.id,
             geradoPorNome: currentUser.email || "Operador Financeiro",
+            contaBancariaId: contaIdLimpo,
             empresaRemetente,
           });
           toast.success(`Remessa CNAB de Intermitentes gerada com sucesso: ${result.nomeArquivo}`);

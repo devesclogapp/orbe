@@ -23,6 +23,7 @@ import {
 } from '../cnab/cnab240-posicional';
 import { MotorCNAB240 } from '../cnab/motorCNAB240.service';
 import { CnabRemessaArquivoService } from '../cnab/cnabRemessaArquivo.service';
+import { gerarRelatorioSimulacaoHomologacao } from '../cnab/simulacaoHomologacao.service';
 
 export type StatusLoteIntermitente =
   | 'AGUARDANDO_VALIDACAO_RH'
@@ -993,6 +994,7 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     empresaId: string;
     geradoPor: string;
     geradoPorNome: string;
+    contaBancariaId?: string;
     empresaRemetente: {
       cnpj: string;
       razao_social: string;
@@ -1005,9 +1007,18 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       codigo_empresa_banco?: string;
       nome_empresa_banco?: string;
     };
-  }): Promise<{ nomeArquivo: string; totalRegistros: number; valorTotal: number }> {
-    const { loteId, empresaId, geradoPor, geradoPorNome, empresaRemetente } = params;
+  }): Promise<{ nomeArquivo: string; totalRegistros: number; valorTotal: number; arquivoId?: string; modo?: string }> {
+    const { loteId, empresaId, geradoPor, geradoPorNome, contaBancariaId: paramContaBancariaId, empresaRemetente } = params;
     const normalizeDigits = (value?: string | null) => String(value ?? '').replace(/\D/g, '');
+
+    // 0. Bloqueio prévio contra duplicidade de remessa para o mesmo lote
+    const remessaExistente = await CnabRemessaArquivoService.checkIntermitentesLoteJaRemessado(loteId);
+    if (remessaExistente) {
+      throw new Error(
+        `Geração bloqueada: Lote de intermitentes já possui remessa CNAB registrada (arquivo: ${remessaExistente.nome_arquivo}, NSA: ${remessaExistente.sequencial_arquivo || '—'}). ` +
+        `Para reenviar, marque o arquivo anterior como erro primeiro.`
+      );
+    }
 
     // 1. Buscar lote
     const { data: lote, error: loteErr } = await this.supabase
@@ -1016,6 +1027,9 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       .eq('id', loteId)
       .single();
     if (loteErr || !lote) throw new Error('Lote não encontrado.');
+    if (lote.status === 'CNAB_GERADO' || lote.status === 'PAGO') {
+      throw new Error(`Geração bloqueada: O lote já está no status "${lote.status}".`);
+    }
     if (!['FECHADO_FINANCEIRO', 'AGUARDANDO_PAGAMENTO'].includes(String(lote.status || ''))) {
       throw new Error('Geração de CNAB bloqueada: o lote precisa estar aprovado pelo Financeiro antes da remessa.');
     }
@@ -1134,12 +1148,14 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       .eq('empresa_id', empresaId)
       .eq('ativo', true);
 
-    const contaBancariaSelecionada = (contasEmpresaData ?? []).find((conta: any) =>
-      normalizeDigits(conta?.banco_codigo) === normalizeDigits(empresaRemetente.banco_codigo) &&
-      normalizeDigits(conta?.agencia) === normalizeDigits(empresaRemetente.agencia) &&
-      normalizeDigits(conta?.conta) === normalizeDigits(empresaRemetente.conta) &&
-      normalizeDigits(conta?.convenio) === normalizeDigits(empresaRemetente.convenio_bancario)
-    ) ?? (contasEmpresaData ?? []).find((conta: any) => Boolean(conta?.is_padrao)) ?? null;
+    const contaBancariaSelecionada = paramContaBancariaId
+      ? (contasEmpresaData ?? []).find((c: any) => c.id === paramContaBancariaId)
+      : (contasEmpresaData ?? []).find((conta: any) =>
+          normalizeDigits(conta?.banco_codigo) === normalizeDigits(empresaRemetente.banco_codigo) &&
+          normalizeDigits(conta?.agencia) === normalizeDigits(empresaRemetente.agencia) &&
+          normalizeDigits(conta?.conta) === normalizeDigits(empresaRemetente.conta) &&
+          normalizeDigits(conta?.convenio) === normalizeDigits(empresaRemetente.convenio_bancario)
+        ) ?? (contasEmpresaData ?? []).find((conta: any) => Boolean(conta?.is_padrao)) ?? null;
 
     // Resolução canônica de CNPJ/CPF da empresa pagadora
     const docCandidato = (
@@ -1186,26 +1202,63 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       sequencialArquivo = Math.max(1, Number(ultimoSequencial?.sequencial_arquivo || 0) + 1);
     }
 
-    // 7. Gerar arquivo posicional multibanco
-    const resultado = MotorCNAB240.gerar(empresaRemessa, beneficiarios, {
-      tipo_servico: 20,
-      numero_arquivo: sequencialArquivo,
-    });
+    // 7. Determinar modo de ambiente a partir da autoridade canônica empresas.is_teste
+    const { data: empDb } = await this.supabase
+      .from('empresas')
+      .select('id, nome, is_teste')
+      .eq('id', lote.empresa_id || empresaId)
+      .maybeSingle();
 
-    // 8. Gravar remoto enviando intermitentesLoteId e download
-    await CnabRemessaArquivoService.registrar({
+    const isEmpresaHomologacao = Boolean(empDb?.is_teste);
+    const valorTotalCalculado = beneficiarios.reduce((sum, b) => sum + b.valor, 0);
+
+    let nomeArquivoFinal: string;
+    let conteudoFinal: string;
+    let totalLinhasCnab: number;
+    let cnabProducaoResultado: any = null;
+
+    if (isEmpresaHomologacao) {
+      // 7.1. HOMOLOGAÇÃO: Gerar exclusivamente relatório de simulação não transmissível
+      const relatorioSimulacao = gerarRelatorioSimulacaoHomologacao({
+        origem: 'INTERMITENTES',
+        empresaNome: empresaRemessa.razao_social,
+        bancoCodigo: bancoRemessa,
+        bancoNome: empresaRemetente.nome_empresa_banco || contaBancariaSelecionada?.banco_nome,
+        sequencial: sequencialArquivo,
+        totalRegistros: itensParaRpc.length,
+        totalValor: valorTotalCalculado,
+        beneficiarios: beneficiarios.map(b => ({ nome: b.nome, valor: b.valor, cpf: b.cpf })),
+      });
+      nomeArquivoFinal = relatorioSimulacao.fileName;
+      conteudoFinal = relatorioSimulacao.content;
+      totalLinhasCnab = relatorioSimulacao.content.split('\r\n').length;
+    } else {
+      // 7.2. PRODUÇÃO: Gerar arquivo posicional FEBRABAN CNAB240 oficial com finalidade de intermitentes
+      cnabProducaoResultado = MotorCNAB240.gerar(empresaRemessa, beneficiarios, {
+        tipo_servico: 20,
+        numero_arquivo: sequencialArquivo,
+        finalidade_lote: 'PAGAMENTO INTERMITENTES',
+      });
+      nomeArquivoFinal = cnabProducaoResultado.nome_arquivo;
+      conteudoFinal = cnabProducaoResultado.conteudo;
+      totalLinhasCnab = cnabProducaoResultado.total_linhas;
+    }
+
+    // 8. Persistência Atômica com Vínculo Canônico (Fail-Closed)
+    // Se a gravação falhar, a exceção é disparada e NENHUM download é executado.
+    const arquivoRegistrado = await CnabRemessaArquivoService.registrar({
       loteId: null,
       diaristasLoteId: null,
       intermitentesLoteId: loteId,
-      empresaId: lote.empresa_id,
-      nomeArquivo: resultado.nome_arquivo,
-      conteudoArquivo: resultado.conteudo,
+      empresaId: lote.empresa_id || empresaId,
+      nomeArquivo: nomeArquivoFinal,
+      conteudoArquivo: conteudoFinal,
       totalRegistros: itensParaRpc.length,
       quantidadeItensFinanceiros: itensParaRpc.length,
-      totalLinhasCnab: resultado.total_linhas,
-      quantidadeRegistrosCnab: resultado.total_linhas,
-      quantidadeBeneficiarios: resultado.total_beneficiarios,
-      totalValor: resultado.valor_total,
+      totalLinhasCnab: totalLinhasCnab,
+      quantidadeRegistrosCnab: totalLinhasCnab,
+      quantidadeBeneficiarios: beneficiarios.length,
+      totalValor: valorTotalCalculado,
       bancoCodigo: bancoRemessa,
       bancoNome: empresaRemetente.nome_empresa_banco || contaBancariaSelecionada?.banco_nome || (bancoRemessa === '341' ? 'BANCO ITAU SA' : 'BANCO DO BRASIL'),
       contaBancariaId: contaBancariaSelecionada?.id,
@@ -1213,25 +1266,40 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       sequencialArquivo,
       itens: itensParaRpc,
     });
-    
-    MotorCNAB240.download(resultado);
 
-    // 9. Atualizar status do lote (cnab_gerado)
+    // 9. Atualizar status do lote (CNAB_GERADO) somente após sucesso na persistência
     await this.supabase
       .from('intermitentes_lotes_fechamento')
       .update({
         status: 'CNAB_GERADO',
+        status_conciliacao: 'aguardando_conciliacao',
         updated_at: new Date().toISOString(),
       })
       .eq('id', loteId);
 
-    // O status de `lancamentos_intermitentes` mantém como ENVIADO_FINANCEIRO ou 
-    // afins conforme a constraint, a instrução disse para não violar e manter ENVIADO_FINANCEIRO.
-    
+    // 10. Download seguro somente após confirmação de persistência
+    if (isEmpresaHomologacao) {
+      if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        const blob = new Blob([conteudoFinal], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = nomeArquivoFinal;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } else if (cnabProducaoResultado) {
+      MotorCNAB240.download(cnabProducaoResultado);
+    }
+
     return {
-      nomeArquivo:    resultado.nome_arquivo,
-      totalRegistros: resultado.total_beneficiarios,
-      valorTotal:     resultado.valor_total,
+      nomeArquivo:    nomeArquivoFinal,
+      totalRegistros: beneficiarios.length,
+      valorTotal:     valorTotalCalculado,
+      arquivoId:      arquivoRegistrado?.id,
+      modo:           isEmpresaHomologacao ? 'homologacao' : 'producao',
     };
   }
   async atualizarLancamento(id: string, payload: {

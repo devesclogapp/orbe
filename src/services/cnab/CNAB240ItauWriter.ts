@@ -1,6 +1,7 @@
 import { ICNAB240Writer, CNAB240GenerateOptions, CNAB240Result } from './types';
 import { CNABBase } from './CNABBase';
 import { CnabRemessaArquivoService } from './cnabRemessaArquivo.service';
+import { gerarRelatorioSimulacaoHomologacao } from './simulacaoHomologacao.service';
 
 /**
  * Utilitários puros sem regras de negócio (padding, string manipulation)
@@ -322,24 +323,25 @@ export class CNAB240ItauWriter implements ICNAB240Writer {
     let fileName: string;
     const seqFormatado = String(sequencialGlobal).padStart(6, '0');
 
-    // Se for HOMOLOGAÇÃO, NÃO disponibilizar arquivo posicional bancário para transmissão
+    // Se for HOMOLOGAÇÃO, gerar exclusivamente relatório de simulação canônico ORBE_SIMULACAO_CNAB_V1
     if (modoEfetivo === 'homologacao') {
-      fileName = `SIMULACAO_HOMOLOGACAO_ITAU_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_SEQ${seqFormatado}.txt`;
-      content = [
-        '================================================================================',
-        'ORBE ERP — RELATÓRIO DE SIMULAÇÃO DE REMESSA CNAB (AMBIENTE DE HOMOLOGAÇÃO)',
-        'ESTE ARQUIVO NÃO É UM ARQUIVO POSICIONAL FEBRABAN E NÃO PODE SER TRANSMITIDO AO BANCO',
-        '================================================================================',
-        `EMPRESA: ${conta.empresas?.nome || 'EMPRESA HOMOLOGACAO'}`,
-        `BANCO: BANCO ITAÚ (341)`,
-        `DATA GERAÇÃO: ${now.toISOString()}`,
-        `SEQUENCIAL SIMULADO: ${seqFormatado}`,
-        `TOTAL DE REGISTROS SIMULADOS: ${totalQtdRegistrosArquivo}`,
-        `VALOR TOTAL CALCULADO: R$ ${totalValorLote.toFixed(2)}`,
-        '--------------------------------------------------------------------------------',
-        'STATUS: SIMULAÇÃO CONCLUÍDA — ARQUIVO BANCÁRIO DE TRANSMISSÃO BLOQUEADO',
-        '================================================================================',
-      ].join('\r\n') + '\r\n';
+      const modalidadeSimulacao = rhLoteId ? 'CLT' : 'FATURA';
+      const relatorio = gerarRelatorioSimulacaoHomologacao({
+        origem: modalidadeSimulacao,
+        empresaNome: conta.empresas?.nome || 'EMPRESA HOMOLOGACAO',
+        bancoCodigo: '341',
+        bancoNome: 'BANCO ITAÚ (341)',
+        sequencial: sequencialGlobal,
+        totalRegistros: totalQtdRegistrosArquivo,
+        totalValor: totalValorLote,
+        beneficiarios: faturas.map((f: any) => ({
+          nome: f.colaborador?.nome || f.favorecido_nome || 'FAVORECIDO',
+          valor: Number(f.valor ?? 0),
+          cpf: f.colaborador?.cpf || f.favorecido_cpf,
+        })),
+      });
+      fileName = relatorio.fileName;
+      content = relatorio.content;
     } else {
       content = linhas.join('\r\n') + '\r\n';
       fileName = `CNAB240_ITAU_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_SEQ${seqFormatado}.txt`;

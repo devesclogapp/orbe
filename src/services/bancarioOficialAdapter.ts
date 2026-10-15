@@ -54,6 +54,8 @@ export interface ItemObrigacaoBancariaOficial {
   documentoFavorecidoMascarado: string;
   dadosBancariosFavorecidoMascarado: string;
   quantidadeFavorecidos: number;
+  quantidadeLancamentos?: number;
+  quantidadeFavorecidosUnicos?: number;
   valorTotal: number;
   valorEsperado: number;
   valorRetornado?: number;
@@ -915,10 +917,60 @@ export const BancarioOficialAdapter = {
 
     const { data: intermitentesLotesDb } = await intermitentesQuery;
 
+    // Carregar lançamentos reais dos lotes de intermitentes para contagem exata e resolução relacional
+    const intLoteIds = (intermitentesLotesDb || []).map((l) => l.id);
+    let itensIntDb: any[] = [];
+    if (intLoteIds.length > 0) {
+      const { data: lancCarregados } = await supabase
+        .from("lancamentos_intermitentes")
+        .select("id, lote_fechamento_id, colaborador_id, nome_colaborador, total, status_pipeline")
+        .in("lote_fechamento_id", intLoteIds);
+      itensIntDb = lancCarregados || [];
+    }
+
+    const itensPorLoteInt = new Map<string, any[]>();
+    const loteIdPorLancamentoId = new Map<string, string>();
+    itensIntDb.forEach((it) => {
+      if (it.lote_fechamento_id) {
+        loteIdPorLancamentoId.set(it.id, it.lote_fechamento_id);
+        const arr = itensPorLoteInt.get(it.lote_fechamento_id) || [];
+        arr.push(it);
+        itensPorLoteInt.set(it.lote_fechamento_id, arr);
+      }
+    });
+
+    // Resolução relacional canônica de remessas via cnab_remessa_itens (origem_tipo = 'INTERMITENTE')
+    const remessaIdsInt = (remessasDb || []).map((r) => r.id);
+    if (remessaIdsInt.length > 0 && loteIdPorLancamentoId.size > 0) {
+      const { data: itensRemessaInt } = await supabase
+        .from("cnab_remessa_itens")
+        .select("id, remessa_id, origem_id")
+        .eq("origem_tipo", "INTERMITENTE")
+        .in("remessa_id", remessaIdsInt);
+
+      (itensRemessaInt || []).forEach((ri) => {
+        const targetLoteId = loteIdPorLancamentoId.get(ri.origem_id);
+        if (targetLoteId && !remessasPorLoteIntermitente.has(targetLoteId)) {
+          const rem = remessasMapById.get(ri.remessa_id);
+          if (rem) {
+            remessasPorLoteIntermitente.set(targetLoteId, rem);
+          }
+        }
+      });
+    }
+
     (intermitentesLotesDb || []).forEach((lote) => {
-      const remessa = remessasPorLoteIntermitente.get(lote.id);
+      // 1. Resolução da Remessa por intermitentes_lote_id, por cnab_remessa_itens ou por lote_id
+      const remessa = remessasPorLoteIntermitente.get(lote.id) || remessasPorLoteRh.get(lote.id);
       const retornos = retornosPorLoteIntermitente.get(lote.id) || [];
       const emp = empresasMap.get(lote.empresa_id);
+
+      // 2. Apuração exata de contagens (lançamentos vs favorecidos únicos)
+      const itensDoLote = itensPorLoteInt.get(lote.id) || [];
+      const qtdLancamentos = itensDoLote.length > 0 ? itensDoLote.length : (lote.quantidade_registros || 1);
+      const favorecidosUnicos = itensDoLote.length > 0
+        ? new Set(itensDoLote.map((i) => i.colaborador_id || i.nome_colaborador)).size
+        : qtdLancamentos;
 
       let situacao: SituacaoBancariaOficial = "PRONTO_BANCO";
       let estagioTab: EstagioBancarioTab = "PRONTAS_BANCO";
@@ -932,11 +984,11 @@ export const BancarioOficialAdapter = {
       } else if (lote.status === "PAGO" || (remessa && remessa.status === "homologado")) {
         situacao = "LIQUIDADO";
         estagioTab = "CONCILIACAO";
-      } else if (remessa) {
-        if (remessa.status === "enviado_manual") {
+      } else if (remessa || lote.status === "CNAB_GERADO") {
+        if (remessa?.status === "enviado_manual") {
           situacao = "ENVIADO_MANUAL";
           estagioTab = "AGUARDANDO_RETORNO";
-        } else if (remessa.status === "baixado") {
+        } else if (remessa?.status === "baixado") {
           situacao = "ARQUIVO_BAIXADO";
           estagioTab = "REMESSAS";
         } else {
@@ -956,6 +1008,8 @@ export const BancarioOficialAdapter = {
       const formatDt = (d?: string | null) =>
         d ? new Date(d).toLocaleDateString("pt-BR") : "—";
 
+      const descFavorecido = `${qtdLancamentos} lançamento(s) intermitente(s) • ${favorecidosUnicos} favorecido(s)`;
+
       obrigacoes.push({
         id: `int-${lote.id}`,
         referencia: `INT-${lote.competencia || "PERIODO"}`,
@@ -966,11 +1020,13 @@ export const BancarioOficialAdapter = {
         empresaNome: emp?.nome || "Empresa Não Identificada",
         isEmpresaTeste: Boolean(emp?.is_teste),
         competencia: lote.competencia || "—",
-        favorecidoDescricao: `${lote.total_registros || 1} Intermitente(s) Convocados`,
+        favorecidoDescricao: descFavorecido,
         favorecidoNomeMascarado: "Remuneração Contrato Intermitente",
         documentoFavorecidoMascarado: "Contas Corrente Diversas",
         dadosBancariosFavorecidoMascarado: "Transferência Bancária TED/PIX",
-        quantidadeFavorecidos: Number(lote.total_registros || 1),
+        quantidadeFavorecidos: favorecidosUnicos,
+        quantidadeLancamentos: qtdLancamentos,
+        quantidadeFavorecidosUnicos: favorecidosUnicos,
         valorTotal: Number(lote.valor_total || 0),
         valorEsperado: Number(lote.valor_total || 0),
         valorRetornado: divergenteItem?.valor_retornado ? Number(divergenteItem.valor_retornado) : undefined,
@@ -986,7 +1042,7 @@ export const BancarioOficialAdapter = {
         remessaDataDownload: remessa?.status === "baixado" || remessa?.status === "enviado_manual" ? remessa?.updated_at : undefined,
         remessaDataEnvio: remessa?.data_envio,
         remessaNomeArquivo: remessa?.nome_arquivo,
-        remessaQtdRegistros: remessa?.total_registros,
+        remessaQtdRegistros: remessa?.total_registros || qtdLancamentos,
         remessaModo: remessa?.modo || (emp?.is_teste ? "homologacao" : "producao"),
         observacaoEnvio: remessa?.observacoes || undefined,
         motivoRejeicaoCodigo: rejeicaoItem?.codigo_ocorrencia,
@@ -997,6 +1053,8 @@ export const BancarioOficialAdapter = {
           contaValida: Boolean(contaPagadora.ativo && contaPagadora.permiteCnab),
           dadosObrigatorios: true,
           favorecidosAptos: true,
+          qtdFavorecidosAptos: favorecidosUnicos,
+          qtdFavorecidosInaptos: 0,
           valorConsolidado: Number(lote.valor_total || 0) > 0,
           inconsistencias: [],
         },
@@ -1014,7 +1072,7 @@ export const BancarioOficialAdapter = {
                   etapa: "Geração CNAB",
                   dataHora: formatDt(remessa.data_geracao),
                   responsavel: "Operador Financeiro",
-                  descricao: `Arquivo gerado: ${remessa.nome_arquivo}`,
+                  descricao: `Arquivo ${remessa.nome_arquivo} registrado (NSA: ${remessa.sequencial_arquivo || '—'}).`,
                   status: "concluido" as const,
                 },
               ]

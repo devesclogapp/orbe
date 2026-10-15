@@ -176,7 +176,8 @@ function buildHeaderLoteItau(
   numLote: number,
   tipoServico: number,
   agora: Date,
-  todosMesmoBanco: boolean
+  todosMesmoBanco: boolean,
+  finalidadeLote?: string
 ): string {
   const cnpj = num(emp.cnpj.replace(/\D/g, ''), 14);
   const tipoInscricao = cnpj.length === 11 ? '1' : '2';
@@ -200,7 +201,8 @@ function buildHeaderLoteItau(
   l += alfa(emp.conta_digito || '0', 1);  // 071-071 (1) DAC Conta
   l += spaces(1);                         // 072-072 (1) DAC Ag/Conta
   l += alfa(emp.razao_social, 30);        // 073-102 (30) Nome empresa
-  l += alfa('PAGAMENTO DIARISTAS', 40);   // 103-142 (40) Finalidade do lote
+  const finalidade = finalidadeLote?.trim() || 'PAGAMENTO DIARISTAS';
+  l += alfa(finalidade, 40);              // 103-142 (40) Finalidade do lote
   l += alfa(emp.logradouro || '', 30);    // 143-172 (30) Logradouro
   l += num(emp.numero || '0', 5);         // 173-177 (5) Número
   l += alfa('', 15);                      // 178-192 (15) Complemento
@@ -355,7 +357,7 @@ export function gerarCNAB240Itau(
   linhas.push(buildHeaderArquivoItau(empresa, agora, numArquivo));
 
   // 2. Header de Lote
-  linhas.push(buildHeaderLoteItau(empresa, numLote, tipoServico, agora, todosMesmoBanco));
+  linhas.push(buildHeaderLoteItau(empresa, numLote, tipoServico, agora, todosMesmoBanco, opcoes.finalidade_lote));
 
   // 3. Detalhes
   let numSeqLote = 1;

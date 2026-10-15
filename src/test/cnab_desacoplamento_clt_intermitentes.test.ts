@@ -744,10 +744,11 @@ describe('DESACOPLAMENTO CNAB CLT × INTERMITENTES × DIARISTAS', () => {
     const { CnabRemessaArquivoService } = await import('@/services/cnab/cnabRemessaArquivo.service');
     const { supabase } = await import('@/lib/supabase');
 
-    let updateCnabRemessasPayload: any = null;
+    let rpcParams: any = null;
 
-    (supabase.rpc as any).mockImplementation((fn: string) => {
+    (supabase.rpc as any).mockImplementation((fn: string, args: any) => {
       if (fn === 'rpc_registrar_cnab_remessa') {
+        rpcParams = args;
         return Promise.resolve({
           data: { remessa_id: 'remessa-int-uuid-hml' },
           error: null,
@@ -853,9 +854,9 @@ describe('DESACOPLAMENTO CNAB CLT × INTERMITENTES × DIARISTAS', () => {
       ],
     });
 
-    expect(updateCnabRemessasPayload).not.toBeNull();
-    expect(updateCnabRemessasPayload.competencia).toBe('2026-10');
-    expect(updateCnabRemessasPayload.intermitentes_lote_id).toBe('930915d6-cb8f-4739-8001-7fa49d3009e4');
+    expect(rpcParams).not.toBeNull();
+    expect(rpcParams.p_competencia).toBe('2026-10');
+    expect(rpcParams.p_intermitentes_lote_id).toBe('930915d6-cb8f-4739-8001-7fa49d3009e4');
   });
 });
 

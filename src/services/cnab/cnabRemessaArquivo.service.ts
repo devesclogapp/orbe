@@ -220,6 +220,63 @@ export const CnabRemessaArquivoService = {
     return data as CnabRemessaArquivo | null;
   },
 
+  async checkIntermitentesLoteJaRemessado(intermitentesLoteId: string): Promise<CnabRemessaArquivo | null> {
+    if (!intermitentesLoteId) return null;
+    try {
+      // 1. Checar diretamente por intermitentes_lote_id
+      const { data: remDireta, error: errDireta } = await supabase
+        .from('cnab_remessas_arquivos')
+        .select('*')
+        .eq('intermitentes_lote_id', intermitentesLoteId)
+        .not('status', 'eq', 'erro_homologacao')
+        .maybeSingle();
+
+      if (!errDireta && remDireta) return remDireta as CnabRemessaArquivo;
+
+      // 2. Checar por lote_id
+      const { data: remLote, error: errLote } = await supabase
+        .from('cnab_remessas_arquivos')
+        .select('*')
+        .eq('lote_id', intermitentesLoteId)
+        .not('status', 'eq', 'erro_homologacao')
+        .maybeSingle();
+
+      if (!errLote && remLote) return remLote as CnabRemessaArquivo;
+
+      // 3. Checar por cnab_remessa_itens vinculados aos lançamentos do lote (rastreabilidade relacional canônica)
+      const { data: lancs } = await supabase
+        .from('lancamentos_intermitentes')
+        .select('id')
+        .eq('lote_fechamento_id', intermitentesLoteId);
+
+      const lancIds = (lancs || []).map((l: any) => l.id).filter(Boolean);
+      if (lancIds.length > 0) {
+        const { data: itensRemessa } = await supabase
+          .from('cnab_remessa_itens')
+          .select('remessa_id')
+          .eq('origem_tipo', 'INTERMITENTE')
+          .in('origem_id', lancIds)
+          .limit(1);
+
+        const remId = itensRemessa?.[0]?.remessa_id;
+        if (remId) {
+          const { data: remHistorica } = await supabase
+            .from('cnab_remessas_arquivos')
+            .select('*')
+            .eq('id', remId)
+            .not('status', 'eq', 'erro_homologacao')
+            .maybeSingle();
+
+          if (remHistorica) return remHistorica as CnabRemessaArquivo;
+        }
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  },
+
   async checkRhLoteJaRemessado(rhLoteId: string): Promise<CnabRemessaArquivo | null> {
     if (!rhLoteId) return null;
 
@@ -291,6 +348,16 @@ export const CnabRemessaArquivoService = {
       if (existenteDiaristas) {
         throw new Error(
           `Lote de diaristas ja possui remessa CNAB gerada (arquivo: ${existenteDiaristas.nome_arquivo}, status: ${existenteDiaristas.status}). ` +
+          `Para reenviar, marque o arquivo anterior como erro primeiro.`
+        );
+      }
+    }
+
+    if (intermitentesLoteId) {
+      const existenteIntermitentes = await this.checkIntermitentesLoteJaRemessado(intermitentesLoteId);
+      if (existenteIntermitentes) {
+        throw new Error(
+          `Lote de intermitentes já possui remessa CNAB gerada (arquivo: ${existenteIntermitentes.nome_arquivo}, status: ${existenteIntermitentes.status}). ` +
           `Para reenviar, marque o arquivo anterior como erro primeiro.`
         );
       }
@@ -428,6 +495,13 @@ export const CnabRemessaArquivoService = {
     // Portanto, p_total_registros DEVE ser a quantidade de itens financeiros (qtdItensFinanceiros),
     // e NÃO a quantidade de linhas físicas do arquivo TXT (qtdRegistrosCnab),
     // eliminando a divergência 6 x 2!
+    const observacoesJson = JSON.stringify({
+      quantidade_itens_financeiros: qtdItensFinanceiros,
+      quantidade_registros_cnab: qtdRegistrosCnab,
+      quantidade_beneficiarios: params.quantidadeBeneficiarios ?? null,
+      rh_lote_id: params.rhLoteId || null,
+    });
+
     const { data, error } = await supabase.rpc('rpc_registrar_cnab_remessa', {
        p_conta_bancaria_id: contaBancariaId,
        p_lote_id: loteId,
@@ -437,48 +511,25 @@ export const CnabRemessaArquivoService = {
        p_hash_arquivo: hash,
        p_total_valor: totalValor,
        p_total_registros: qtdItensFinanceiros,
-       p_itens: params.itens
+       p_itens: params.itens,
+       p_diaristas_lote_id: diaristasLoteId || null,
+       p_intermitentes_lote_id: intermitentesLoteId || null,
+       p_conteudo_arquivo: conteudoArquivo || null,
+       p_competencia: params.competencia || null,
+       p_observacoes: observacoesJson
     });
 
     if (error) {
       throw new Error(`Erro Crítico na Transação CNAB RPC: ${error.message}`);
     }
 
-    // 7. Atualizar o ID devolvido pela RPC para o fluxo
+    // 7. Obter dados da remessa registrados atomicamente pela RPC
     const rpcResponse = data as any;
-    const finalRemessaId = rpcResponse.remessa_id;
-
-    // Atualizar lote físico para cnab_gerado (NUNCA marcar como pago!)
-    if (loteId) await sincronizarStatusLote(loteId, 'gerado');
-    if (diaristasLoteId) {
-      await supabase.from('diaristas_lotes_fechamento').update({
-        status: 'cnab_gerado',
-        status_conciliacao: 'aguardando_conciliacao',
-        updated_at: new Date().toISOString()
-      }).eq('id', diaristasLoteId);
-    }
-    if (intermitentesLoteId) {
-      await supabase.from('intermitentes_lotes_fechamento').update({
-        status: 'cnab_gerado',
-        status_conciliacao: 'aguardando_conciliacao',
-        updated_at: new Date().toISOString()
-      }).eq('id', intermitentesLoteId);
-    }
-
-    // 8. Opcional: Persistir o Conteudo Arquivo em Storage / BD com metadados semânticos
-    const observacoesJson = JSON.stringify({
-      quantidade_itens_financeiros: qtdItensFinanceiros,
-      quantidade_registros_cnab: qtdRegistrosCnab,
-      quantidade_beneficiarios: params.quantidadeBeneficiarios ?? null,
-      rh_lote_id: params.rhLoteId || null,
-    });
-
-    await supabase.from('cnab_remessas_arquivos').update({
-      conteudo_arquivo: conteudoArquivo,
-      observacoes: observacoesJson,
-      competencia: params.competencia || null,
-      intermitentes_lote_id: params.intermitentesLoteId || null,
-    }).eq('id', finalRemessaId).eq('tenant_id', tenantId);
+    const finalRemessaId = rpcResponse?.remessa_id || rpcResponse?.id || data;
+    const finalSequencial = rpcResponse?.sequencial ?? sequencial;
+    const finalNomeArquivo = rpcResponse?.nome_arquivo ?? nomeArquivo;
+    const finalHash = rpcResponse?.hash ?? hash;
+    const finalConteudo = rpcResponse?.conteudo_arquivo ?? conteudoArquivo;
 
     // 9. Registrar auditoria (complementar ao RPC)
     await this.registrarAuditoria({
@@ -486,13 +537,13 @@ export const CnabRemessaArquivoService = {
       loteId,
       acao: 'geracao',
       detalhes: {
-        nome_arquivo: nomeArquivo,
-        sequencial: rpcResponse.sequencial ?? sequencial,
+        nome_arquivo: finalNomeArquivo,
+        sequencial: finalSequencial,
         quantidade_itens_financeiros: qtdItensFinanceiros,
         quantidade_registros_cnab: qtdRegistrosCnab,
         quantidade_beneficiarios: params.quantidadeBeneficiarios,
         total_valor: totalValor,
-        hash: hash.substring(0, 16) + '...',
+        hash: finalHash.substring(0, 16) + '...',
         modo,
       },
     });
@@ -500,7 +551,10 @@ export const CnabRemessaArquivoService = {
     return {
       id: finalRemessaId,
       modo,
-      sequencial_arquivo: rpcResponse.sequencial ?? sequencial,
+      sequencial_arquivo: finalSequencial,
+      nome_arquivo: finalNomeArquivo,
+      hash_arquivo: finalHash,
+      conteudo_arquivo: finalConteudo,
     } as CnabRemessaArquivo;
   },
 

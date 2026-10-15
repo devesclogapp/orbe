@@ -6,6 +6,7 @@ import { TrailerLote } from './segmentos/TrailerLote';
 import { TrailerArquivo } from './segmentos/TrailerArquivo';
 import { SegmentoB } from './segmentos/SegmentoB';
 import { CnabRemessaArquivoService } from './cnabRemessaArquivo.service';
+import { gerarRelatorioSimulacaoHomologacao } from './simulacaoHomologacao.service';
 
 import { ICNAB240Writer, CNAB240GenerateOptions, CNAB240Result } from './types';
 import { CNABBase } from './CNABBase';
@@ -239,24 +240,25 @@ export class CNAB240BBWriter implements ICNAB240Writer {
     const padZero = (n: number) => n.toString().padStart(2, '0');
     const seqFormatado = String(sequencialGlobal).padStart(6, '0');
 
-    // Se for HOMOLOGAÇÃO, NÃO disponibilizar arquivo posicional bancário para transmissão
+    // Se for HOMOLOGAÇÃO, gerar exclusivamente relatório de simulação canônico ORBE_SIMULACAO_CNAB_V1
     if (modoEfetivo === 'homologacao') {
-      fileName = `SIMULACAO_HOMOLOGACAO_BB_${now.getFullYear()}${padZero(now.getMonth() + 1)}${padZero(now.getDate())}_SEQ${seqFormatado}.txt`;
-      content = [
-        '================================================================================',
-        'ORBE ERP — RELATÓRIO DE SIMULAÇÃO DE REMESSA CNAB (AMBIENTE DE HOMOLOGAÇÃO)',
-        'ESTE ARQUIVO NÃO É UM ARQUIVO POSICIONAL FEBRABAN E NÃO PODE SER TRANSMITIDO AO BANCO',
-        '================================================================================',
-        `EMPRESA: ${conta.empresas?.nome || 'EMPRESA HOMOLOGACAO'}`,
-        `BANCO: BANCO DO BRASIL (001)`,
-        `DATA GERAÇÃO: ${now.toISOString()}`,
-        `SEQUENCIAL SIMULADO: ${seqFormatado}`,
-        `TOTAL DE REGISTROS SIMULADOS: ${totalTitulosValidos}`,
-        `VALOR TOTAL CALCULADO: R$ ${totalValorLote.toFixed(2)}`,
-        '--------------------------------------------------------------------------------',
-        'STATUS: SIMULAÇÃO CONCLUÍDA — ARQUIVO BANCÁRIO DE TRANSMISSÃO BLOQUEADO',
-        '================================================================================',
-      ].join('\r\n') + '\r\n';
+      const modalidadeSimulacao = rhLoteId ? 'CLT' : 'FATURA';
+      const relatorio = gerarRelatorioSimulacaoHomologacao({
+        origem: modalidadeSimulacao,
+        empresaNome: conta.empresas?.nome || 'EMPRESA HOMOLOGACAO',
+        bancoCodigo: '001',
+        bancoNome: 'BANCO DO BRASIL (001)',
+        sequencial: sequencialGlobal,
+        totalRegistros: totalTitulosValidos,
+        totalValor: totalValorLote,
+        beneficiarios: faturas.map((f: any) => ({
+          nome: f.colaborador?.nome || f.favorecido_nome || 'FAVORECIDO',
+          valor: Number(f.valor ?? 0),
+          cpf: f.colaborador?.cpf || f.favorecido_cpf,
+        })),
+      });
+      fileName = relatorio.fileName;
+      content = relatorio.content;
     } else {
       content = linhas.join('\r\n') + '\r\n';
       fileName = `CNAB240_BB_${now.getFullYear()}${padZero(now.getMonth() + 1)}${padZero(now.getDate())}_SEQ${seqFormatado}.txt`;
