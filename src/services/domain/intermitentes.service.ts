@@ -863,10 +863,17 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
 
       for (const c of (colaboradores ?? [])) {
         const comp = getColaboradorCompletudeDetailed(c);
-        const faltantesOp = comp.operacional.faltantes || [];
-        const faltantesRh = comp.rh.faltantes || [];
-        const faltantesFin = comp.financeiro.faltantes || [];
-        const isOk = comp.geral.completo && faltantesOp.length === 0 && faltantesRh.length === 0 && faltantesFin.length === 0;
+        const faltantesOp = comp.operacional.pendencias || [];
+        const faltantesRh = comp.rh.pendencias || [];
+        const faltantesFin = comp.financeiro.pendencias || [];
+
+        const isOk =
+          comp.operacional.completo === true &&
+          comp.rh.completo === true &&
+          comp.financeiro.completo === true &&
+          faltantesOp.length === 0 &&
+          faltantesRh.length === 0 &&
+          faltantesFin.length === 0;
 
         if (!isOk) {
           const faltantesGeral = [...faltantesOp, ...faltantesRh, ...faltantesFin];
