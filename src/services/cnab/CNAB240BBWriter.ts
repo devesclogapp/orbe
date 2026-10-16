@@ -323,10 +323,8 @@ export class CNAB240BBWriter implements ICNAB240Writer {
     const arquivo = await CnabRemessaArquivoService.buscarPorId(arquivoId);
     if (!arquivo) return null;
 
-    // Bloqueio de Segurança Bancária: Arquivos de homologação não podem ser baixados em formato bancário
-    if (arquivo.modo === 'homologacao') {
-      throw new Error('Bloqueio de Segurança Bancária: Remessas geradas no ambiente de Homologação não podem ser baixadas em formato bancário de transmissão.');
-    }
+    // FIX-CNAB-05: Validação positiva de segurança antes do download
+    await CnabRemessaArquivoService.validarDownloadArquivo(arquivo);
 
     if (!arquivo.conteudo_arquivo) return null;
 

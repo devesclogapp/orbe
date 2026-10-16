@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { getCurrentTenantId } from '../domain/base.service';
 import { EnvironmentService, EnvironmentScopeResolutionError } from '../environment/EnvironmentService';
 import { EnvironmentQueryFilter } from '../environment/EnvironmentQueryFilter';
+import { SimulacaoHomologacaoService } from './simulacaoHomologacao.service';
 // ============================================================
 // Tipos
 // ============================================================
@@ -558,18 +559,88 @@ export const CnabRemessaArquivoService = {
     } as CnabRemessaArquivo;
   },
 
-  // ——— Atualização de status ———————————————————————————————
+  // ——— Atualização de status e validação de download ——————
+
+  /**
+   * FIX-CNAB-05: Validação Positiva de Segurança para Download de Arquivo de Remessa
+   *
+   * Garante Fail-Closed em todas as condições:
+   * 1. Presença do conteúdo no banco de dados.
+   * 2. Integridade criptográfica via SHA-256 (quando hash persistido).
+   * 3. Ambiente de Homologação:
+   *    - Bloqueia SUMARIAMENTE qualquer conteúdo posicional bancário (FEBRABAN 240 chars).
+   *    - Exige conformidade estrita com o padrão canônico ORBE_SIMULACAO_CNAB_V1.
+   * 4. Ambiente de Produção:
+   *    - Bloqueia arquivos de simulação (impedindo confusão operacional).
+   */
+  async validarDownloadArquivo(arquivo: CnabRemessaArquivo): Promise<{ valido: boolean; tipo: 'simulacao' | 'bancario' }> {
+    // 1. Conteúdo obrigatório (Fail-Closed)
+    if (!arquivo.conteudo_arquivo || !arquivo.conteudo_arquivo.trim()) {
+      throw new Error('Bloqueio de Segurança: Conteúdo do arquivo de remessa ausente ou vazio na base de dados.');
+    }
+
+    const conteudo = arquivo.conteudo_arquivo;
+
+    // 2. Inspeção do conteúdo físico (nunca confiar exclusivamente no nome ou metadados)
+    const linhas = conteudo.split(/\r?\n/).map(l => l.trimEnd()).filter(Boolean);
+    const contemLinhasBancarias = linhas.some(l => l.length === 240 && /^[0-9]{3}/.test(l));
+    const isSimulacaoHeader = conteudo.startsWith('ORBE_SIMULACAO_CNAB_V1') || (linhas.length > 0 && linhas[0] === 'ORBE_SIMULACAO_CNAB_V1');
+
+    // 3. Cenário de Homologação (modo === 'homologacao' ou nome iniciando com SIMULACAO_)
+    const isHomologacaoContext = arquivo.modo === 'homologacao' || (arquivo.nome_arquivo && arquivo.nome_arquivo.startsWith('SIMULACAO_'));
+
+    if (isHomologacaoContext) {
+      // Bloqueio rigoroso de formato bancário em homologação (ex: NSA 9 histórica, arquivo 240 chars ou spoofing de nome)
+      if (contemLinhasBancarias || !isSimulacaoHeader) {
+        throw new Error(
+          'Bloqueio de Segurança Bancária: Remessas geradas no ambiente de Homologação não podem ser baixadas em formato bancário de transmissão.'
+        );
+      }
+
+      // Validação semântica e estrutural do relatório de simulação canônico
+      const validacaoSimulacao = SimulacaoHomologacaoService.validar(conteudo);
+      if (!validacaoSimulacao.valido) {
+        if (validacaoSimulacao.erro?.includes('posicionais FEBRABAN')) {
+          throw new Error(
+            'Bloqueio de Segurança Bancária: Remessas geradas no ambiente de Homologação não podem ser baixadas em formato bancário de transmissão.'
+          );
+        }
+        throw new Error(`Bloqueio de Segurança: Estrutura do relatório de simulação inválida (${validacaoSimulacao.erro}).`);
+      }
+
+      // 4. Verificação de integridade de Hash (quando hash_arquivo estiver preenchido)
+      if (arquivo.hash_arquivo && arquivo.hash_arquivo.trim()) {
+        const hashCalculado = await sha256(conteudo);
+        if (hashCalculado.toLowerCase() !== arquivo.hash_arquivo.trim().toLowerCase()) {
+          throw new Error('Bloqueio de Segurança: Hash do conteúdo persistido diverge do hash oficial registrado na remessa.');
+        }
+      }
+
+      return { valido: true, tipo: 'simulacao' };
+    }
+
+    // 5. Cenário de Produção
+    if (isSimulacaoHeader) {
+      throw new Error('Bloqueio de Segurança: Arquivo de simulação não pode ser baixado no ambiente de Produção.');
+    }
+
+    // Verificação de integridade de Hash em Produção
+    if (arquivo.hash_arquivo && arquivo.hash_arquivo.trim()) {
+      const hashCalculado = await sha256(conteudo);
+      if (hashCalculado.toLowerCase() !== arquivo.hash_arquivo.trim().toLowerCase()) {
+        throw new Error('Bloqueio de Segurança: Hash do conteúdo persistido diverge do hash oficial registrado na remessa.');
+      }
+    }
+
+    return { valido: true, tipo: 'bancario' };
+  },
 
   async marcarComoBaixado(arquivoId: string): Promise<void> {
     const arquivo = await this.buscarPorId(arquivoId);
     if (!arquivo) throw new Error('Arquivo CNAB não encontrado');
 
-    // Bloqueio de Segurança Bancária: Arquivos de homologação não possuem download bancário habilitado
-    if (arquivo.modo === 'homologacao') {
-      throw new Error(
-        'Bloqueio de Segurança Bancária: Remessas geradas no ambiente de Homologação não podem ser baixadas em formato bancário de transmissão.'
-      );
-    }
+    // FIX-CNAB-05: Validação positiva de segurança antes de marcar como baixado
+    await this.validarDownloadArquivo(arquivo);
 
     if (arquivo.status === 'gerado') {
       const { error } = await supabase

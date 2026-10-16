@@ -422,11 +422,18 @@ const RetornoBancario = () => {
                       financeira definitiva.
                     </p>
                   </div>
-                  {arquivoSelecionado?.nome_arquivo && (
-                    <Badge variant="outline" className="font-mono">
-                      {arquivoSelecionado.nome_arquivo}
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {arquivoSelecionado?.modo === "homologacao" && (
+                      <Badge variant="outline" className="text-amber-700 bg-amber-500/10 border-amber-500/30 dark:text-amber-400 font-bold uppercase text-[10px]">
+                        Simulação Homologação
+                      </Badge>
+                    )}
+                    {arquivoSelecionado?.nome_arquivo && (
+                      <Badge variant="outline" className="font-mono">
+                        {arquivoSelecionado.nome_arquivo}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
                 {!arquivoSelecionado ? (

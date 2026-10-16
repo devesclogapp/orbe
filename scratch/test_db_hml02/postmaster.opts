@@ -1,1 +1,1 @@
-C:/pgsql/bin/postgres.exe "-D" "y:\2026\ERP ESC LOG\Orbe\scratch\test_db_hml02" "-p" "54323" "-h" "127.0.0.1"
+C:/pgsql/bin/postgres.exe "-D" "y:\2026\ERP ESC LOG\Orbe\scratch\test_db_hml02" "-p" "54323"

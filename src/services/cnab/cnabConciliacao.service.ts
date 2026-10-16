@@ -51,7 +51,7 @@ export const CnabConciliacaoService = {
       const { data: remessasMeta } = cnabRemessaIds.length > 0
         ? await supabase
             .from('cnab_remessas_arquivos')
-            .select('id, diaristas_lote_id, intermitentes_lote_id, lote_id, empresa_id')
+            .select('id, diaristas_lote_id, intermitentes_lote_id, lote_id, empresa_id, modo')
             .in('id', cnabRemessaIds)
         : { data: [] };
       const remessaMetaMap = new Map((remessasMeta || []).map((rm: any) => [rm.id, rm]));
@@ -284,13 +284,17 @@ export const CnabConciliacaoService = {
           }
 
           try {
+            const remMeta = remessasMeta?.[0];
+            const modoLote = remMeta?.modo || 'producao';
             await supabase.rpc('log_audit', {
-              p_action: 'DIARISTAS_LOTE_QUITADO_INTEGRAL',
+              p_action: modoLote === 'homologacao' ? 'DIARISTAS_LOTE_QUITADO_SIMULADO' : 'DIARISTAS_LOTE_QUITADO_INTEGRAL',
               p_details: JSON.stringify({
                 lote_id: loteId,
                 total_itens: ativos.length,
                 status: 'PAGO',
                 status_conciliacao: 'conciliado',
+                modo: modoLote,
+                simulado: modoLote === 'homologacao',
               }),
             });
           } catch (_e) {
@@ -393,12 +397,16 @@ export const CnabConciliacaoService = {
           }
 
           try {
+            const remMeta = remessasMeta?.[0];
+            const modoLote = remMeta?.modo || 'producao';
             await supabase.rpc('log_audit', {
-              p_action: 'INTERMITENTES_LOTE_QUITADO_INTEGRAL',
+              p_action: modoLote === 'homologacao' ? 'INTERMITENTES_LOTE_QUITADO_SIMULADO' : 'INTERMITENTES_LOTE_QUITADO_INTEGRAL',
               p_details: JSON.stringify({
                 lote_id: loteId,
                 total_itens: ativos.length,
                 status: 'PAGO',
+                modo: modoLote,
+                simulado: modoLote === 'homologacao',
               }),
             });
           } catch (_e) {
@@ -449,17 +457,27 @@ export const CnabConciliacaoService = {
             }
 
             if (rhLoteId) {
-              const { error: rhUpdateErr } = await supabase
+              const { data: currentRhLote } = await supabase
                 .from('rh_financeiro_lotes')
-                .update({
-                  status: 'PAGO',
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', rhLoteId);
+                .select('status')
+                .eq('id', rhLoteId)
+                .maybeSingle();
 
-              if (rhUpdateErr) {
-                console.error(`[CnabConciliacaoService] Falha ao atualizar espelho financeiro ${rhLoteId} para PAGO:`, rhUpdateErr);
-                throw new Error(`Falha ao sincronizar espelho financeiro ${rhLoteId} para PAGO: ${rhUpdateErr.message}`);
+              if (currentRhLote?.status === 'PAGO') {
+                // Sincronização atômica prévia via RPC confirmada com sucesso
+              } else {
+                const { error: rhUpdateErr } = await supabase
+                  .from('rh_financeiro_lotes')
+                  .update({
+                    status: 'PAGO',
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', rhLoteId);
+
+                if (rhUpdateErr) {
+                  console.error(`[CnabConciliacaoService] Falha ao atualizar espelho financeiro ${rhLoteId} para PAGO:`, rhUpdateErr);
+                  throw new Error(`Falha ao sincronizar espelho financeiro ${rhLoteId} para PAGO: ${rhUpdateErr.message}`);
+                }
               }
             }
           } catch (syncErr: any) {

@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { CnabRetornoService, ProcessarRetornoResult } from "@/services/cnab/cnabRetorno.service";
+import { EnvironmentService } from "@/services/environment/EnvironmentService";
 
 interface ImportarRetornoModalOficialProps {
   open: boolean;
@@ -48,6 +49,8 @@ export const ImportarRetornoModalOficial: React.FC<ImportarRetornoModalOficialPr
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedResult, setProcessedResult] = useState<ProcessarRetornoResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const isHomologacao = EnvironmentService.getCurrentEnvironment() === "homologacao";
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -71,9 +74,15 @@ export const ImportarRetornoModalOficial: React.FC<ImportarRetornoModalOficialPr
     try {
       const result = await CnabRetornoService.processarArquivo(selectedFile, selectedBank);
       setProcessedResult(result);
-      toast.success("Retorno bancário processado com sucesso!", {
-        description: `${result.resumo.pagos} liquidações confirmadas, ${result.resumo.rejeitados} rejeições e ${result.resumo.divergentes} divergências.`,
-      });
+      if (result.simulado || isHomologacao) {
+        toast.success("Simulação de conciliação concluída com sucesso!", {
+          description: `Ambiente de Homologação: ${result.resumo.pagos} baixas simuladas, ${result.resumo.rejeitados} rejeições e ${result.resumo.divergentes} divergências registradas.`,
+        });
+      } else {
+        toast.success("Retorno bancário processado com sucesso!", {
+          description: `${result.resumo.pagos} liquidações confirmadas, ${result.resumo.rejeitados} rejeições e ${result.resumo.divergentes} divergências.`,
+        });
+      }
       if (onProcessedSuccess) {
         onProcessedSuccess();
       }
@@ -101,15 +110,23 @@ export const ImportarRetornoModalOficial: React.FC<ImportarRetornoModalOficialPr
             <Badge variant="outline" className="text-[10px] uppercase font-bold text-blue-600 bg-blue-50 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-900/50">
               CNAB 240 / Retorno
             </Badge>
-            <Badge variant="outline" className="text-[10px] text-muted-foreground">
-              Ambiente Oficial
-            </Badge>
+            {isHomologacao ? (
+              <Badge variant="outline" className="text-[10px] font-bold text-amber-700 bg-amber-500/10 border-amber-500/30 dark:text-amber-400 uppercase">
+                Simulação Homologação
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px] text-muted-foreground font-semibold">
+                Ambiente Oficial
+              </Badge>
+            )}
           </div>
           <DialogTitle className="text-lg font-bold text-foreground">
-            Importar Arquivo de Retorno Bancário
+            {isHomologacao ? "Simulação de Retorno Bancário" : "Importar Arquivo de Retorno Bancário"}
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Envie o arquivo .RET ou .TXT disponibilizado pelo Internet Banking para conciliação automática das liquidações, rejeições e ocorrências.
+            {isHomologacao
+              ? "Ambiente de Testes: Envie o arquivo .RET de simulação para validação funcional do ciclo de retorno sem gerar evidências de pagamento real."
+              : "Envie o arquivo .RET ou .TXT disponibilizado pelo Internet Banking para conciliação automática das liquidações, rejeições e ocorrências."}
           </DialogDescription>
         </DialogHeader>
 
@@ -166,29 +183,50 @@ export const ImportarRetornoModalOficial: React.FC<ImportarRetornoModalOficialPr
             <div className="rounded-lg border border-border bg-card p-3 space-y-1.5 text-xs text-muted-foreground">
               <span className="font-semibold text-foreground flex items-center gap-1.5">
                 <Info className="h-3.5 w-3.5 text-blue-600" />
-                Segurança e Idempotência
+                Segurança, Idempotência e Segregação
               </span>
               <p className="text-[11px]">
-                O ORBE confere a integridade do arquivo através de hash SHA-256 e valida o sequencial (NSA). O processamento é transacional (fail-closed) e baixará exclusivamente os lançamentos confirmados pelo banco.
+                {isHomologacao
+                  ? "Este processamento será gravado no modo 'homologacao'. A transação valida hash SHA-256, sequencial (NSA) e vinculação estrita à remessa de testes, isolando os dados de homologação do DRE e de pagamentos reais."
+                  : "O ORBE confere a integridade do arquivo através de hash SHA-256 e valida o sequencial (NSA). O processamento é transacional (fail-closed) e baixará exclusivamente os lançamentos confirmados pelo banco."}
               </p>
             </div>
           </div>
         ) : (
           /* Visualização Pós-Processamento Real */
           <div className="space-y-4 py-2">
-            <div className="rounded-lg border border-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20 dark:border-emerald-800 p-4 space-y-2">
-              <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold text-sm">
-                <ShieldCheck className="h-5 w-5 text-emerald-600" />
-                <span>Arquivo Processado com Sucesso</span>
+            <div className={`rounded-lg border p-4 space-y-2 ${
+              processedResult.simulado || isHomologacao
+                ? "border-amber-300 bg-amber-50/60 dark:bg-amber-950/20 dark:border-amber-800"
+                : "border-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20 dark:border-emerald-800"
+            }`}>
+              <div className={`flex items-center gap-2 font-bold text-sm ${
+                processedResult.simulado || isHomologacao
+                  ? "text-amber-800 dark:text-amber-300"
+                  : "text-emerald-800 dark:text-emerald-300"
+              }`}>
+                <ShieldCheck className={`h-5 w-5 ${processedResult.simulado || isHomologacao ? "text-amber-600" : "text-emerald-600"}`} />
+                <span>
+                  {processedResult.simulado || isHomologacao
+                    ? "Simulação de Conciliação Concluída (Ambiente de Testes)"
+                    : "Arquivo Processado com Sucesso"}
+                </span>
               </div>
               <p className="text-xs text-muted-foreground">
                 Arquivo: <span className="font-mono font-medium text-foreground">{selectedFile?.name}</span>
+                {(processedResult.simulado || isHomologacao) && (
+                  <span className="ml-2 font-semibold text-amber-700 dark:text-amber-400">
+                    • Modo: Homologação (Sem efeito financeiro real)
+                  </span>
+                )}
               </p>
             </div>
 
             <div className="grid grid-cols-3 gap-2.5">
               <div className="p-3 bg-card border border-border rounded-lg text-center">
-                <span className="text-[10px] uppercase font-bold text-muted-foreground block">Liquidados</span>
+                <span className="text-[10px] uppercase font-bold text-muted-foreground block">
+                  {processedResult.simulado || isHomologacao ? "Baixas Simuladas" : "Liquidados"}
+                </span>
                 <span className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
                   {processedResult.resumo.pagos}
                 </span>
@@ -219,15 +257,19 @@ export const ImportarRetornoModalOficial: React.FC<ImportarRetornoModalOficialPr
               size="sm"
               onClick={handleProcess}
               disabled={isProcessing || !selectedFile}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+              className={
+                isHomologacao
+                  ? "bg-amber-600 hover:bg-amber-700 text-white font-semibold"
+                  : "bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+              }
             >
               {isProcessing ? (
                 <>
                   <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                  Processando...
+                  {isHomologacao ? "Simulando Conciliação..." : "Processando..."}
                 </>
               ) : (
-                "Processar Retorno"
+                isHomologacao ? "Simular Retorno" : "Processar Retorno"
               )}
             </Button>
           )}

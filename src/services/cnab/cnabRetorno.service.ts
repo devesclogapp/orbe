@@ -34,6 +34,9 @@ export interface CnabRetornoArquivo {
   total_divergente: number;
   total_pendente: number;
   status: CnabRetornoArquivoStatus;
+  modo?: 'homologacao' | 'producao';
+  empresa_id?: string | null;
+  conta_bancaria_id?: string | null;
   erros_json: unknown[];
   created_at: string;
   updated_at: string;
@@ -65,6 +68,7 @@ export interface CnabRetornoItem {
   revertido_por?: string | null;
   linha_original: string;
   origem_tipo?: string | null;
+  modo?: 'homologacao' | 'producao';
   parsed_json: Record<string, unknown>;
   created_at: string;
 }
@@ -121,6 +125,8 @@ export interface ProcessarRetornoResult {
   };
   remessaRelacionada: CnabRemessaHistoricoItem | null;
   parseResult: CnabRetornoParseResult;
+  modo?: 'homologacao' | 'producao';
+  simulado?: boolean;
 }
 
 function normalizeDoc(value?: string | null): string {
@@ -289,6 +295,16 @@ export const CnabRetornoService = {
       throw new Error(
         `Remessa bancária correspondente não encontrada para Banco ${banco} / NSA ${nsaFormatado}. Nenhuma baixa foi realizada.`
       );
+    }
+
+    // Segregação Estrita de Ambiente (Homologação vs Produção)
+    const env = EnvironmentService.getCurrentEnvironment();
+    const modoRemessa = ((remessaRelacionada as any)?.modo || 'producao') as 'homologacao' | 'producao';
+    if (modoRemessa === 'homologacao' && env === 'production') {
+      throw new Error('Bloqueio de Segurança: Não é permitido processar retorno simulado de homologação no ambiente de Produção.');
+    }
+    if (modoRemessa === 'producao' && env === 'homologacao') {
+      throw new Error('Bloqueio de Segurança: Não é permitido processar retorno bancário de produção no ambiente de Homologação.');
     }
 
     const faturasRelacionadas = await this.carregarFaturasRelacionadas(remessaRelacionada, parseResult);
@@ -507,12 +523,15 @@ export const CnabRetornoService = {
 
     try {
       await supabase.rpc('log_audit', {
-        p_action: 'PROCESS_CNAB240_RETORNO',
+        p_action: modoRemessa === 'homologacao' ? 'PROCESS_CNAB240_RETORNO_SIMULADO' : 'PROCESS_CNAB240_RETORNO',
         p_details: JSON.stringify({
           remessa_arquivo_id: remessaRelacionada?.id ?? null,
           diaristas_lote_id: remessaRelacionada?.diaristas_lote_id ?? null,
+          intermitentes_lote_id: remessaRelacionada?.intermitentes_lote_id ?? null,
           banco_codigo: banco,
           nome_arquivo: fileName,
+          modo: modoRemessa,
+          simulado: modoRemessa === 'homologacao',
           total_processado: resumo.totalProcessado,
           pagos: resumo.pagos,
           rejeitados: resumo.rejeitados,
@@ -535,9 +554,11 @@ export const CnabRetornoService = {
     }
 
     return {
-      arquivo: { id: rpcResult?.retorno_arquivo_id } as any,
+      arquivo: { id: rpcResult?.retorno_arquivo_id, modo: modoRemessa } as any,
       itens: [] as any[],
       resumo,
+      modo: modoRemessa,
+      simulado: modoRemessa === 'homologacao',
       remessaRelacionada,
       parseResult,
     };

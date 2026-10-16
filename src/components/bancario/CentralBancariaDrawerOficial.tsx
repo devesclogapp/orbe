@@ -807,10 +807,23 @@ export function CentralBancariaDrawerOficial({
                       Marcar como Enviado
                     </Button>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400 font-semibold px-2.5 py-1 bg-amber-500/10 rounded border border-amber-500/20">
-                      <ShieldCheck className="h-3.5 w-3.5 text-amber-600" />
-                      Simulação Homologada (Sem Envio Bancário)
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] text-amber-700 dark:text-amber-400 font-semibold px-2.5 py-1 bg-amber-500/10 rounded border border-amber-500/20">
+                        <ShieldCheck className="h-3.5 w-3.5 text-amber-600" />
+                        Simulação Homologada
+                      </span>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          onOpenChange(false);
+                          if (onOpenImportarRetorno) onOpenImportarRetorno();
+                        }}
+                        className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold"
+                      >
+                        <UploadCloud className="h-3.5 w-3.5 mr-1.5" />
+                        Simular Retorno
+                      </Button>
+                    </div>
                   )}
                 </>
               )}

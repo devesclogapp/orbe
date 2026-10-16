@@ -402,6 +402,7 @@ export default function IntermitentesLotes() {
   // Drawers & Modals state
   const [selectedLoteId, setSelectedLoteId] = useState<string | null>(null);
   const [openConfirmarAprovacaoFinanceira, setOpenConfirmarAprovacaoFinanceira] = useState(false);
+  const [loteParaAprovarFinanceiro, setLoteParaAprovarFinanceiro] = useState<any | null>(null);
 
   // Estados de Retificação Exclusiva do RH (Governança e OCC)
   const [itemParaRetificar, setItemParaRetificar] = useState<any | null>(null);
@@ -471,16 +472,19 @@ export default function IntermitentesLotes() {
 
   // Mutation: Aprovação Financeira Canônica
   const aprovarFinanceiroMutation = useMutation({
-    mutationFn: async () => {
-      if (!loteDetalhe?.id) throw new Error("Nenhum lote selecionado.");
-      return IntermitentesLoteService.aprovarFinanceiro(loteDetalhe.id, user?.id || "financeiro");
+    mutationFn: async (loteIdOverride?: string) => {
+      const targetId = loteIdOverride || loteParaAprovarFinanceiro?.id || loteDetalhe?.id || selectedLoteId;
+      if (!targetId) throw new Error("Nenhum lote selecionado.");
+      return IntermitentesLoteService.aprovarFinanceiro(targetId, user?.id || "financeiro");
     },
     onSuccess: () => {
       toast.success("Lote aprovado financeiramente com sucesso!", {
         description: "A obrigação foi homologada e está liberada para remessa CNAB 240.",
       });
       setOpenConfirmarAprovacaoFinanceira(false);
+      setLoteParaAprovarFinanceiro(null);
       queryClient.invalidateQueries({ queryKey: ["intermitente-lote-detalhe", selectedLoteId] });
+      queryClient.invalidateQueries({ queryKey: ["intermitente-lote-resumo", selectedLoteId] });
       queryClient.invalidateQueries({ queryKey: ["intermitentes-lotes"] });
       queryClient.invalidateQueries({ queryKey: ["intermitentes_lotes_bancario"] });
       queryClient.invalidateQueries({ queryKey: ["rh-financeiro-lotes"] });
@@ -604,6 +608,10 @@ export default function IntermitentesLotes() {
   }, [empresas, filterEmpresaId]);
 
   const handleCloseDrawers = () => {
+    // Evita resetar a seleção se algum modal de confirmação estiver ativo
+    if (openConfirmarAprovacaoFinanceira || openRevalidarLoteModal || !!itemParaRetificar) {
+      return;
+    }
     setSelectedLoteId(null);
   };
 
@@ -1036,7 +1044,7 @@ export default function IntermitentesLotes() {
           }
           subtitle={
             loteDetalhe ? (
-              <div className="flex flex-col gap-0.5 mt-1">
+              <span className="flex flex-col gap-0.5 mt-1 block">
                 <span className="font-semibold text-foreground">
                   {loteDetalhe.empresa?.nome || "Empresa"}
                 </span>
@@ -1044,7 +1052,7 @@ export default function IntermitentesLotes() {
                   Competência: {loteDetalhe.competencia} · Fechado em:{" "}
                   {loteDetalhe.created_at ? format(new Date(loteDetalhe.created_at), "dd/MM/yyyy HH:mm") : "—"}
                 </span>
-              </div>
+              </span>
             ) : undefined
           }
           badge={loteDetalhe ? getLoteDrawerBadge(loteDetalhe.status) : null}
@@ -1117,7 +1125,10 @@ export default function IntermitentesLotes() {
                     <Button
                       size="sm"
                       className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold gap-1.5 shadow-xs"
-                      onClick={() => setOpenConfirmarAprovacaoFinanceira(true)}
+                      onClick={() => {
+                        setLoteParaAprovarFinanceiro(loteDetalhe);
+                        setOpenConfirmarAprovacaoFinanceira(true);
+                      }}
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>Aprovar Financeiro</span>
@@ -1637,7 +1648,13 @@ export default function IntermitentesLotes() {
         </DrawerPrimarioShell>
 
         {/* ── MODAL: CONFIRMAR APROVAÇÃO FINANCEIRA ── */}
-        <Dialog open={openConfirmarAprovacaoFinanceira} onOpenChange={setOpenConfirmarAprovacaoFinanceira}>
+        <Dialog 
+          open={openConfirmarAprovacaoFinanceira} 
+          onOpenChange={(open) => {
+            setOpenConfirmarAprovacaoFinanceira(open);
+            if (!open) setLoteParaAprovarFinanceiro(null);
+          }}
+        >
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-foreground font-display">
@@ -1649,46 +1666,53 @@ export default function IntermitentesLotes() {
               </DialogDescription>
             </DialogHeader>
 
-            {loteDetalhe && (
-              <div className="space-y-3 py-2 text-xs">
-                <div className="p-3.5 bg-muted/40 border border-border rounded-lg space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Empresa:</span>
-                    <span className="font-semibold text-foreground">{loteDetalhe.empresa?.nome || "Empresa"}</span>
+            {(() => {
+              const targetLote = loteParaAprovarFinanceiro || loteDetalhe;
+              if (!targetLote) return null;
+              return (
+                <div className="space-y-3 py-2 text-xs">
+                  <div className="p-3.5 bg-muted/40 border border-border rounded-lg space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Empresa:</span>
+                      <span className="font-semibold text-foreground">{targetLote.empresa?.nome || "Empresa"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Identificador do Lote:</span>
+                      <span className="font-mono font-bold text-foreground">
+                        INT-{targetLote.competencia}-{targetLote.id.substring(0, 4)} ({`Lote ${targetLote.id.substring(0, 6)}`})
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Registros:</span>
+                      <span className="font-semibold text-foreground">{targetLote.quantidade_registros} registros</span>
+                    </div>
+                    <div className="flex justify-between border-t border-border pt-2">
+                      <span className="text-muted-foreground font-medium">Valor Total:</span>
+                      <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+                        {formatCurrency(Number(targetLote.valor_total || 0))}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Identificador do Lote:</span>
-                    <span className="font-mono font-bold text-foreground">
-                      INT-{loteDetalhe.competencia}-{loteDetalhe.id.substring(0, 4)} ({`Lote ${loteDetalhe.id.substring(0, 6)}`})
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Registros:</span>
-                    <span className="font-semibold text-foreground">{loteDetalhe.quantidade_registros} registros</span>
-                  </div>
-                  <div className="flex justify-between border-t border-border pt-2">
-                    <span className="text-muted-foreground font-medium">Valor Total:</span>
-                    <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-sm">
-                      {formatCurrency(Number(loteDetalhe.valor_total || 0))}
-                    </span>
-                  </div>
-                </div>
 
-                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-blue-900 dark:text-blue-300 leading-relaxed text-[11px]">
-                  <p className="font-semibold mb-1">Efeito desta ação:</p>
-                  <p>
-                    O status do lote avançará para <strong>AGUARDANDO_PAGAMENTO</strong> (FECHADO_FINANCEIRO). A obrigação será homologada e liberada formalmente para emissão da remessa CNAB 240 na Central Bancária.
-                  </p>
+                  <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-blue-900 dark:text-blue-300 leading-relaxed text-[11px]">
+                    <p className="font-semibold mb-1">Efeito desta ação:</p>
+                    <p>
+                      O status do lote avançará para <strong>AGUARDANDO_PAGAMENTO</strong> (FECHADO_FINANCEIRO). A obrigação será homologada e liberada formalmente para emissão da remessa CNAB 240 na Central Bancária.
+                    </p>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             <DialogFooter className="gap-2 sm:gap-0">
               <Button
                 variant="outline"
                 size="sm"
                 className="text-xs"
-                onClick={() => setOpenConfirmarAprovacaoFinanceira(false)}
+                onClick={() => {
+                  setOpenConfirmarAprovacaoFinanceira(false);
+                  setLoteParaAprovarFinanceiro(null);
+                }}
                 disabled={aprovarFinanceiroMutation.isPending}
               >
                 Cancelar
@@ -1696,7 +1720,10 @@ export default function IntermitentesLotes() {
               <Button
                 size="sm"
                 className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold gap-1.5 shadow-xs"
-                onClick={() => aprovarFinanceiroMutation.mutate()}
+                onClick={() => {
+                  const targetId = loteParaAprovarFinanceiro?.id || loteDetalhe?.id || selectedLoteId;
+                  aprovarFinanceiroMutation.mutate(targetId);
+                }}
                 disabled={aprovarFinanceiroMutation.isPending}
               >
                 {aprovarFinanceiroMutation.isPending ? (

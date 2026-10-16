@@ -74,10 +74,12 @@ export const DrawerPrimarioShell: React.FC<DrawerPrimarioShellProps> = ({
             <SheetTitle className="font-display text-lg font-bold text-foreground text-left truncate">
               {title}
             </SheetTitle>
-            {subtitle && (
+            {subtitle ? (
               <SheetDescription className="text-xs text-muted-foreground leading-relaxed">
                 {subtitle}
               </SheetDescription>
+            ) : (
+              <SheetDescription className="sr-only">Painel de detalhes</SheetDescription>
             )}
           </div>
 
