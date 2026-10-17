@@ -276,8 +276,12 @@ export function AprovacaoDecisaoDrawer({
   if (!item) return null;
 
   const isOperacaoRestrita = item.tipo === "OPERAÇÃO" && (opData?.status === "EM_RESTRICAO" || !opData?.entrada_ponto || !opData?.saida_ponto);
+  const isOperacaoAguardandoAprovacaoOperacional =
+    item.tipo === "OPERAÇÃO" &&
+    opData &&
+    !["AGUARDANDO_FATURAMENTO", "FATURADO", "RECEBIDO_FINANCEIRO", "CONCLUIDO"].includes((opData.status || "").toUpperCase());
   const isIntermitenteIncompleto = item.tipo === "INTERMITENTE" && valData?.podeAprovar === false;
-  const isFailClosedBloqueado = isOperacaoRestrita || isIntermitenteIncompleto;
+  const isFailClosedBloqueado = isOperacaoRestrita || isOperacaoAguardandoAprovacaoOperacional || isIntermitenteIncompleto;
 
   const situacaoBadge = SITUACAO_BADGES[item.situacao] || SITUACAO_BADGES["Em análise"];
   const SituacaoIcon = situacaoBadge.icon;
@@ -300,8 +304,27 @@ export function AprovacaoDecisaoDrawer({
   };
 
   const handleAbrirModuloEspecialista = () => {
-    const route = getDominioRoute(item.tipo);
     onOpenChange(false);
+    if (item.tipo === "OPERAÇÃO") {
+      navigate(`/operacoes-volume?opId=${item.id}&empresa=${item.empresa_id || ""}`, {
+        state: { selectedOpId: item.id },
+      });
+      return;
+    }
+    if (item.tipo === "DIARISTA") {
+      const loteId = item.raw_lote_id || item.id;
+      navigate(`/producao/diaristas?loteId=${loteId}`, {
+        state: { selectedLoteId: loteId },
+      });
+      return;
+    }
+    if (item.tipo === "INTERMITENTE") {
+      navigate(`/intermitentes/lotes?loteId=${item.id}`, {
+        state: { selectedLoteId: item.id },
+      });
+      return;
+    }
+    const route = getDominioRoute(item.tipo);
     navigate(route);
   };
 
@@ -524,6 +547,43 @@ export function AprovacaoDecisaoDrawer({
                       >
                         <FileEdit className="w-3.5 h-3.5 mr-1.5" />
                         Corrigir na Recepção Operacional
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Se for Operação Pendente de Aprovação Operacional */}
+                {isOperacaoAguardandoAprovacaoOperacional && !isOperacaoRestrita && (
+                  <div className="rounded-lg border border-amber-300 dark:border-amber-900/60 bg-card p-3 space-y-2.5 text-xs">
+                    <div>
+                      <span className="font-bold text-amber-800 dark:text-amber-300 block">
+                        Aguardando Aprovação Operacional (Pré-requisito RH):
+                      </span>
+                      <p className="text-muted-foreground text-[11px] mt-0.5">
+                        Esta operação foi lançada pelo encarregado (status: <strong className="text-foreground font-mono">{opData?.status || "RECEBIDO"}</strong>), mas ainda não passou pela aprovação operacional na doca. A validação de jornada pelo RH só pode ocorrer após a aprovação operacional.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                      <div className="p-2 rounded bg-muted/20 border border-border/40">
+                        <span className="font-semibold text-muted-foreground block text-[10px] uppercase">Responsável Atual:</span>
+                        <span className="text-foreground font-medium">Gestor / Supervisor Operacional</span>
+                      </div>
+                      <div className="grid grid-cols-1 p-2 rounded bg-muted/20 border border-border/40">
+                        <span className="font-semibold text-muted-foreground block text-[10px] uppercase">Próxima Ação:</span>
+                        <span className="text-foreground">Conferir e aprovar execução da operação</span>
+                      </div>
+                    </div>
+                    <div className="pt-1 flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-[10px] text-muted-foreground">
+                        Destino: <strong className="text-foreground">Operações por Volume</strong>
+                      </span>
+                      <Button
+                        size="sm"
+                        onClick={handleAbrirModuloEspecialista}
+                        className="h-8 text-xs font-bold bg-[#2563EB] hover:bg-[#2563EB]/90 text-white shadow-xs"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                        Abrir Aprovação Operacional
                       </Button>
                     </div>
                   </div>
@@ -872,7 +932,9 @@ export function AprovacaoDecisaoDrawer({
                   className="flex-1 sm:flex-none text-xs font-bold bg-muted text-muted-foreground cursor-not-allowed opacity-60"
                 >
                   <Ban className="w-3.5 h-3.5 mr-1.5" />
-                  Aprovação Bloqueada (Fail-Closed)
+                  {isOperacaoAguardandoAprovacaoOperacional
+                    ? "Aguardando Aprovação Operacional"
+                    : "Aprovação Bloqueada (Fail-Closed)"}
                 </Button>
               ) : (
                 <Button

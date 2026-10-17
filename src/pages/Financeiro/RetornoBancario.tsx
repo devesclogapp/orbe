@@ -112,12 +112,27 @@ const RetornoBancario = () => {
   const location = useLocation();
   const [searchParams] = useSearchParams();
 
-  const tabParam = searchParams.get("tab") || (location.state as any)?.activeTab;
+  const tabParam =
+    searchParams.get("tab") ||
+    searchParams.get("aba") ||
+    (searchParams.get("origem") === "receitas" || searchParams.get("origem") === "operacoes" || searchParams.get("receita") ? "receitas" : null) ||
+    (location.state as any)?.activeTab ||
+    (location.state as any)?.aba ||
+    ((location.state as any)?.highlightReceitaId ? "receitas" : null);
+
   const [activeTab, setActiveTab] = useState<string>(() => (tabParam === "receitas" ? "receitas" : "pagamentos"));
   const highlightReceitaId = searchParams.get("receita") || (location.state as any)?.highlightReceitaId;
+  const empresaIdParam = searchParams.get("empresaId") || searchParams.get("empresa") || (location.state as any)?.empresaId;
 
   useEffect(() => {
-    const tab = searchParams.get("tab") || (location.state as any)?.activeTab;
+    const tab =
+      searchParams.get("tab") ||
+      searchParams.get("aba") ||
+      (searchParams.get("origem") === "receitas" || searchParams.get("origem") === "operacoes" || searchParams.get("receita") ? "receitas" : null) ||
+      (location.state as any)?.activeTab ||
+      (location.state as any)?.aba ||
+      ((location.state as any)?.highlightReceitaId ? "receitas" : null);
+
     if (tab === "receitas" || tab === "pagamentos") {
       setActiveTab(tab);
     }
@@ -872,7 +887,10 @@ const RetornoBancario = () => {
           </TabsContent>
 
           <TabsContent value="receitas" className="m-0 animate-in fade-in-50 duration-500">
-            <ConciliacaoReceitasBlock highlightReceitaId={highlightReceitaId} />
+            <ConciliacaoReceitasBlock
+              highlightReceitaId={highlightReceitaId}
+              empresaId={empresaIdParam}
+            />
           </TabsContent>
         </Tabs>
       </div>

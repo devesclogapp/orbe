@@ -340,6 +340,8 @@ const ServicoExtraDetalhesContent: React.FC<ServicoExtraDetalhesDrawerProps & { 
                 <span>
                   {currentStatus === "PENDENTE"
                     ? "Encaminhar para Validação"
+                    : isDevolved
+                    ? "Reenviar para Validação"
                     : currentStatus === "EM_VALIDACAO"
                     ? "Aprovar Serviço Extra"
                     : "Avançar Etapa"}

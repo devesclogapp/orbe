@@ -1342,10 +1342,9 @@ export const buildServicosExtrasPipeline = (params: BuildServicosExtrasPipelineP
     const getRoute = (id: ServicoExtraStepId) => {
         switch (id) {
             case "lancamento":
-                return "/servicos-extras/lancamentos";
             case "validacao_operacional":
             case "aprovacao":
-                return "/servicos-extras/aprovacoes";
+                return "/operacional/servicos-extras";
             case "faturamento":
             case "financeiro":
                 return modalidadeResolved.isValid
@@ -1406,7 +1405,7 @@ export const buildServicosExtrasPipeline = (params: BuildServicosExtrasPipelineP
             return {
                 label: "Ver Lançamentos para Correção →",
                 description: "Corrija a pendência indicada no lançamento.",
-                route: "/servicos-extras/lancamentos",
+                route: "/operacional/servicos-extras",
             };
         }
 
@@ -1415,13 +1414,13 @@ export const buildServicosExtrasPipeline = (params: BuildServicosExtrasPipelineP
                 return {
                     label: "Continuar para Lançamentos →",
                     description: "Encaminhe o lançamento para validação operacional.",
-                    route: "/servicos-extras/lancamentos",
+                    route: "/operacional/servicos-extras",
                 };
             case "validacao_operacional":
                 return {
                     label: "Continuar para Aprovações →",
                     description: "Revise os dados e aprove ou devolva o serviço extra.",
-                    route: "/servicos-extras/aprovacoes",
+                    route: "/operacional/servicos-extras",
                 };
             case "aprovacao":
             case "faturamento":

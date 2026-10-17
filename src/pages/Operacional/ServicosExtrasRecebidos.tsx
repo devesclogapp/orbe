@@ -1024,7 +1024,7 @@ export default function ServicosExtrasRecebidos() {
 
                         {/* 10. Pendência / Diagnóstico */}
                         <td className="py-2 px-2 max-w-[150px] truncate text-[11px]">
-                          {s.justificativa_devolucao ? (
+                          {(s.pipeline_status === "DEVOLVIDO" || s.pipeline_status === "RECUSADO") && s.justificativa_devolucao ? (
                             <span className="text-rose-600 dark:text-rose-400 font-medium truncate flex items-center gap-1" title={s.justificativa_devolucao}>
                               <AlertTriangle className="w-3 h-3 shrink-0" />
                               {s.justificativa_devolucao}

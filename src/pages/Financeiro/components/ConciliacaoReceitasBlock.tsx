@@ -27,9 +27,10 @@ const formatDateTime = (value?: string | null) => {
 
 interface ConciliacaoReceitasBlockProps {
     highlightReceitaId?: string | null;
+    empresaId?: string | null;
 }
 
-export function ConciliacaoReceitasBlock({ highlightReceitaId }: ConciliacaoReceitasBlockProps = {}) {
+export function ConciliacaoReceitasBlock({ highlightReceitaId, empresaId }: ConciliacaoReceitasBlockProps = {}) {
     const { role } = useTenant();
     const canConciliar = role === "admin" || role === "financeiro";
     const queryClient = useQueryClient();
@@ -63,6 +64,14 @@ export function ConciliacaoReceitasBlock({ highlightReceitaId }: ConciliacaoRece
     const receitasList = useMemo(() => {
         let filtered = receitasRaw;
 
+        // Filtro por empresa quando vindo de navegação contextual
+        if (empresaId && empresaId !== 'all') {
+            const hasEmpresa = filtered.some(r => r.empresa_id === empresaId);
+            if (hasEmpresa) {
+                filtered = filtered.filter(r => r.empresa_id === empresaId);
+            }
+        }
+
         if (filtroStatus !== 'todos') {
             if (filtroStatus === 'recebido') {
                 filtered = filtered.filter(r => r.status === 'recebido');
@@ -80,14 +89,18 @@ export function ConciliacaoReceitasBlock({ highlightReceitaId }: ConciliacaoRece
         }
 
         return filtered;
-    }, [receitasRaw, filtroStatus, search]);
+    }, [receitasRaw, filtroStatus, search, empresaId]);
 
-    // FIX 13.2: Garantir que se um item destacado vier de navegação, ele não fique oculto por filtro de status
+    // FIX-UX-03: Garantir que se um item destacado vier de navegação, ele não fique oculto e abra no drawer
     useEffect(() => {
         if (highlightReceitaId && receitasRaw.length > 0) {
             const found = receitasRaw.find(r => r.id === highlightReceitaId);
-            if (found && found.status === 'conciliado' && filtroStatus === 'recebido') {
-                setFiltroStatus('todos');
+            if (found) {
+                if (found.status === 'conciliado' && filtroStatus === 'recebido') {
+                    setFiltroStatus('todos');
+                }
+                setSelectedReceita(found);
+                setIsDrawerOpen(true);
             }
         }
     }, [highlightReceitaId, receitasRaw]);

@@ -872,10 +872,13 @@ export function ReceitaDrawerOficial({
                     className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
                     onClick={() => {
                       onOpenChange(false);
-                      navigate("/financeiro/retorno", {
+                      const empresaParam = receita.empresaId ? `&empresaId=${receita.empresaId}` : "";
+                      const receitaParam = receita.id ? `&receita=${receita.id}` : "";
+                      navigate(`/financeiro/retorno?tab=receitas${empresaParam}${receitaParam}`, {
                         state: {
                           activeTab: "receitas",
                           highlightReceitaId: receita.id,
+                          empresaId: receita.empresaId,
                         },
                       });
                     }}

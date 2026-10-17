@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { format, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -100,11 +101,30 @@ const MONTH_FILTER_OPTIONS = [
 export default function RelatorioDRE() {
   const { tenant } = useTenant();
   const { environment } = usePreferences();
+  const [searchParams] = useSearchParams();
+
+  const mesParam = searchParams.get("mes") || searchParams.get("competencia");
+  const empresaParamUrl = searchParams.get("empresa") || searchParams.get("empresaId");
+
+  const initialYear = mesParam && /^\d{4}-\d{2}$/.test(mesParam) ? mesParam.slice(0, 4) : "2026";
+  const initialMonth = mesParam && /^\d{4}-\d{2}$/.test(mesParam) ? mesParam.slice(5, 7) : "10";
 
   // Filtros Globais
-  const [year, setYear] = useState<string>("2026");
-  const [month, setMonth] = useState<string>("10");
-  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>("all");
+  const [year, setYear] = useState<string>(initialYear);
+  const [month, setMonth] = useState<string>(initialMonth);
+  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>(empresaParamUrl || "all");
+
+  useEffect(() => {
+    const mes = searchParams.get("mes") || searchParams.get("competencia");
+    const emp = searchParams.get("empresa") || searchParams.get("empresaId");
+    if (mes && /^\d{4}-\d{2}$/.test(mes)) {
+      setYear(mes.slice(0, 4));
+      setMonth(mes.slice(5, 7));
+    }
+    if (emp) {
+      setSelectedEmpresaId(emp);
+    }
+  }, [searchParams]);
 
   // Comparação Temporal
   const [isComparing, setIsComparing] = useState(false);

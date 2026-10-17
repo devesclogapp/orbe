@@ -79,7 +79,13 @@ export default function ReceitasPipeline() {
         }
         return currentMonth;
     });
-    const [filterEmpresaId, setFilterEmpresaId] = useState<string>("all");
+    const [filterEmpresaId, setFilterEmpresaId] = useState<string>(() => {
+        if (typeof window !== "undefined") {
+            const sp = new URLSearchParams(window.location.search);
+            return sp.get("empresa") || sp.get("empresaId") || "all";
+        }
+        return "all";
+    });
 
     // 2. Filtros Exploratórios (NÃO alteram os KPIs)
     const [estagioFiltro, setEstagioFiltro] = useState<EstagioFinanceiroUX>("TODOS");
@@ -227,15 +233,22 @@ export default function ReceitasPipeline() {
             setModalidadeFiltro(location.state.activeTab);
         }
 
-        const highlightRecId = location.state?.highlightReceitaId;
-        const highlightSeId = location.state?.highlightServicoExtraId;
-        const targetId = highlightRecId || highlightSeId;
+        const highlightRecId = location.state?.highlightReceitaId || searchParams.get('receitaId');
+        const highlightSeId = location.state?.highlightServicoExtraId || searchParams.get('servicoExtraId');
+        const highlightOpId = location.state?.highlightOperacaoId || searchParams.get('operacaoId') || searchParams.get('opId');
+        const targetId = highlightRecId || highlightSeId || highlightOpId;
 
         if (targetId && handledHighlightRef.current !== targetId && receitasContextuais.length > 0) {
             const found = receitasContextuais.find((r) => {
                 if (highlightRecId && r.id === highlightRecId) return true;
                 if (highlightSeId) {
                     return (r.itens || []).some((it) => it.servico_extra_id === highlightSeId);
+                }
+                if (highlightOpId) {
+                    return (
+                        (r.itens || []).some((it) => it.operacao_id === highlightOpId) ||
+                        (r.raw && (r.raw.operacao_id === highlightOpId || r.raw.origem_id === highlightOpId))
+                    );
                 }
                 return false;
             });
@@ -590,7 +603,7 @@ export default function ReceitasPipeline() {
                         variant="ghost"
                         size="sm"
                         className="h-7 px-2.5 text-xs text-primary hover:text-primary-strong hover:bg-primary/5 font-semibold shrink-0 gap-1"
-                        onClick={() => navigate("/financeiro/retorno")}
+                        onClick={() => navigate(`/financeiro/retorno?tab=receitas${filterEmpresaId && filterEmpresaId !== 'all' ? `&empresaId=${filterEmpresaId}` : ''}`, { state: { activeTab: "receitas", empresaId: filterEmpresaId } })}
                     >
                         Abrir Central Bancária <ChevronRight className="h-3 w-3" />
                     </Button>

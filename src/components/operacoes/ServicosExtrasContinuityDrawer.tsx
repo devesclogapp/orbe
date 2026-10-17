@@ -414,17 +414,17 @@ export const ServicosExtrasContinuityDrawer: React.FC<ServicosExtrasContinuityDr
               </Button>
             </div>
           </div>
-        ) : modalidadeInfo.isValid && nextAction?.route ? (
+        ) : (isDevolved && nextAction?.route) || (modalidadeInfo.isValid && nextAction?.route) ? (
           <>
             <Button
               onClick={handleCtaClick}
               className="w-full font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm h-10"
             >
-              <span>{nextAction.label || "Continuar para Financeiro →"}</span>
+              <span>{nextAction.label || (isDevolved ? "Ver Lançamentos para Correção →" : "Continuar para Financeiro →")}</span>
               <ArrowRight className="h-4 w-4 ml-1.5" />
             </Button>
             <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
-              <span>Direciona para o Kanban de Receitas filtrado</span>
+              <span>{isDevolved ? "Direciona para a lista de serviços para revisão e correção" : "Direciona para o Kanban de Receitas filtrado"}</span>
               <div className="flex items-center gap-2">
                 {onBack && (
                   <button

@@ -20,7 +20,7 @@ import {
   RefreshCw,
   AlertCircle,
 } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
@@ -80,9 +80,11 @@ export const STATUS_RH_OPTIONS = [
 
 export default function Operacoes() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { tenantId, loading: isTenantLoading } = useTenant();
+  const handledTargetOpRef = useRef<string | null>(null);
 
   // Filtros de Trabalho
   const [empresaFiltro, setEmpresaFiltro] = useState<string>(() => {
@@ -335,6 +337,39 @@ export default function Operacoes() {
       setHighlightedOpId((current) => (current === opId ? null : current));
     }, 1800);
   };
+
+  // ── Auto-abertura e foco contextual da operação recebida por navegação ──
+  useEffect(() => {
+    const navState = (location.state || {}) as { selectedOpId?: string; opId?: string };
+    const targetOpId =
+      searchParams.get("opId") ||
+      searchParams.get("operacaoId") ||
+      navState.selectedOpId ||
+      navState.opId;
+
+    if (targetOpId && handledTargetOpRef.current !== targetOpId && operacoesNormalizadas.length > 0) {
+      const match = operacoesNormalizadas.find(
+        (o) =>
+          o.id === targetOpId ||
+          o.codigo?.toLowerCase() === targetOpId.toLowerCase() ||
+          o.id.startsWith(targetOpId)
+      );
+
+      if (match) {
+        handledTargetOpRef.current = targetOpId;
+        // Se a operação for de uma empresa diferente do filtro atual (que não seja 'todas'), sincroniza o filtro
+        if (empresaFiltro !== "todas" && match.empresa_id && match.empresa_id !== empresaFiltro) {
+          setEmpresaFiltro(match.empresa_id);
+        }
+        if (statusFiltro !== "todos") setStatusFiltro("todos");
+        if (activeKpiNav !== "todos") setActiveKpiNav("todos");
+
+        setSelectedOp(match);
+        setDrawerOpen(true);
+        scrollToAndHighlight(match.id);
+      }
+    }
+  }, [searchParams, location.state, operacoesNormalizadas, empresaFiltro, statusFiltro, activeKpiNav]);
 
   const getHighlightClasses = (op: OperacaoVolumeReal) => {
     const s = (op.status || "").toUpperCase();
@@ -901,6 +936,9 @@ export default function Operacoes() {
             setDrawerOpen(false);
             setEditOpData(op);
             setNovaOpOpen(true);
+          }}
+          onOperacaoUpdated={(updated) => {
+            setSelectedOp(updated);
           }}
         />
 

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   X,
@@ -19,6 +19,9 @@ import {
   ShieldCheck,
   ShieldAlert,
   Loader2,
+  FileText,
+  TrendingUp,
+  ArrowRightLeft,
 } from "lucide-react";
 import {
   Sheet,
@@ -28,6 +31,16 @@ import {
   SheetDescription,
   SheetFooter,
 } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -35,7 +48,9 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { UxPipelineStepper, PipelineStep } from "@/components/ux-lab/UxPipelineStepper";
 import { OperacaoProducaoService } from "@/services/base.service";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAccessControl } from "@/contexts/AccessControlContext";
+import { supabase } from "@/lib/supabase";
 
 export const OPERACOES_VOLUME_PIPELINE_STEPS: PipelineStep[] = [
   { key: "RECEBIDO", label: "Recebido", shortLabel: "Rec." },
@@ -129,6 +144,8 @@ export interface OperacaoVolumeReal {
   status: string;
   status_rh?: string | null;
   status_pagamento?: string | null;
+  status_conciliacao?: string | null;
+  receita_status?: string | null;
   data_pagamento?: string | null;
   forma_pagamento_id?: string;
   forma_pagamento_nome?: string;
@@ -155,6 +172,7 @@ interface OperacaoVolumeDrawerProps {
   onOpenChange: (open: boolean) => void;
   onEditRequest?: (op: OperacaoVolumeReal) => void;
   onNavigateRh?: () => void;
+  onOperacaoUpdated?: (op: OperacaoVolumeReal) => void;
 }
 
 const maskCpf = (cpf?: string | null) => {
@@ -274,22 +292,120 @@ export const renderStatusRhBadge = (statusRh?: string | null) => {
 };
 
 export function OperacaoVolumeDrawer({
-  operacao,
+  operacao: propOperacao,
   open,
   onOpenChange,
   onEditRequest,
   onNavigateRh,
+  onOperacaoUpdated,
 }: OperacaoVolumeDrawerProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isAprovando, setIsAprovando] = useState(false);
+  const [confirmAprovarOpen, setConfirmAprovarOpen] = useState(false);
+  const [operacao, setOperacao] = useState<OperacaoVolumeReal | null>(propOperacao);
+
+  useEffect(() => {
+    setOperacao(propOperacao);
+  }, [propOperacao]);
+
+  // Contexto de controle de acesso (RBAC canônico do Orbe)
+  let userRole = "";
+  let isAdmin = false;
+  try {
+    const ac = useAccessControl();
+    userRole = (ac.role || "").toLowerCase();
+    isAdmin = Boolean(ac.isAdmin);
+  } catch {
+    userRole = "";
+    isAdmin = false;
+  }
+
+  // Perfis autorizados pelo backend (rpc_operacao_validar_aprovar): admin, super_admin, gestor, financeiro
+  const canApproveOperation =
+    isAdmin || ["admin", "super_admin", "gestor", "financeiro"].includes(userRole);
 
   const handleNavigateRh = () => {
+    onOpenChange(false);
     if (onNavigateRh) {
       onNavigateRh();
     } else {
-      navigate("/rh/aprovacoes?tipo=OPERAÇÃO");
+      navigate(`/rh/aprovacoes?tipo=OPERAÇÃO&empresaId=${operacao?.empresa_id || ""}&operacaoId=${operacao?.id || ""}`, {
+        state: { selectedLoteId: operacao?.id, operacaoId: operacao?.id, empresaId: operacao?.empresa_id },
+      });
     }
+  };
+
+  const handleNavigateReceitas = () => {
+    onOpenChange(false);
+    navigate(`/financeiro/receitas?operacaoId=${operacao?.id || ""}&empresa=${operacao?.empresa_id || ""}`, {
+      state: { highlightOperacaoId: operacao?.id },
+    });
+  };
+
+  const handleNavigateDre = () => {
+    onOpenChange(false);
+    const comp = operacao?.data_operacao ? operacao.data_operacao.slice(0, 7) : undefined;
+    navigate(`/financeiro/dre?mes=${comp || ""}&empresa=${operacao?.empresa_id || ""}`);
+  };
+
+  const isFechadaOuFaturada = [
+    "AGUARDANDO_FATURAMENTO",
+    "FATURADO",
+    "RECEBIDO_FINANCEIRO",
+    "CONCLUIDO",
+    "FECHADO",
+  ].includes((operacao?.status || "").toUpperCase());
+
+  // Consulta canônica da receita vinculada e status real da conciliação bancária (separação de responsabilidade)
+  const { data: vinculoReceita } = useQuery({
+    queryKey: ["operacao-vinculo-receita", operacao?.id],
+    queryFn: async () => {
+      if (!operacao?.id) return null;
+      const { data, error } = await supabase
+        .from("receitas_operacionais_itens")
+        .select("id, receita_id, valor_item, receitas_operacionais (id, status, modalidade, valor_total, data_recebimento, created_at)")
+        .eq("operacao_id", operacao.id)
+        .maybeSingle();
+
+      if (error) {
+        return null;
+      }
+      return data;
+    },
+    enabled: !!operacao?.id && isFechadaOuFaturada,
+    staleTime: 1000 * 30,
+  });
+
+  const receitaObj = (vinculoReceita as any)?.receitas_operacionais;
+  const statusReceita = (receitaObj?.status || (operacao as any)?.receita_status || "").toLowerCase();
+
+  // Status de conciliação bancária rigorosamente separado do status operacional
+  const isConciliado =
+    statusReceita === "conciliado" ||
+    (operacao as any)?.status_conciliacao === "conciliado";
+
+  const isRecebimentoConfirmado =
+    statusReceita === "recebido" ||
+    statusReceita === "conciliado" ||
+    (operacao?.status_pagamento || "").toUpperCase() === "RECEBIDO" ||
+    operacao?.status === "RECEBIDO_FINANCEIRO" ||
+    operacao?.status === "CONCLUIDO" ||
+    operacao?.status === "FECHADO";
+
+  const handleNavigateConciliacao = () => {
+    onOpenChange(false);
+    const receitaId = vinculoReceita?.receita_id || receitaObj?.id;
+    const receitaParam = receitaId ? `&receita=${receitaId}` : "";
+    const empresaParam = operacao?.empresa_id ? `&empresaId=${operacao.empresa_id}` : "";
+    navigate(`/financeiro/retorno?tab=receitas&origem=operacoes${empresaParam}${receitaParam}`, {
+      state: {
+        activeTab: "receitas",
+        highlightReceitaId: receitaId,
+        empresaId: operacao?.empresa_id,
+      },
+    });
   };
 
   if (!operacao) return null;
@@ -303,13 +419,19 @@ export function OperacaoVolumeDrawer({
   const produtoCargaNome = operacao.produto_carga_nome || operacao.produtos_carga?.nome || "—";
   const formaPagamentoNome = operacao.forma_pagamento_nome || operacao.formas_pagamento_operacional?.nome || "Faturamento Padrão";
 
-  const isFechadaOuFaturada = [
-    "AGUARDANDO_FATURAMENTO",
-    "FATURADO",
-    "RECEBIDO_FINANCEIRO",
-    "CONCLUIDO",
-    "FECHADO",
-  ].includes((operacao.status || "").toUpperCase());
+
+
+  const isHorarioIncompleto = !operacao.entrada_ponto || !operacao.saida_ponto;
+  const isEmRestricao =
+    operacao.status === "EM_RESTRICAO" ||
+    operacao.status === "inconsistente" ||
+    operacao.status_rh === "DEVOLVIDO_RH" ||
+    isHorarioIncompleto;
+
+  const isElegivelAprovacao =
+    !isFechadaOuFaturada &&
+    !isEmRestricao &&
+    ["RECEBIDO", "EM_VALIDACAO", "ABERTO", "PENDENTE"].includes((operacao.status || "").toUpperCase());
 
   const colaboradoresNominais = (operacao.production_entry_collaborators || []).map((pec, idx) => ({
     id: pec.colaboradores?.id || `col-${idx}`,
@@ -337,10 +459,6 @@ export function OperacaoVolumeDrawer({
       ? "Horário de início e/ou término não informado pelo encarregado."
       : null);
   const motivoDevolucaoRh = operacao.avaliacao_json?.motivo_devolucao_rh || null;
-  const isEmRestricao =
-    operacao.status === "EM_RESTRICAO" ||
-    operacao.status === "inconsistente" ||
-    operacao.status_rh === "DEVOLVIDO_RH";
 
   const valorUnitario = Number(operacao.valor_unitario_snapshot || 0);
   const quantidade = Number(operacao.quantidade || 0);
@@ -369,6 +487,130 @@ export function OperacaoVolumeDrawer({
       toast.error("Erro ao excluir operação", { description: error?.message });
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleConfirmAprovar = async () => {
+    if (!operacao) return;
+
+    if (!canApproveOperation) {
+      toast.error("Permissão Negada", {
+        description: "Seu perfil de usuário não possui autorização para aprovação operacional.",
+      });
+      setConfirmAprovarOpen(false);
+      return;
+    }
+
+    if (!isElegivelAprovacao) {
+      toast.error("Operação Inelegível", {
+        description: "Esta operação possui restrições ou já encontra-se processada.",
+      });
+      setConfirmAprovarOpen(false);
+      return;
+    }
+
+    setIsAprovando(true);
+    try {
+      const res = await OperacaoProducaoService.aprovar(
+        operacao.id,
+        operacao.atualizado_em
+      );
+
+      // Recarrega o registro real e íntegro do banco
+      const { data: freshRecord, error: freshErr } = await supabase
+        .from("operacoes_producao")
+        .select(`
+          *,
+          colaboradores:colaborador_id(nome, cargo),
+          production_entry_collaborators(had_infraction, infraction_type_id, infraction_notes, entrada_ponto, saida_ponto, colaboradores:collaborator_id(id, nome, cargo, cpf)),
+          tipos_servico_operacional:tipo_servico_id(nome),
+          transportadoras_clientes:transportadora_id(nome),
+          fornecedores:fornecedor_id(nome),
+          produtos_carga:produto_carga_id(nome),
+          formas_pagamento_operacional:forma_pagamento_id(nome),
+          unidades:unidade_id(nome),
+          empresas:empresa_id(id, nome),
+          operacao_producao_materiais!operacao_id(*)
+        `)
+        .eq("id", operacao.id)
+        .maybeSingle();
+
+      const updatedRecord: OperacaoVolumeReal = freshRecord && !freshErr
+        ? {
+          ...operacao,
+          ...freshRecord,
+          status: freshRecord.status || "AGUARDANDO_FATURAMENTO",
+          status_rh: freshRecord.status_rh || "PENDENTE_RH",
+          atualizado_em: freshRecord.atualizado_em,
+        }
+        : {
+          ...operacao,
+          status: (res as any)?.status || "AGUARDANDO_FATURAMENTO",
+          status_rh: (res as any)?.status_rh || "PENDENTE_RH",
+          atualizado_em: (res as any)?.updated_at || new Date().toISOString(),
+        };
+
+      setOperacao(updatedRecord);
+      if (onOperacaoUpdated) {
+        onOperacaoUpdated(updatedRecord);
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["operacoes-producao"] }),
+        queryClient.invalidateQueries({ queryKey: ["operacoes-base"] }),
+        queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] }),
+        queryClient.invalidateQueries({ queryKey: ["operacoes"] }),
+        queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] }),
+        queryClient.invalidateQueries({ queryKey: ["inconsistencias"] }),
+        queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] }),
+        queryClient.invalidateQueries({ queryKey: ["aprovacoes-rh"] }),
+        queryClient.invalidateQueries({ queryKey: ["aprovacoes-kpis"] }),
+      ]);
+
+      toast.success("Operação aprovada com sucesso!", {
+        description: "A operação avançou para faturamento e validação pelo RH.",
+      });
+
+      setConfirmAprovarOpen(false);
+    } catch (error: any) {
+      console.error("[OperacaoVolumeDrawer] Erro ao aprovar operação:", error);
+      const message = error instanceof Error ? error.message : String(error || "Erro desconhecido");
+
+      if (message.includes("CONCURRENCY_CONFLICT")) {
+        toast.error("Conflito de Concorrência", {
+          description: "Esta operação foi alterada por outro usuário ou processo. Por favor, recarregue os dados.",
+        });
+      } else if (
+        message.includes("PERMISSION_DENIED") ||
+        message.includes("AUTH_REQUIRED") ||
+        message.includes("AUTH_PROFILE_INVALID")
+      ) {
+        toast.error("Permissão Negada", {
+          description: "Seu perfil de usuário não possui autorização para aprovação operacional.",
+        });
+      } else if (message.includes("ESTADO_FECHADO")) {
+        toast.error("Operação Imutável", {
+          description: "Esta operação já encontra-se processada ou vinculada ao fluxo financeiro.",
+        });
+      } else if (
+        message.includes("OPERACAO_EM_RESTRICAO") ||
+        message.includes("HORARIOS_OBRIGATORIOS_AUSENTES") ||
+        message.includes("HORARIOS_INVALIDOS")
+      ) {
+        toast.error("Restrição Operacional", {
+          description: "A operação possui pendências operacionais ou horários incompletos.",
+        });
+      } else if (message.includes("OP_NOT_FOUND") || message.includes("NOT_FOUND_OR_CONFLICT")) {
+        toast.error("Operação Não Encontrada", {
+          description: "O registro da operação não foi localizado no banco de dados.",
+        });
+      } else {
+        toast.error("Falha ao aprovar operação", {
+          description: message,
+        });
+      }
+    } finally {
+      setIsAprovando(false);
     }
   };
 
@@ -459,7 +701,7 @@ export function OperacaoVolumeDrawer({
           )}
 
           {/* BANNER DE ASSIMETRIA RH × FINANCEIRO */}
-          {operacao.status_pagamento === "RECEBIDO" && operacao.status_rh !== "VALIDADO_RH" && (
+          {isFechadaOuFaturada && operacao.status_pagamento === "RECEBIDO" && operacao.status_rh !== "VALIDADO_RH" && (
             <div className="p-3 rounded-lg bg-amber-50/80 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
               <div className="flex items-start gap-2.5">
                 <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
@@ -487,16 +729,198 @@ export function OperacaoVolumeDrawer({
               exceptionState={
                 isEmRestricao
                   ? {
-                      isException: true,
-                      label: "Em Restrição",
-                      stepKey: "EM_VALIDACAO",
-                      description: motivoRestricao || "Operação com bloqueio operacional",
-                    }
+                    isException: true,
+                    label: "Em Restrição",
+                    stepKey: "EM_VALIDACAO",
+                    description: motivoRestricao || "Operação com bloqueio operacional",
+                  }
                   : null
               }
               variant="detailed"
               subtitle="Acompanhamento da esteira operacional desta operação."
             />
+          </div>
+
+          {/* PAINEL DE NAVEGAÇÃO CONTEXTUAL & PRÓXIMA ETAPA */}
+          <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-royal-blue dark:text-royal-blue-light" />
+                Situação no Processo & Próxima Etapa
+              </h4>
+              <Badge variant="outline" className="text-[10px] font-semibold">
+                {operacao.status === "CONCLUIDO" || operacao.status === "FECHADO"
+                  ? isConciliado
+                    ? "Ciclo Concluído & Conciliado"
+                    : "Concluído (Conciliação Pendente)"
+                  : operacao.status === "RECEBIDO_FINANCEIRO"
+                    ? isConciliado
+                      ? "Recebido & Conciliado"
+                      : "Recebido (Conciliação Pendente)"
+                    : isFechadaOuFaturada
+                      ? "Etapa Financeira / RH"
+                      : isEmRestricao
+                        ? "Ajuste Operacional"
+                        : "Aprovação Operacional"}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-muted/30 p-3 rounded-lg border border-border/60">
+              <div>
+                <span className="text-[11px] font-semibold text-muted-foreground block">Onde está no processo:</span>
+                <span className="font-medium text-foreground">
+                  {operacao.status === "CONCLUIDO" || operacao.status === "FECHADO"
+                    ? isConciliado
+                      ? "Ciclo 100% concluído e conciliado"
+                      : "Operação concluída — Aguardando conciliação bancária"
+                    : operacao.status === "RECEBIDO" || operacao.status === "EM_VALIDACAO" || operacao.status === "ABERTO" || operacao.status === "PENDENTE"
+                      ? isEmRestricao
+                        ? "Bloqueada por pendência ou horário incompleto"
+                        : "Lançamento inicial concluído na doca"
+                      : operacao.status === "AGUARDANDO_FATURAMENTO"
+                        ? "Aprovada operacionalmente / Pronta para Faturamento"
+                        : operacao.status === "FATURADO"
+                          ? "Faturada / Título gerado em cobrança"
+                          : isConciliado
+                            ? "Recebimento financeiro conciliado"
+                            : "Recebimento confirmado no Financeiro"}
+                </span>
+              </div>
+
+              <div>
+                <span className="text-[11px] font-semibold text-muted-foreground block">Responsável atual:</span>
+                <span className="font-medium text-foreground">
+                  {operacao.status === "CONCLUIDO" || operacao.status === "FECHADO"
+                    ? isConciliado
+                      ? "Processo finalizado (Sem ações pendentes)"
+                      : "Controladoria / Conciliação Bancária"
+                    : operacao.status === "RECEBIDO" || operacao.status === "EM_VALIDACAO"
+                      ? isEmRestricao
+                        ? "Encarregado / Operação (Doca)"
+                        : "Gestor / Supervisor Operacional"
+                      : operacao.status === "AGUARDANDO_FATURAMENTO"
+                        ? "Financeiro (Faturamento) & RH (Validação de Folha)"
+                        : operacao.status === "FATURADO"
+                          ? "Financeiro (Cobrança) & RH (se pendente)"
+                          : isConciliado
+                            ? "Processo finalizado"
+                            : "Conciliação Bancária / Controladoria"}
+                </span>
+              </div>
+
+              <div>
+                <span className="text-[11px] font-semibold text-muted-foreground block">O que já foi concluído:</span>
+                <span className="text-muted-foreground">
+                  {operacao.status === "CONCLUIDO" || operacao.status === "FECHADO"
+                    ? isConciliado
+                      ? "Execução física, aprovação operacional, validação RH, faturamento, recebimento financeiro e conciliação bancária."
+                      : "Execução física, aprovação operacional, validação RH, faturamento e confirmação de recebimento."
+                    : operacao.status === "RECEBIDO" || operacao.status === "EM_VALIDACAO"
+                      ? "Registro de volumes, cliente, insumos e apontamento de equipe."
+                      : operacao.status === "AGUARDANDO_FATURAMENTO"
+                        ? "Execução física conferida e aprovada pela supervisão operacional."
+                        : operacao.status === "FATURADO"
+                          ? "Execução aprovada e receita classificada/faturada."
+                          : isConciliado
+                            ? "Execução, faturamento, recebimento e conciliação bancária."
+                            : "Execução, faturamento e confirmação de recebimento financeiro."}
+                </span>
+              </div>
+
+              <div>
+                <span className="text-[11px] font-semibold text-muted-foreground block">O que falta fazer:</span>
+                <span className="text-muted-foreground">
+                  {operacao.status === "CONCLUIDO" || operacao.status === "FECHADO"
+                    ? isConciliado
+                      ? "Nenhuma pendência. Crédito conciliado no extrato e ciclo arquivado."
+                      : "Localizar crédito no extrato bancário e confirmar a conciliação na Central Bancária."
+                    : operacao.status === "RECEBIDO" || operacao.status === "EM_VALIDACAO"
+                      ? isEmRestricao
+                        ? "Regularizar horários e apontamentos para liberar aprovação."
+                        : "Supervisor/Gestor confirmar aprovação operacional."
+                      : operacao.status === "AGUARDANDO_FATURAMENTO"
+                        ? "Faturar título no módulo de Receitas e validar no RH."
+                        : operacao.status === "FATURADO"
+                          ? "Aguardar liquidação pelo cliente e validação RH."
+                          : isConciliado
+                            ? "Ciclo financeiro liquidado."
+                            : "Conciliar crédito no extrato bancário."}
+                </span>
+              </div>
+            </div>
+
+            {/* Ações contextuais de avanço / encaminhamento centralizadas */}
+            <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
+              {isFechadaOuFaturada && (
+                <>
+                  {/* Se recebido/concluído mas conciliação ainda pendente: ação primária prioritária é Abrir Conciliação */}
+                  {isRecebimentoConfirmado && !isConciliado && (
+                    <Button
+                      size="sm"
+                      className="h-8 text-xs font-semibold gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                      onClick={handleNavigateConciliacao}
+                    >
+                      <ArrowRightLeft className="w-3.5 h-3.5" />
+                      Abrir Conciliação
+                    </Button>
+                  )}
+
+                  {/* Se aguardando faturamento ou faturado: ação primária é Acompanhar em Receitas */}
+                  {(operacao.status === "AGUARDANDO_FATURAMENTO" || operacao.status === "FATURADO") && (
+                    <Button
+                      size="sm"
+                      className="h-8 text-xs font-semibold gap-1.5 bg-royal-blue hover:bg-royal-blue/90 text-white"
+                      onClick={handleNavigateReceitas}
+                    >
+                      <Receipt className="w-3.5 h-3.5" />
+                      Acompanhar em Receitas
+                    </Button>
+                  )}
+
+                  {/* Validação RH se pendente */}
+                  {operacao.status !== "CONCLUIDO" && operacao.status !== "FECHADO" && operacao.status_rh !== "VALIDADO_RH" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs font-medium gap-1.5 border-amber-300 text-amber-900 dark:border-amber-700 dark:text-amber-200"
+                      onClick={handleNavigateRh}
+                    >
+                      <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
+                      Ir para Validação RH
+                    </Button>
+                  )}
+
+                  {/* Ação secundária: Ver em Receitas (quando recebimento já confirmado) */}
+                  {isRecebimentoConfirmado && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs font-medium gap-1.5"
+                      onClick={handleNavigateReceitas}
+                    >
+                      <Receipt className="w-3.5 h-3.5 text-royal-blue" />
+                      Ver em Receitas
+                    </Button>
+                  )}
+
+                  {/* Ver no DRE: Ação primária se conciliado, ou secundária se pendente de conciliação */}
+                  {isRecebimentoConfirmado && (
+                    <Button
+                      size="sm"
+                      variant={isConciliado ? "default" : "outline"}
+                      className={`h-8 text-xs gap-1.5 ${isConciliado
+                          ? "bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                          : "font-medium"
+                        }`}
+                      onClick={handleNavigateDre}
+                    >
+                      <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                      Ver no DRE
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
           </div>
 
           {/* 1. CONTEXTO OPERACIONAL */}
@@ -737,7 +1161,7 @@ export function OperacaoVolumeDrawer({
               <Button
                 variant="outline"
                 size="sm"
-                disabled={isDeleting}
+                disabled={isDeleting || isAprovando}
                 className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 border-border"
                 onClick={handleDelete}
               >
@@ -747,7 +1171,49 @@ export function OperacaoVolumeDrawer({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {canApproveOperation && isElegivelAprovacao && (
+              <Button
+                size="sm"
+                disabled={isAprovando}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs shadow-sm"
+                onClick={() => setConfirmAprovarOpen(true)}
+              >
+                {isAprovando ? (
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                )}
+                Aprovar Operação
+              </Button>
+            )}
+
+            {!canApproveOperation && isElegivelAprovacao && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        size="sm"
+                        disabled
+                        className="bg-muted text-muted-foreground cursor-not-allowed opacity-60 text-xs font-medium"
+                      >
+                        <ShieldAlert className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                        Aprovação Restrita ao Gestor
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">
+                      Seu perfil de usuário ({userRole || "operacional"}) não possui autorização para aprovação operacional.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+
+
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -755,7 +1221,7 @@ export function OperacaoVolumeDrawer({
                     <Button
                       variant={isFechadaOuFaturada ? "outline" : "default"}
                       size="sm"
-                      disabled={isFechadaOuFaturada}
+                      disabled={isFechadaOuFaturada || isAprovando}
                       className={!isFechadaOuFaturada ? "bg-royal-blue hover:bg-royal-blue/90 text-white" : ""}
                       onClick={() => {
                         if (onEditRequest) {
@@ -781,6 +1247,7 @@ export function OperacaoVolumeDrawer({
             <Button
               variant="secondary"
               size="sm"
+              disabled={isAprovando}
               onClick={() => onOpenChange(false)}
             >
               Fechar
@@ -788,6 +1255,56 @@ export function OperacaoVolumeDrawer({
           </div>
         </SheetFooter>
       </SheetContent>
+
+      {/* MODAL DE CONFIRMAÇÃO DE APROVAÇÃO OPERACIONAL */}
+      <AlertDialog open={confirmAprovarOpen} onOpenChange={setConfirmAprovarOpen}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-foreground">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              Aprovar Operação Operacional?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-muted-foreground leading-relaxed space-y-2 pt-1">
+              <p>
+                Deseja confirmar a execução operacional da operação{" "}
+                <strong className="text-foreground font-mono">{codigo}</strong> referente a{" "}
+                <strong className="text-foreground">{tipoServicoNome}</strong> (
+                {Number(operacao.quantidade || 0).toLocaleString("pt-BR")}{" "}
+                {operacao.unidade_medida || "cx"}) no valor de{" "}
+                <strong className="text-foreground">
+                  {valorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                </strong>{" "}
+                na empresa <strong className="text-foreground">{empresaNome}</strong>?
+              </p>
+              <p className="bg-muted/60 p-2.5 rounded border border-border">
+                Esta ação validará os horários e apontamentos da equipe na doca e avançará a operação para as etapas de{" "}
+                <strong className="text-foreground">Faturamento / Receitas</strong> e{" "}
+                <strong className="text-foreground">Validação pelo RH</strong>.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="pt-2">
+            <AlertDialogCancel disabled={isAprovando}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleConfirmAprovar();
+              }}
+              disabled={isAprovando}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+            >
+              {isAprovando ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Aprovando...
+                </>
+              ) : (
+                "Confirmar Aprovação"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   );
 }

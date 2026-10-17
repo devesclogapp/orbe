@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -147,19 +147,23 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
         enabled: !!user?.id && open,
     });
 
+    const previousTipoServicoIdRef = useRef<string | undefined>(undefined);
+
     useEffect(() => {
         if (!open) {
             setForm({ ...INITIAL_FORM });
             setErrors({});
+            previousTipoServicoIdRef.current = undefined;
             return;
         }
         if (initialData) {
+            previousTipoServicoIdRef.current = initialData.tipo_servico_id || "";
             setForm({
                 data: initialData.data || format(new Date(), "yyyy-MM-dd"),
                 empresa_id: initialData.empresa_id || "",
                 tipo_servico_id: initialData.tipo_servico_id || "",
                 descricao: initialData.descricao_servico || initialData.descricao || "",
-                quantidade: initialData.quantidade !== null && initialData.quantidade !== undefined ? String(initialData.quantidade) : "1",
+                quantidade: initialData.quantidade !== null && initialData.quantidade !== undefined ? String(initialData.quantidade) : "",
                 quantidade_colaboradores: initialData.quantidade_colaboradores ? String(initialData.quantidade_colaboradores) : "",
                 regra_periodo_id: initialData.regra_id || "",
                 valor_unitario: initialData.valor_unitario !== null ? String(initialData.valor_unitario) : "",
@@ -174,6 +178,8 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                 valor_unitario_snapshot: initialData.valor_unitario_snapshot || 0,
                 iss_percentual: initialData.iss_percentual ? String(Number(initialData.iss_percentual) * 100) : "0",
             });
+        } else {
+            previousTipoServicoIdRef.current = "";
         }
     }, [open, initialData]);
 
@@ -197,7 +203,8 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
     );
 
     const multiplicadorPeriodo = Number(periodSelecionado?.peso_multiplicador || 1);
-    const quantidade = parseNumeric(form.quantidade || "1");
+    // Não usar fallback silencioso para 1 quando o usuário apagar o campo
+    const quantidade = form.quantidade.trim() === "" ? 0 : parseNumeric(form.quantidade);
     const valorUnitarioBase = parseNumeric(form.valor_unitario);
     const valorUnitarioEfetivo = valorUnitarioBase * multiplicadorPeriodo;
     const valorTotalServico = quantidade * valorUnitarioEfetivo;
@@ -212,7 +219,15 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
     );
 
     useEffect(() => {
-        if (tipoServicoSelecionado && open) {
+        if (!open) return;
+        // Preservar valores históricos de initialData se o tipo_servico_id não foi trocado pelo usuário
+        if (initialData && form.tipo_servico_id === initialData.tipo_servico_id && previousTipoServicoIdRef.current === initialData.tipo_servico_id) {
+            return;
+        }
+
+        // Aplicar recálculo canônico quando o usuário seleciona ou altera explicitamente o tipo de serviço
+        if (tipoServicoSelecionado && form.tipo_servico_id !== previousTipoServicoIdRef.current) {
+            previousTipoServicoIdRef.current = form.tipo_servico_id;
             setField("valor_unitario", String(tipoServicoSelecionado.valor_unitario || "0"));
             setField("valor_unitario_snapshot", tipoServicoSelecionado.valor_unitario || 0);
             if (tipoServicoSelecionado.tipo_calculo) {
@@ -222,7 +237,7 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                 setField("unidade_cobranca_snapshot", tipoServicoSelecionado.unidade_cobranca);
             }
         }
-    }, [tipoServicoSelecionado, open]);
+    }, [tipoServicoSelecionado, form.tipo_servico_id, open, initialData]);
 
     useEffect(() => {
         if (form.nf_emite && open) {
@@ -244,7 +259,9 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
         if (!form.data) newErrors.data = "Informe a data.";
         if (!form.tipo_servico_id) newErrors.tipo_servico_id = "Selecione o tipo de serviço.";
         if (!form.descricao.trim()) newErrors.descricao = "Informe a descrição.";
-        if (quantidade <= 0) newErrors.quantidade = "Inválido.";
+        if (!form.quantidade || form.quantidade.trim() === "" || quantidade <= 0) {
+            newErrors.quantidade = "Informe uma quantidade válida maior que zero.";
+        }
         if (valorUnitarioBase <= 0 && form.tipo_calculo_snapshot !== "manual") newErrors.valor_unitario = "Informe o valor.";
         if (!form.forma_pagamento_id) newErrors.forma_pagamento_id = "Informe a forma de pagamento.";
         setErrors(newErrors);
@@ -380,7 +397,16 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                                 <Label>
                                     Quantidade {form.unidade_cobranca_snapshot && <span className="text-muted-foreground font-normal">({form.unidade_cobranca_snapshot})</span>} <span className="text-red-500">*</span>
                                 </Label>
-                                <Input type="number" step="0.01" placeholder="1" value={form.quantidade} onChange={(e) => setField("quantidade", e.target.value)} className={cn(errors.quantidade && "border-destructive")} />
+                                <Input 
+                                    type="number" 
+                                    step="0.01" 
+                                    placeholder="1" 
+                                    value={form.quantidade} 
+                                    onFocus={(e) => e.target.select()}
+                                    onChange={(e) => setField("quantidade", e.target.value)} 
+                                    className={cn(errors.quantidade && "border-destructive")} 
+                                />
+                                {errors.quantidade && <p className="text-xs text-destructive">{errors.quantidade}</p>}
                             </div>
                             <div className="space-y-2">
                                 <Label>Período Operacional</Label>

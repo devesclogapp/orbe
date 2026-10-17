@@ -142,17 +142,33 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
   const navState = (location.state || {}) as {
     selectedLoteId?: string;
     loteId?: string;
+    operacaoId?: string;
+    opId?: string;
     empresaId?: string;
     competencia?: string;
   };
-  const targetLoteId = navState.selectedLoteId || navState.loteId || searchParams.get("loteId") || undefined;
+  const targetLoteId =
+    navState.selectedLoteId ||
+    navState.loteId ||
+    navState.operacaoId ||
+    navState.opId ||
+    searchParams.get("loteId") ||
+    searchParams.get("operacaoId") ||
+    searchParams.get("opId") ||
+    undefined;
+
+  const initialEmpresa =
+    navState.empresaId ||
+    searchParams.get("empresaId") ||
+    searchParams.get("empresa") ||
+    "all";
 
   // ── Context Mode (Props ou URL SearchParams) ──
   const effectiveFlowType = flowType || searchParams.get("tipo") || searchParams.get("flowType") || undefined;
   const isLocked = lockedFlow ?? (searchParams.get("locked") === "true" || !!effectiveFlowType);
 
   // ── Filtros de Trabalho ──
-  const [empresaFiltro, setEmpresaFiltro] = useState<string>("all");
+  const [empresaFiltro, setEmpresaFiltro] = useState<string>(initialEmpresa);
   const [filtroTemporal, setFiltroTemporal] = useState<FiltroTemporalValue>({
     type: "preset",
     preset: "todos",
@@ -207,7 +223,9 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
   useEffect(() => {
     if (targetLoteId && results && results.length > 0 && !activeItem) {
       const match = results.find(
-        (i) => i.id === targetLoteId || (i.referencia && i.referencia.includes(targetLoteId.substring(0, 6)))
+        (i) =>
+          i.id === targetLoteId ||
+          (i.referencia && i.referencia.toLowerCase().includes(targetLoteId.toLowerCase().substring(0, 6)))
       );
       if (match) {
         if (match.situacao === "Devolvido" && situacaoFiltro !== "DEVOLVIDO") {

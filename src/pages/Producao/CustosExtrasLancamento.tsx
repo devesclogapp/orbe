@@ -160,6 +160,7 @@ const CustosExtrasLancamento = () => {
     }
     if (etapa === 3) {
       if (!form.descricao?.trim()) return toast.warning("Informe a descrição.");
+      if (!form.quantidade || form.quantidade <= 0) return toast.warning("Informe uma quantidade válida maior que zero.");
       if (form.valor_unitario <= 0) return toast.warning("Informe o valor unitário maior que zero.");
     }
     setEtapa(prev => prev + 1);
@@ -280,12 +281,34 @@ const CustosExtrasLancamento = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <Label className="text-xs font-bold uppercase text-slate-500">Quantidade</Label>
-                    <Input type="number" className="h-12" value={form.quantidade} onChange={(e) => setFormField("quantidade", Number(e.target.value))} />
+                    <Label className="text-xs font-bold uppercase text-slate-500">Quantidade <span className="text-destructive">*</span></Label>
+                    <Input
+                      type="number"
+                      min="0.001"
+                      step="any"
+                      className="h-12"
+                      value={form.quantidade === 0 ? "" : form.quantidade}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormField("quantidade", val === "" ? 0 : Number(val));
+                      }}
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs font-bold uppercase text-slate-500">Valor Unitário</Label>
-                    <Input type="number" step="0.01" className="h-12" value={form.valor_unitario} onChange={(e) => setFormField("valor_unitario", Number(e.target.value))} />
+                    <Label className="text-xs font-bold uppercase text-slate-500">Valor Unitário <span className="text-destructive">*</span></Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      className="h-12"
+                      value={form.valor_unitario === 0 ? "" : form.valor_unitario}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormField("valor_unitario", val === "" ? 0 : Number(val));
+                      }}
+                    />
                   </div>
                 </div>
                 <div className="p-6 rounded-2xl border-2 border-primary/20 bg-primary/5 flex items-center justify-between">
@@ -333,8 +356,8 @@ const CustosExtrasLancamento = () => {
                             <span className={cn(
                               "text-[10px] uppercase font-bold px-2 py-0.5 rounded-full",
                               opcao.value === "PAGO_EMPRESA" ? "bg-blue-100 text-blue-700" :
-                              opcao.value === "REEMBOLSO_COLABORADOR" ? "bg-amber-100 text-amber-700" :
-                              "bg-purple-100 text-purple-700"
+                                opcao.value === "REEMBOLSO_COLABORADOR" ? "bg-amber-100 text-amber-700" :
+                                  "bg-purple-100 text-purple-700"
                             )}>
                               {opcao.value === "PAGO_EMPRESA" ? "Empresa" : opcao.value === "REEMBOLSO_COLABORADOR" ? "Reembolso" : "Pendente"}
                             </span>
