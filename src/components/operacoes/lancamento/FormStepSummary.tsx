@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, Trash2, Package } from "lucide-react";
 import { QuickRegisterDialog } from "./QuickRegisterDialog";
 import { calcularValoresOperacao } from "@/utils/financeiro";
+import { HelpTooltip } from "@/components/help/HelpTooltip";
 
 interface FormStepSummaryProps {
     form: UseFormReturn<ProductionFormValues>;
@@ -245,7 +246,10 @@ export function FormStepSummary({
 
                 <div className="space-y-2">
                     <Label className="flex justify-between items-center text-xs">
-                        Forma de Pagamento
+                        <span className="flex items-center gap-1.5">
+                            Forma de Pagamento
+                            <HelpTooltip text="Define o fluxo financeiro: À Vista (caixa imediato), Boleto ou Faturamento Mensal consolidado." />
+                        </span>
                         {values.modalidade_financeira && (
                             <span className="text-[10px] text-muted-foreground bg-slate-100 px-1.5 py-0.5 rounded uppercase font-semibold">
                                 Mod: {values.modalidade_financeira?.replace(/_/g, ' ')}
@@ -285,7 +289,10 @@ export function FormStepSummary({
 
                 {isEspecífico && (
                     <div className="space-y-2 animate-in fade-in slide-in-from-left-1 duration-300">
-                        <Label>Turno / Período (D1, N1...)</Label>
+                        <Label className="flex items-center gap-1.5">
+                            Turno / Período (D1, N1...)
+                            <HelpTooltip text="Regras tabeladas com multiplicadores adicionais para turnos noturnos conforme acordos operacionais." />
+                        </Label>
                         <Select
                             onValueChange={(val) => form.setValue("regra_periodo_id", val)}
                             defaultValue={form.getValues("regra_periodo_id") || undefined}
@@ -328,7 +335,10 @@ export function FormStepSummary({
                 <div className="space-y-4">
                     <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                         <div className="space-y-0.5">
-                            <Label className="text-sm font-semibold">Emissão de Nota Fiscal?</Label>
+                            <Label className="text-sm font-semibold flex items-center gap-1.5">
+                                Emissão de Nota Fiscal?
+                                <HelpTooltip text="Indica se a mercadoria possui Nota Fiscal física acompanhando a operação. Necessário para cálculo de tributos e faturamento." />
+                            </Label>
                             <p className="text-[10px] text-muted-foreground">Obrigatório para faturamento e impostos.</p>
                         </div>
                         <input
@@ -341,7 +351,10 @@ export function FormStepSummary({
                     {values.nf_emite && (
                         <div className="grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-1 duration-200">
                             <div className="space-y-1.5">
-                                <Label className="text-xs">Alíquota ISS (%)</Label>
+                                <Label className="text-xs flex items-center gap-1">
+                                    Alíquota ISS (%)
+                                    <HelpTooltip text="Percentual de retenção de ISS contratado para esta empresa/município." />
+                                </Label>
                                 <Input
                                     type="number"
                                     placeholder="Ex: 5"

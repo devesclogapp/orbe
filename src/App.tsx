@@ -18,6 +18,9 @@ import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { getDefaultRouteForRole } from "@/lib/access-control";
 // AI Chat disabled for operational mode
 
+import { ContextualHelpProvider } from "@/contexts/ContextualHelpContext";
+import { ContextualHelpDrawer } from "@/components/help/ContextualHelpDrawer";
+
 // Auth Pages
 import Login from "./pages/Auth/Login";
 import Cadastro from "./pages/Auth/Cadastro";
@@ -171,8 +174,10 @@ const App = () => (
                       <Toaster />
                       <Sonner />
                       <BrowserRouter>
-                        <OperationalPipelinePresenter />
-                        <ErrorBoundary>
+                        <ContextualHelpProvider>
+                          <OperationalPipelinePresenter />
+                          <ContextualHelpDrawer />
+                          <ErrorBoundary>
                           <Routes>
                             {/* Public Auth Routes */}
                             <Route path="/login" element={<Login />} />
@@ -321,7 +326,8 @@ const App = () => (
                             <Route path="*" element={<NotFound />} />
                           </Routes>
                         </ErrorBoundary>
-                      </BrowserRouter>
+                      </ContextualHelpProvider>
+                    </BrowserRouter>
                     </TooltipProvider>
                   </OperationalPipelineProvider>
                 </SelectionProvider>

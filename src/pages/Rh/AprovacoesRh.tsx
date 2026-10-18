@@ -62,6 +62,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { useOperationalPipeline, buildServicosExtrasPipeline } from "@/contexts/OperationalPipelineContext";
 import { cn } from "@/lib/utils";
+import { HelpTooltip } from "@/components/help/HelpTooltip";
 
 // ────────────────────────────────────────────────────
 // Formatadores
@@ -754,8 +755,9 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
             )}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                 Aguardando Decisão
+                <HelpTooltip text="Lotes e lançamentos que já foram fechados pelo encarregado e aguardam conferência e autorização do RH." />
               </span>
               <Clock className="w-4 h-4 text-[#2563EB] dark:text-blue-400" />
             </div>
@@ -782,8 +784,9 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
             )}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                 Mais Antigo na Fila
+                <HelpTooltip text="Tempo decorrido do lote ou lançamento mais antigo sem análise. Indicador de SLA da fila de aprovação." />
               </span>
               <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
             </div>
@@ -813,8 +816,9 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
             )}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                 Devolvidos
+                <HelpTooltip text="Lotes rejeitados que retornaram à operação de campo para correção de horas, pessoas ou valores." />
               </span>
               <RotateCcw className="w-4 h-4 text-rose-600 dark:text-rose-400" />
             </div>

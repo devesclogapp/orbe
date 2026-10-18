@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 
 import { CommandMenu } from "./CommandMenu";
 import { getBackTarget, getBreadcrumbs, getRouteLabel, getSectionLabel } from "./navigationMeta";
+import { ContextualHelpButton } from "@/components/help/ContextualHelpButton";
 
 type TopbarProps = {
   title?: string;
@@ -127,6 +128,13 @@ export const Topbar = ({ title, subtitle, badge, backPath, pipelineTrigger }: To
         )}
 
         <CommandMenu open={openCommand} setOpen={setOpenCommand} />
+
+        {/* Guia da Tela / Ajuda Contextual — Proeminente e Visível */}
+        <ContextualHelpButton
+          showLabel
+          variant="outline"
+          className="h-8 border-primary/25 bg-primary/5 text-primary hover:bg-primary/10 hover:text-primary transition-all shadow-xs"
+        />
 
         {/* Bloco de Controles Globais */}
         <div className="flex items-center gap-1 rounded-lg border border-border/60 bg-muted/20 p-0.5">
