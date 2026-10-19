@@ -57,6 +57,7 @@ import { EmpresaService } from "@/services/domain/cadastros.service";
 import { OperacaoProducaoService } from "@/services/domain/producao.service";
 import { IntermitentesLoteService } from "@/services/domain/intermitentes.service";
 import { AprovacoesService } from "@/services/domain/aprovacoes.service";
+import { LoteFechamentoDiaristaService } from "@/services/domain/diaristas.service";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -413,18 +414,18 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
 
   const aprovarMutation = useMutation({
     mutationFn: async (item: ApprovalItem) => {
-      // 1. DIARISTA
-      if (item.tipo === "DIARISTA" && item.raw_lote_id) {
-        const { error } = await supabase
-          .from("diaristas_lotes_fechamento" as any)
-          .update({ status: "VALIDADO_RH", updated_at: new Date().toISOString() })
-          .eq("id", item.raw_lote_id);
-        if (error) throw error;
-
-        await supabase
-          .from("lancamentos_diaristas")
-          .update({ status: "VALIDADO_RH" })
-          .eq("lote_fechamento_id", item.raw_lote_id);
+      // 1. DIARISTA (Validação canônica do lote pelo RH: diaristas_lotes_fechamento e lancamentos_diaristas para VALIDADO_RH)
+      if (item.tipo === "DIARISTA") {
+        const loteId = item.raw_lote_id || item.id;
+        if (!loteId) {
+          throw new Error("Lote de fechamento de diaristas não identificado para aprovação.");
+        }
+        await LoteFechamentoDiaristaService.validarPeriodo(
+          loteId,
+          user?.id || "",
+          user?.user_metadata?.full_name || user?.email || "RH",
+          (user?.user_metadata as any)?.role || "rh"
+        );
         return;
       }
 
@@ -526,18 +527,20 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
 
   const devolverMutation = useMutation({
     mutationFn: async ({ item, motivo }: { item: ApprovalItem; motivo?: string }) => {
-      // 1. DIARISTA
-      if (item.tipo === "DIARISTA" && item.raw_lote_id) {
-        const { error } = await supabase
-          .from("diaristas_lotes_fechamento" as any)
-          .update({ status: "AGUARDANDO_VALIDACAO_RH", updated_at: new Date().toISOString() })
-          .eq("id", item.raw_lote_id);
-        if (error) throw error;
-
-        await supabase
-          .from("lancamentos_diaristas")
-          .update({ status: "AGUARDANDO_VALIDACAO_RH" })
-          .eq("lote_fechamento_id", item.raw_lote_id);
+      // 1. DIARISTA (Devolução operacional do lote via reabrirPeriodo)
+      if (item.tipo === "DIARISTA") {
+        const loteId = item.raw_lote_id || item.id;
+        if (!loteId) {
+          throw new Error("Lote de fechamento de diaristas não identificado para devolução.");
+        }
+        await LoteFechamentoDiaristaService.reabrirPeriodo(
+          loteId,
+          user?.id || "",
+          user?.user_metadata?.full_name || user?.email || "RH",
+          (user?.user_metadata as any)?.role || "rh",
+          motivo || "Devolvido pelo RH",
+          "operacional"
+        );
         return;
       }
 

@@ -6,9 +6,13 @@ import { MemoryRouter } from "react-router-dom";
 import AprovacoesRh from "@/pages/Rh/AprovacoesRh";
 import { AprovacoesService } from "@/services/domain/aprovacoes.service";
 
+import { TooltipProvider } from "@/components/ui/tooltip";
+
 // Mock das dependências contextuais
 vi.mock("@/components/layout/AppShell", () => ({
-  AppShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  AppShell: ({ children }: { children: React.ReactNode }) => (
+    <TooltipProvider>{children}</TooltipProvider>
+  ),
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({

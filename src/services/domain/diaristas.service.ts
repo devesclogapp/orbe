@@ -474,7 +474,8 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       tenantId,
       column: 'empresa_id',
       includeNullInProduction: false,
-      testIds
+      testIds,
+      targetEmpresaId: empresaId
     });
 
     const { data, error } = await query;
@@ -491,10 +492,32 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
 
     if (loteError) throw loteError;
 
+    // Validação estrita de escopo de ambiente para o lote individual
+    const tenantId = lote.tenant_id || (await getCurrentTenantId());
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+    const env = EnvironmentService.getCurrentEnvironment();
+    const isTestEmpresa = testIds.includes(lote.empresa_id);
+
+    if (env === 'production' && isTestEmpresa) {
+      throw new EnvironmentScopeResolutionError(
+        `Acesso negado: Este lote pertence à Empresa de Homologação/Testes (${lote.empresa?.nome || lote.empresa_id}) e não pode ser consultado no ambiente de Produção. Alterne para a Base de Homologação.`,
+        undefined,
+        'ENVIRONMENT_MISMATCH'
+      );
+    }
+    if (env === 'homologacao' && !isTestEmpresa) {
+      throw new EnvironmentScopeResolutionError(
+        `Acesso negado: Este lote pertence à Empresa de Produção (${lote.empresa?.nome || lote.empresa_id}) e não pode ser consultado no ambiente de Homologação. Alterne para a Base de Produção.`,
+        undefined,
+        'ENVIRONMENT_MISMATCH'
+      );
+    }
+
     const { data: itens, error: itensError } = await this.supabase
       .from('lancamentos_diaristas')
       .select('*')
       .eq('lote_fechamento_id', loteId)
+      .order('data_lancamento', { ascending: true })
       .order('nome_colaborador', { ascending: true });
 
     if (itensError) throw itensError;
@@ -516,10 +539,13 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
 
     const mappedItens = finalItens.map(it => ({
       id: it.id,
-      tipo_evento: it.tipo_registro === 'ajuste' ? 'AJUSTE' : 'DIARIA',
+      tipo_evento: it.tipo_registro === 'ajuste' ? 'AJUSTE' : (it.codigo_marcacao || 'DIARIA'),
+      codigo_marcacao: it.codigo_marcacao,
+      data_lancamento: it.data_lancamento,
       nome_colaborador: it.nome_colaborador,
       minutos: 0,
       horas: it.quantidade_diaria || 1,
+      quantidade_diaria: it.quantidade_diaria,
       valor_calculado: it.valor_calculado,
       status: it.status
     }));
@@ -530,13 +556,24 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     // Mapear para o formato que o modal da Central Financeira espera
     return {
       ...lote,
+      tipo: 'DIARISTAS',
       competencia: lote.mes_referencia, // Mapeia mes_referencia para competencia
       total_colaboradores: distinctColaboradores || lote.total_registros, // Mapeia total_registros ou conta distintos
       itens: mappedItens
     };
   }
 
-  async fecharPeriodo({ empresaId, periodoInicio, periodoFim, fechadoPor, fechadoPorNome, fechadoPorRole, observacoes, tipoFechamento = 'operacional' }: {
+  async fecharPeriodo({
+    empresaId,
+    periodoInicio,
+    periodoFim,
+    fechadoPor,
+    fechadoPorNome,
+    fechadoPorRole,
+    observacoes,
+    tipoFechamento = 'operacional',
+    tenantId: passedTenantId,
+  }: {
     empresaId: string;
     periodoInicio: string;
     periodoFim: string;
@@ -545,8 +582,9 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     fechadoPorRole: string;
     observacoes?: string;
     tipoFechamento?: 'operacional' | 'administrativo';
+    tenantId?: string;
   }) {
-    const tenantId = await getCurrentTenantId();
+    const tenantId = passedTenantId || await getCurrentTenantId();
     
     await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId });
 
@@ -653,74 +691,43 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
 
     const mesRef = periodoInicio.substring(0, 7);
 
-    // Creates new lote; try-catch tests for the unique constraint 23505
-    let novoLote;
-    try {
-      const res = await this.supabase
-        .from('diaristas_lotes_fechamento')
-        .insert({
-          empresa_id: empresaId,
-          periodo_inicio: periodoInicio,
-          periodo_fim: periodoFim,
-          mes_referencia: mesRef,
-          total_registros: totalRegistros,
-          valor_total: valorTotal,
-          status: 'AGUARDANDO_VALIDACAO_RH',
-          fechado_por: fechadoPor,
-          fechado_por_nome: fechadoPorNome,
-          fechado_em: new Date().toISOString(),
-          observacoes,
-          tenant_id: tenantId,
-        })
-        .select()
-        .single();
-      
-      if (res.error) {
-        if (res.error?.code === '23505') {
-            throw new Error("Violação 23505: Lote já ativo para este período.");
-        }
-        throw res.error;
-      }
-      novoLote = res.data;
-    } catch (err: any) {
-       if (err.message?.includes('23505')) {
-          console.warn("[fecharPeriodo] Lote duplicado interrompido na restrição única.");
-          return { error: 'CONCURRENCY_ERROR' };
-       }
-       throw err;
+    // FIX-DIA-01: Fechamento atômico obrigatório via RPC transacional (Fail-Closed)
+    // Não permite fechamento por operações client-side separadas sem garantia ACID.
+    if (typeof (this.supabase as any).rpc !== 'function') {
+      throw new Error(
+        "RPC_NOT_AVAILABLE: O fechamento semanal de diaristas requer a função transacional atômica 'fechar_ou_refechar_periodo_diaristas'. Operação interrompida por segurança (Fail-Closed)."
+      );
     }
 
-    if (!novoLote) {
-      throw new Error("Não foi possível criar o lote de fechamento.");
-    }
-
-    // Now update exact scoped records directly here to avoid RPC overreach
-    const { error: updErr } = await this.supabase
-       .from('lancamentos_diaristas')
-       .update({
-          status: 'AGUARDANDO_VALIDACAO_RH',
-          lote_fechamento_id: novoLote.id
-       })
-       .in('id', scopedLancamentoIds)
-       .eq('tenant_id', tenantId);
-       
-    if (updErr) throw updErr;
-
-    // Persist logs with valid lote
-    await this.supabase.from('diaristas_logs_fechamento').insert({
-       empresa_id: empresaId,
-       tenant_id: tenantId,
-       usuario_id: fechadoPor,
-       usuario_nome: fechadoPorNome,
-       usuario_role: fechadoPorRole,
-       acao: 'FECHAMENTO_LADO_RH',
-       periodo_inicio: periodoInicio,
-       periodo_fim: periodoFim,
-       motivo: `Lote ${novoLote.id} foi gerado com ${totalRegistros} itens. Valor R$ ${valorTotal}.`
+    const { data: rpcLote, error: rpcErr } = await (this.supabase as any).rpc('fechar_ou_refechar_periodo_diaristas', {
+      p_tenant_id: tenantId,
+      p_empresa_id: empresaId,
+      p_periodo_inicio: periodoInicio,
+      p_periodo_fim: periodoFim,
+      p_total_registros: totalRegistros,
+      p_valor_total: valorTotal,
+      p_fechado_por: fechadoPor,
+      p_fechado_por_nome: fechadoPorNome,
+      p_fechado_por_role: fechadoPorRole,
+      p_observacoes: observacoes,
+      p_lancamento_ids: scopedLancamentoIds
     });
 
+    if (rpcErr) {
+      if (rpcErr.code === '42883' || rpcErr.message?.includes('function') || rpcErr.message?.includes('does not exist')) {
+        throw new Error(
+          "RPC_NOT_AVAILABLE: A função 'fechar_ou_refechar_periodo_diaristas' não está instalada no banco. Operação interrompida por segurança (Fail-Closed)."
+        );
+      }
+      throw new Error(rpcErr.message || "Erro ao processar fechamento atômico do período.");
+    }
+
+    if (!rpcLote) {
+      throw new Error("Não foi possível gerar ou atualizar o lote de fechamento via RPC.");
+    }
+
     return {
-      ...novoLote,
+      ...rpcLote,
       total_registros: totalRegistros,
       valor_total: valorTotal,
     };
@@ -838,11 +845,39 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
     if (lote.cancelado_em) {
        throw new Error('Geração de CNAB rejeitada: lote se encontra cancelado.');
     }
-    if (!['FECHADO_FINANCEIRO', 'AGUARDANDO_PAGAMENTO'].includes(String(lote.status || ''))) {
-      throw new Error('Geração de CNAB bloqueada: o lote precisa estar aprovado pelo Financeiro antes da remessa.');
-    }
 
     await EnvironmentService.assertEmpresaAllowed({ tenantId, empresaId: lote.empresa_id });
+
+    const statusUpper = String(lote.status || '').toUpperCase();
+
+    if (statusUpper === 'PAGO') {
+      throw new Error('Geração de CNAB bloqueada: o lote já foi liquidado/pago.');
+    }
+
+    // ── 1.1 Idempotência: verificar se remessa já foi gerada para este lote ──
+    const { data: remessaExistente } = await this.supabase
+      .from('cnab_remessas_arquivos')
+      .select('id, nome_arquivo, total_registros, total_valor, sequencial_arquivo')
+      .eq('diaristas_lote_id', loteId)
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (remessaExistente || statusUpper === 'CNAB_GERADO') {
+      if (remessaExistente) {
+        return {
+          nomeArquivo: remessaExistente.nome_arquivo,
+          totalRegistros: Number(remessaExistente.total_registros || 0),
+          valorTotal: Number(remessaExistente.total_valor || 0),
+        };
+      }
+      throw new Error('Geração de CNAB bloqueada: remessa já gerada anteriormente para este lote.');
+    }
+
+    if (!['FECHADO_FINANCEIRO', 'AGUARDANDO_PAGAMENTO'].includes(statusUpper)) {
+      throw new Error('Geração de CNAB bloqueada: o lote precisa estar aprovado pelo Financeiro antes da remessa.');
+    }
 
     // ── 2. Buscar lançamentos obrigatoriamente por scoped lote_id e tenant
     let lancamentos: any[] = [];
@@ -1088,11 +1123,27 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       totalLinhasCnab = resultado.total_linhas;
     }
 
+    // Re-checar se outra chamada concorrente registrou a remessa neste intervalo
+    const { data: remessaConcorrente } = await this.supabase
+      .from('cnab_remessas_arquivos')
+      .select('id, nome_arquivo, total_registros, total_valor, sequencial_arquivo')
+      .eq('diaristas_lote_id', loteId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (remessaConcorrente) {
+      return {
+        nomeArquivo: remessaConcorrente.nome_arquivo,
+        totalRegistros: Number(remessaConcorrente.total_registros || 0),
+        valorTotal: Number(remessaConcorrente.total_valor || 0),
+      };
+    }
+
     // ── 8. Disparar registro atômico (Fail-Closed) ─────────────────────────────
     // IMPORTANTE: totalRegistros é a quantidade de itens financeiros (itensParaRpc.length),
     // enquanto totalLinhasCnab é a quantidade de linhas físicas do arquivo (relatório ou posicional),
     // eliminando a divergência 6 x 2!
-    await CnabRemessaArquivoService.registrar({
+    const remessaRegistrada = await CnabRemessaArquivoService.registrar({
       loteId: null,
       diaristasLoteId: loteId,
       empresaId: lote.empresa_id,
@@ -1112,14 +1163,19 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       itens: itensParaRpc,
     });
 
+    const finalNomeArquivo = remessaRegistrada?.nome_arquivo || nomeArquivoFinal;
+    const finalConteudoArquivo = remessaRegistrada?.conteudo_arquivo || conteudoFinal;
+    const finalTotalRegistros = Number(remessaRegistrada?.total_registros ?? (resultado?.total_beneficiarios ?? itensParaRpc.length));
+    const finalTotalValor = Number(remessaRegistrada?.total_valor ?? (resultado?.valor_total ?? valorTotalCalculado));
+
     // ── 9. Download seguro somente após confirmação de persistência ────────────
     if (isEmpresaHomologacao) {
       if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-        const blob = new Blob([conteudoFinal], { type: 'text/plain;charset=utf-8' });
+        const blob = new Blob([finalConteudoArquivo], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = nomeArquivoFinal;
+        a.download = finalNomeArquivo;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -1150,17 +1206,16 @@ class LoteFechamentoDiaristaServiceClass extends BaseService<'diaristas_lotes_fe
       periodo_inicio: lote.periodo_inicio,
       periodo_fim:    lote.periodo_fim,
       motivo: [
-        `Arquivo CNAB240 gerado: ${resultado.nome_arquivo}`,
-        `Beneficiários: ${resultado.total_beneficiarios}`,
-        `Total linhas: ${resultado.total_linhas}`,
-        `Valor total: R$ ${resultado.valor_total.toFixed(2)}`,
+        `Arquivo CNAB gerado: ${finalNomeArquivo}`,
+        `Registros: ${finalTotalRegistros}`,
+        `Valor total: R$ ${finalTotalValor.toFixed(2)}`,
       ].join(' | '),
     });
 
     return {
-      nomeArquivo:    resultado.nome_arquivo,
-      totalRegistros: resultado.total_beneficiarios,
-      valorTotal:     resultado.valor_total,
+      nomeArquivo:    finalNomeArquivo,
+      totalRegistros: finalTotalRegistros,
+      valorTotal:     finalTotalValor,
     };
   }
 }

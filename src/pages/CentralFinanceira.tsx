@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
+  Activity,
   AlertTriangle,
   ArrowRight,
   Building2,
@@ -12,6 +13,7 @@ import {
   Clock,
   ExternalLink,
   FileCheck,
+  FileText,
   Filter,
   History,
   Layers,
@@ -87,11 +89,19 @@ const CentralFinanceira = () => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [filterMonth, setFilterMonth] = useState(new Date().toISOString().substring(0, 7));
-  const [filterEmpresaId, setFilterEmpresaId] = useState<string | null>(null);
+  const [filterMonth, setFilterMonth] = useState<string>(
+    () => searchParams.get("competencia") || new Date().toISOString().substring(0, 7)
+  );
+  const [filterEmpresaId, setFilterEmpresaId] = useState<string | null>(
+    () => searchParams.get("empresaId") || null
+  );
 
-  const [selectedMonth, setSelectedMonth] = useState(filterMonth);
-  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string>(
+    () => searchParams.get("competencia") || new Date().toISOString().substring(0, 7)
+  );
+  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(
+    () => searchParams.get("empresaId") || null
+  );
   const [searchTerm, setSearchTerm] = useState("");
   const [custosPipelineFilter, setCustosPipelineFilter] = useState<string>("todos");
 
@@ -100,7 +110,16 @@ const CentralFinanceira = () => {
   const [fechamentoParaReabrir, setFechamentoParaReabrir] = useState<any>(null);
   const [motivoReabrir, setMotivoReabrir] = useState("");
   const [openConfirmAprovacao, setOpenConfirmAprovacao] = useState(false);
-  const [rhLoteSelecionado, setRhLoteSelecionado] = useState<any>(null);
+  const [rhLoteSelecionado, setRhLoteSelecionado] = useState<any>(() => {
+    const deepId = searchParams.get("rhLoteId");
+    if (!deepId) return null;
+    return {
+      id: deepId,
+      tipo: searchParams.get("tipo") || undefined,
+      competencia: searchParams.get("competencia") || undefined,
+      empresa_id: searchParams.get("empresaId") || undefined,
+    };
+  });
 
   const VALID_FINANCEIRO_TABS = [
     "visao-geral",
@@ -153,6 +172,7 @@ const CentralFinanceira = () => {
   const deepLinkLoteId = searchParams.get("rhLoteId");
   const deepLinkCompetencia = searchParams.get("competencia");
   const deepLinkEmpresaId = searchParams.get("empresaId");
+  const deepLinkTipo = searchParams.get("tipo");
   const selectedCompetenciaLabel = useMemo(() => formatCompetenciaLabel(selectedMonth), [selectedMonth]);
 
   const { data: empresas = [], isLoading: loadingEmps } = useQuery<any[]>({
@@ -161,13 +181,13 @@ const CentralFinanceira = () => {
   });
 
   useEffect(() => {
-    if (empresas.length > 0 && !filterEmpresaId) {
+    // Só seleciona empresas[0] se não houver NENHUMA empresa explícita nem no estado nem na URL
+    const explicitEmpresa = filterEmpresaId || selectedEmpresaId || searchParams.get("empresaId");
+    if (empresas.length > 0 && !explicitEmpresa) {
       setFilterEmpresaId(empresas[0].id);
-      if (!selectedEmpresaId) {
-        setSelectedEmpresaId(empresas[0].id);
-      }
+      setSelectedEmpresaId(empresas[0].id);
     }
-  }, [empresas, filterEmpresaId, selectedEmpresaId]);
+  }, [empresas, filterEmpresaId, selectedEmpresaId, searchParams]);
 
   useEffect(() => {
     if (!deepLinkLoteId) return;
@@ -179,13 +199,28 @@ const CentralFinanceira = () => {
       setFilterEmpresaId(deepLinkEmpresaId);
       setSelectedEmpresaId(deepLinkEmpresaId);
     }
-    setRhLoteSelecionado({ id: deepLinkLoteId });
+    const empresaObj = empresas.find((e) => e.id === deepLinkEmpresaId);
+    setRhLoteSelecionado((prev: any) => {
+      if (prev?.id === deepLinkLoteId && prev?.tipo && prev?.empresa?.nome) return prev;
+      return {
+        id: deepLinkLoteId,
+        tipo: deepLinkTipo || prev?.tipo || undefined,
+        competencia: deepLinkCompetencia || prev?.competencia || undefined,
+        empresa_id: deepLinkEmpresaId || prev?.empresa_id || undefined,
+        empresa: empresaObj || prev?.empresa || (deepLinkEmpresaId ? { id: deepLinkEmpresaId, nome: "" } : undefined),
+      };
+    });
+  }, [deepLinkLoteId, deepLinkCompetencia, deepLinkEmpresaId, deepLinkTipo, empresas]);
+
+  const handleFecharModalLote = () => {
+    setRhLoteSelecionado(null);
+    setObservacaoAprovacao("");
+    setShowLogHistorico(false);
     const next = new URLSearchParams(searchParams);
     next.delete("rhLoteId");
-    next.delete("competencia");
-    next.delete("empresaId");
+    next.delete("tipo");
     setSearchParams(next, { replace: true });
-  }, [deepLinkLoteId, deepLinkCompetencia, deepLinkEmpresaId, searchParams, setSearchParams]);
+  };
 
   const { data: competencia, isLoading: loadingComp } = useQuery<any>({
     queryKey: ["competencia", selectedMonth, selectedEmpresaId],
@@ -267,17 +302,121 @@ const CentralFinanceira = () => {
     [empresas, latestFinanceApprovedAt, latestRhSentAt, selectedEmpresaId, selectedMonth],
   );
 
-  const { data: rhLoteDetalhe, isLoading: loadingRhLoteDetalhe } = useQuery({
-    queryKey: ["rh-financeiro-lote-detalhe", rhLoteSelecionado?.id],
+  const resolvedTipoLote = useMemo(() => {
+    if (rhLoteSelecionado?.tipo) return rhLoteSelecionado.tipo;
+    if (rhLoteSelecionado?.id) {
+      if ((lotesDiaristas || []).some((l: any) => l.id === rhLoteSelecionado.id)) return "DIARISTAS";
+      if ((rawLotesRh || []).some((l: any) => l.id === rhLoteSelecionado.id)) return "RH";
+    }
+    return "AUTO";
+  }, [rhLoteSelecionado?.id, rhLoteSelecionado?.tipo, lotesDiaristas, rawLotesRh]);
+
+  const {
+    data: rhLoteDetalhe,
+    isLoading: loadingRhLoteDetalhe,
+    isError: isErrorRhLoteDetalhe,
+    error: errorRhLoteDetalhe,
+    refetch: refetchRhLoteDetalhe,
+  } = useQuery({
+    queryKey: ["rh-financeiro-lote-detalhe", rhLoteSelecionado?.id, resolvedTipoLote],
     queryFn: async () => {
       if (!rhLoteSelecionado?.id) return null;
-      if (rhLoteSelecionado.tipo === "DIARISTAS") {
-        return LoteFechamentoDiaristaService.getLoteDetalhe(rhLoteSelecionado.id);
+      const targetId = rhLoteSelecionado.id;
+
+      // 1. Verificação nas listas carregadas em memória
+      const isDiaristasInList = (lotesDiaristas || []).some((l: any) => l.id === targetId);
+      const isRhInList = (rawLotesRh || []).some((l: any) => l.id === targetId);
+
+      if (isDiaristasInList || rhLoteSelecionado.tipo === "DIARISTAS") {
+        try {
+          return await LoteFechamentoDiaristaService.getLoteDetalhe(targetId);
+        } catch (err) {
+          if (isRhInList) {
+            return await RHFinanceiroService.getLoteDetalhe(targetId);
+          }
+          throw err;
+        }
       }
-      return RHFinanceiroService.getLoteDetalhe(rhLoteSelecionado.id);
+
+      if (isRhInList) {
+        return await RHFinanceiroService.getLoteDetalhe(targetId);
+      }
+
+      // 2. Se desconhecido (ex: deep link direto antes do carregamento das listas),
+      // tenta RHFinanceiroService e se falhar (não for CLT), tenta Diaristas
+      try {
+        const detalheRh = await RHFinanceiroService.getLoteDetalhe(targetId);
+        if (detalheRh && detalheRh.id) return detalheRh;
+      } catch {
+        // Tenta Diaristas propagando qualquer erro legítimo para o modal
+        const detalheDia = await LoteFechamentoDiaristaService.getLoteDetalhe(targetId);
+        if (detalheDia && detalheDia.id) return detalheDia;
+      }
+      return null;
     },
     enabled: !!rhLoteSelecionado?.id,
   });
+
+  // Hidratação automática do lote selecionado a partir das listas de lotes carregadas
+  useEffect(() => {
+    if (!rhLoteSelecionado?.id) return;
+
+    const loteRh = lotesRh.find((l: any) => l.id === rhLoteSelecionado.id);
+    if (loteRh) {
+      setRhLoteSelecionado((prev: any) => {
+        if (!prev) return loteRh;
+        if (prev.tipo === loteRh.tipo && prev.empresa?.nome && prev.competencia) return prev;
+        const emp = loteRh.empresa || empresas.find((e: any) => e.id === loteRh.empresa_id) || prev.empresa;
+        return {
+          ...loteRh,
+          ...prev,
+          tipo: loteRh.tipo || prev.tipo,
+          competencia: loteRh.competencia || prev.competencia,
+          empresa: emp,
+          status: loteRh.status || prev.status,
+          valor_total: loteRh.valor_total ?? prev.valor_total,
+        };
+      });
+      return;
+    }
+
+    const loteDia = lotesDiaristas.find((l: any) => l.id === rhLoteSelecionado.id);
+    if (loteDia) {
+      setRhLoteSelecionado((prev: any) => {
+        if (!prev) return { ...loteDia, tipo: "DIARISTAS" };
+        if (prev.tipo === "DIARISTAS" && prev.empresa?.nome && prev.competencia) return prev;
+        const emp = empresas.find((e: any) => e.id === loteDia.empresa_id) || prev.empresa;
+        return {
+          ...loteDia,
+          ...prev,
+          tipo: "DIARISTAS",
+          origem: "OPERACIONAL",
+          competencia: loteDia.periodo_inicio ? loteDia.periodo_inicio.slice(0, 7) : prev.competencia,
+          empresa: emp,
+          empresa_id: loteDia.empresa_id || prev.empresa_id,
+          status: loteDia.status === "VALIDADO_RH" ? "AGUARDANDO_FINANCEIRO" : loteDia.status,
+        };
+      });
+    }
+  }, [rhLoteSelecionado?.id, lotesRh, lotesDiaristas, empresas]);
+
+  // Hidratação a partir de rhLoteDetalhe oficial retornado pelo serviço
+  useEffect(() => {
+    if (!rhLoteDetalhe || !rhLoteSelecionado?.id || rhLoteDetalhe.id !== rhLoteSelecionado.id) return;
+    setRhLoteSelecionado((prev: any) => {
+      if (!prev) return rhLoteDetalhe;
+      const needsTipo = !prev.tipo && rhLoteDetalhe.tipo;
+      const needsEmpresa = (!prev.empresa || !prev.empresa.nome) && rhLoteDetalhe.empresa;
+      const needsComp = !prev.competencia && rhLoteDetalhe.competencia;
+      if (!needsTipo && !needsEmpresa && !needsComp) return prev;
+      return {
+        ...prev,
+        tipo: prev.tipo || rhLoteDetalhe.tipo,
+        competencia: prev.competencia || rhLoteDetalhe.competencia,
+        empresa: prev.empresa?.nome ? prev.empresa : (rhLoteDetalhe.empresa || prev.empresa),
+      };
+    });
+  }, [rhLoteDetalhe, rhLoteSelecionado?.id]);
 
   const { data: logsDoLote = [], isLoading: loadingLogs } = useQuery({
     queryKey: ["rh-lote-historico", rhLoteSelecionado?.id],
@@ -355,11 +494,17 @@ const CentralFinanceira = () => {
     refetch: refetchFederado,
   } = useQuery({
     queryKey: ["despesas-federadas-oficial", selectedMonth, selectedEmpresaId],
-    queryFn: () =>
-      DespesasContasPagarOficialService.fetchDespesasFederadas({
-        competenciaMes: selectedMonth,
-        empresaId: selectedEmpresaId === "all" ? undefined : selectedEmpresaId || undefined,
-      }),
+    queryFn: async () => {
+      try {
+        return await DespesasContasPagarOficialService.fetchDespesasFederadas({
+          competenciaMes: selectedMonth,
+          empresaId: selectedEmpresaId === "all" ? undefined : selectedEmpresaId || undefined,
+        });
+      } catch (err: any) {
+        console.error("[CentralFinanceira] Erro ao consultar despesas federadas:", err);
+        throw err;
+      }
+    },
   });
 
   const despesasFederadas = useMemo(() => federadoData?.itens || [], [federadoData]);
@@ -533,10 +678,11 @@ const CentralFinanceira = () => {
 
   const aprovarFinanceiroMutation = useMutation({
     mutationFn: ({ id, obs }: { id: string; obs: string }) => {
-      if (rhLoteSelecionado?.tipo === "DIARISTAS") {
+      const loteTipo = rhLoteSelecionado?.tipo || rhLoteDetalhe?.tipo;
+      if (loteTipo === "DIARISTAS") {
         return LoteFechamentoDiaristaService.aprovarFinanceiro(id, user?.id || "", user?.email || "Financeiro", "financeiro");
       }
-      if (rhLoteSelecionado?.tipo === "INTERMITENTES") {
+      if (loteTipo === "INTERMITENTES") {
         return IntermitentesLoteService.aprovarFinanceiro(id, user?.id || "");
       }
       return RHFinanceiroService.aprovarFinanceiro(id, obs);
@@ -546,16 +692,17 @@ const CentralFinanceira = () => {
       invalidateLotes();
 
       const empresaNome = empresas.find(e => e.id === selectedEmpresaId)?.nome || "Empresa";
+      const loteTipo = rhLoteSelecionado?.tipo || rhLoteDetalhe?.tipo;
 
-      if (rhLoteSelecionado?.tipo === "DIARISTAS") {
+      if (loteTipo === "DIARISTAS") {
         openPipeline(
           buildDiaristasPipeline({
-            competencia: rhLoteSelecionado.competencia,
+            competencia: rhLoteSelecionado?.competencia || rhLoteDetalhe?.competencia,
             empresa: empresaNome,
             currentStep: "central_financeira",
           })
         );
-      } else if (rhLoteSelecionado?.tipo !== "INTERMITENTES") {
+      } else if (loteTipo !== "INTERMITENTES") {
         openPipeline(
           buildFolhaVariavelPipeline({
             competencia: selectedMonth,
@@ -578,10 +725,11 @@ const CentralFinanceira = () => {
 
   const devolverRHMutation = useMutation({
     mutationFn: ({ id, motivo }: { id: string; motivo: string }) => {
-      if (rhLoteSelecionado?.tipo === "DIARISTAS") {
+      const loteTipo = rhLoteSelecionado?.tipo || rhLoteDetalhe?.tipo;
+      if (loteTipo === "DIARISTAS") {
         return LoteFechamentoDiaristaService.reabrirPeriodo(id, user?.id || "", user?.email || "Financeiro", "financeiro", motivo, "administrativa");
       }
-      if (rhLoteSelecionado?.tipo === "INTERMITENTES") {
+      if (loteTipo === "INTERMITENTES") {
         return IntermitentesLoteService.devolverLote(id, motivo || "Devolvido pelo financeiro");
       }
       return RHFinanceiroService.devolverAoRH(id, motivo);
@@ -912,11 +1060,23 @@ const CentralFinanceira = () => {
 
             {/* FAIL-CLOSED CRITICAL ERROR STATE */}
             {isErrorFederado && (
-              <div className="flex items-center gap-3 p-3.5 rounded-lg border border-destructive/40 bg-destructive/10 text-destructive text-xs">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
-                <div className="leading-relaxed">
-                  <span className="font-semibold">Falha crítica ao consultar fontes federadas de despesas.</span>{" "}
-                  Dados financeiros bloqueados para evitar exibição de saldo parcial incompleto. Verifique sua conexão ou contate o suporte.
+              <div className="flex flex-col gap-2 p-3.5 rounded-lg border border-destructive/40 bg-destructive/10 text-destructive text-xs">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span className="font-semibold">Falha crítica ao consultar fontes federadas de despesas.</span>
+                </div>
+                <div className="text-[11px] leading-relaxed text-destructive/90 pl-6">
+                  {errorFederado instanceof Error ? errorFederado.message : String(errorFederado || "Dados financeiros bloqueados para evitar exibição de saldo parcial incompleto.")}
+                </div>
+                <div className="flex items-center gap-2 pt-1 pl-6">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs border-destructive/30 hover:bg-destructive/10"
+                    onClick={() => refetchFederado()}
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" /> Tentar Novamente
+                  </Button>
                 </div>
               </div>
             )}
@@ -1788,7 +1948,7 @@ const CentralFinanceira = () => {
       <Dialog
         open={Boolean(rhLoteSelecionado)}
         onOpenChange={(open) => {
-          if (!open) { setRhLoteSelecionado(null); setObservacaoAprovacao(""); setShowLogHistorico(false); }
+          if (!open) handleFecharModalLote();
         }}
       >
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
@@ -1797,27 +1957,87 @@ const CentralFinanceira = () => {
               <FileCheck className="h-5 w-5 text-primary" />
               {rhLoteSelecionado?.tipo === "INTERMITENTES"
                 ? "Detalhamento do Lote - Intermitentes"
+                : (rhLoteSelecionado?.tipo === "DIARISTAS" || rhLoteDetalhe?.tipo === "DIARISTAS")
+                ? "Análise do Lote - Diaristas"
                 : "Análise do Lote - Financeiro"}
             </DialogTitle>
             <DialogDescription>
-              {rhLoteSelecionado
-                ? `${rhLoteSelecionado.competencia} · ${rhLoteSelecionado.empresa?.nome || ""} · ${
-                    rhLoteSelecionado.tipo === "BANCO_HORAS"
-                      ? "Banco de Horas"
-                      : rhLoteSelecionado.tipo === "DIARISTAS"
-                      ? "Diaristas"
-                      : rhLoteSelecionado.tipo === "INTERMITENTES"
-                      ? "Intermitentes"
-                      : "Folha Variável"
-                  }`
-                : "Carregando lote..."}
+              {(() => {
+                const comp = rhLoteSelecionado?.competencia || rhLoteDetalhe?.competencia || "";
+                const empNome = rhLoteSelecionado?.empresa?.nome || rhLoteDetalhe?.empresa?.nome || empresas.find((e: any) => e.id === (rhLoteSelecionado?.empresa_id || rhLoteDetalhe?.empresa_id))?.nome || "";
+                const tipoResolvido = rhLoteSelecionado?.tipo || rhLoteDetalhe?.tipo;
+                const tipoLabel = tipoResolvido === "BANCO_HORAS"
+                  ? "Banco de Horas"
+                  : tipoResolvido === "DIARISTAS"
+                  ? "Diaristas"
+                  : tipoResolvido === "INTERMITENTES"
+                  ? "Intermitentes"
+                  : "Folha Variável";
+
+                const partes = [comp, empNome, tipoLabel].filter(Boolean);
+                return partes.length > 0 ? partes.join(" · ") : "Carregando lote...";
+              })()}
             </DialogDescription>
           </DialogHeader>
 
           {loadingRhLoteDetalhe ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <span className="text-sm text-muted-foreground font-medium">Carregando detalhes do lote...</span>
             </div>
+          ) : isErrorRhLoteDetalhe ? (
+            (() => {
+              const errMessage = (errorRhLoteDetalhe as any)?.message || "Falha ao consultar detalhes do lote.";
+              const isAccessDenied = (errorRhLoteDetalhe as any)?.reason === "ENVIRONMENT_MISMATCH" ||
+                                     errMessage.includes("Acesso negado") ||
+                                     errMessage.includes("Produção") ||
+                                     errMessage.includes("Homologação") ||
+                                     errMessage.includes("Producao") ||
+                                     errMessage.includes("Homologacao");
+
+              return (
+                <div className="p-6 rounded-xl border border-destructive/30 bg-destructive/5 space-y-4 my-4">
+                  <div className="flex items-start gap-3 text-destructive">
+                    <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <h4 className="font-semibold text-sm">
+                        {isAccessDenied ? "Acesso Não Permitido no Ambiente Atual" : "Falha na Consulta dos Detalhes"}
+                      </h4>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        {errMessage}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-destructive/20">
+                    {isAccessDenied ? (
+                      <Button
+                        size="sm"
+                        className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs"
+                        onClick={() => {
+                          const targetEnv = errMessage.includes("Homologação") || errMessage.includes("Homologacao") ? "HOMOLOGACAO" : "PRODUCAO";
+                          localStorage.setItem("esc-log-environment", targetEnv);
+                          window.location.reload();
+                        }}
+                      >
+                        <Activity className="h-3.5 w-3.5 mr-1.5" />
+                        Alternar para Base de {errMessage.includes("Homologação") || errMessage.includes("Homologacao") ? "Homologação" : "Produção"}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs font-semibold"
+                        onClick={() => refetchRhLoteDetalhe()}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                        Tentar Novamente
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()
           ) : rhLoteDetalhe ? (
             <div className="space-y-5">
               {/* Status atual + motivo devolução */}
@@ -1850,9 +2070,9 @@ const CentralFinanceira = () => {
               {/* Metadados */}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
-                  { label: "Competência", value: rhLoteDetalhe.competencia },
-                  { label: "Empresa", value: rhLoteDetalhe.empresa?.nome || "-" },
-                  { label: "Colaboradores", value: String(rhLoteDetalhe.total_colaboradores) },
+                  { label: "Competência", value: rhLoteDetalhe.competencia || "-" },
+                  { label: "Empresa", value: rhLoteDetalhe.empresa?.nome || empresas.find((e: any) => e.id === rhLoteDetalhe.empresa_id)?.nome || "-" },
+                  { label: "Colaboradores", value: String(rhLoteDetalhe.total_colaboradores || (rhLoteDetalhe.itens || []).length) },
                   { label: "Valor total", value: `R$ ${Number(rhLoteDetalhe.valor_total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` },
                 ].map((item) => (
                   <div key={item.label} className="rounded-xl border border-border bg-muted/30 p-4">
@@ -1919,7 +2139,11 @@ const CentralFinanceira = () => {
               <div className="rounded-xl border border-border overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-border bg-muted/20 flex items-center justify-between">
                   <span className="text-sm font-semibold text-foreground">
-                    {rhLoteDetalhe.tipo === "INTERMITENTES" ? "Composição de Colaboradores" : "Itens do lote"}
+                    {rhLoteDetalhe.tipo === "INTERMITENTES"
+                      ? "Composição de Colaboradores"
+                      : (rhLoteDetalhe.tipo === "DIARISTAS" || rhLoteSelecionado?.tipo === "DIARISTAS")
+                      ? "Lançamentos de Diárias"
+                      : "Itens do lote"}
                   </span>
                   <span className="text-xs text-muted-foreground">{(rhLoteDetalhe.itens || []).length} registros</span>
                 </div>
@@ -1929,10 +2153,18 @@ const CentralFinanceira = () => {
                       <tr className="text-left text-muted-foreground">
                         <th className="px-4 h-9 font-medium">Colaborador</th>
                         <th className="px-3 h-9 font-medium">
-                          {rhLoteDetalhe.tipo === "INTERMITENTES" ? "Evento / Origem" : "Evento"}
+                          {rhLoteDetalhe.tipo === "INTERMITENTES"
+                            ? "Evento / Origem"
+                            : (rhLoteDetalhe.tipo === "DIARISTAS" || rhLoteSelecionado?.tipo === "DIARISTAS")
+                            ? "Data / Código"
+                            : "Evento"}
                         </th>
                         <th className="px-3 h-9 font-medium text-center">
-                          {rhLoteDetalhe.tipo === "INTERMITENTES" ? "Horas Apuradas" : "Horas"}
+                          {rhLoteDetalhe.tipo === "INTERMITENTES"
+                            ? "Horas Apuradas"
+                            : (rhLoteDetalhe.tipo === "DIARISTAS" || rhLoteSelecionado?.tipo === "DIARISTAS")
+                            ? "Diárias"
+                            : "Horas"}
                         </th>
                         <th className="px-3 h-9 font-medium text-right">
                           {rhLoteDetalhe.tipo === "INTERMITENTES" ? "Valor Calculado" : "Valor"}
@@ -1946,19 +2178,31 @@ const CentralFinanceira = () => {
                       ) : (
                         (rhLoteDetalhe.itens || []).map((item: any) => {
                           const isIntermitente = rhLoteDetalhe.tipo === "INTERMITENTES";
+                          const isDiarista = rhLoteDetalhe.tipo === "DIARISTAS" || rhLoteSelecionado?.tipo === "DIARISTAS";
                           const loteIsPago = rhLoteDetalhe.status === "PAGO";
-                          const eventoLabel = isIntermitente
-                            ? (item.tipo_evento === "LANCAMENTO_INTERMITENTE" ? "Intermitente" : String(item.tipo_evento || "Intermitente").split("_").join(" "))
-                            : String(item.tipo_evento || "").split("_").join(" ");
+
+                          let eventoLabel = String(item.tipo_evento || "").split("_").join(" ");
+                          if (isIntermitente) {
+                            eventoLabel = item.tipo_evento === "LANCAMENTO_INTERMITENTE" ? "Intermitente" : String(item.tipo_evento || "Intermitente").split("_").join(" ");
+                          } else if (isDiarista) {
+                            const dataFmt = item.data_lancamento
+                              ? `${item.data_lancamento.slice(8, 10)}/${item.data_lancamento.slice(5, 7)}`
+                              : "";
+                            const cod = item.codigo_marcacao || item.tipo_evento || "Diária";
+                            eventoLabel = dataFmt ? `${dataFmt} — ${cod}` : cod;
+                          }
+
                           const statusLabel = (isIntermitente && loteIsPago) ? "PAGO" : item.status;
                           const isItemPago = statusLabel === "PAGO" || statusLabel === "APROVADO";
 
                           return (
                             <tr key={item.id} className="border-t border-muted hover:bg-background transition-colors">
                               <td className="px-4 py-2.5 font-medium text-foreground">{item.nome_colaborador}</td>
-                              <td className="px-3 py-2.5 text-muted-foreground text-xs capitalize">{eventoLabel}</td>
+                              <td className="px-3 py-2.5 text-muted-foreground text-xs">{eventoLabel}</td>
                               <td className="px-3 py-2.5 text-center text-muted-foreground font-mono">
-                                {Number(item.horas ?? Number(item.minutos || 0) / 60).toFixed(2)}h
+                                {isDiarista
+                                  ? `${Number(item.quantidade_diaria ?? item.horas ?? 1)}d`
+                                  : `${Number(item.horas ?? Number(item.minutos || 0) / 60).toFixed(2)}h`}
                               </td>
                               <td className="px-3 py-2.5 text-right font-display font-semibold">
                                 R$ {Number(item.valor_calculado || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
@@ -1969,7 +2213,8 @@ const CentralFinanceira = () => {
                                   statusLabel === "PENDENTE" && "bg-warning-soft text-warning-strong",
                                   statusLabel === "REJEITADO" && "bg-destructive/10 text-destructive",
                                   statusLabel === "EM_ANALISE" && "bg-info-soft text-info-strong",
-                                )}>{statusLabel === "PAGO" ? "Pago" : statusLabel}</Badge>
+                                  statusLabel === "VALIDADO_RH" && "bg-warning-soft text-warning-strong",
+                                )}>{statusLabel === "PAGO" ? "Pago" : statusLabel === "VALIDADO_RH" ? "Validado RH" : statusLabel}</Badge>
                               </td>
                             </tr>
                           );
@@ -2058,7 +2303,7 @@ const CentralFinanceira = () => {
             </div>
             {/* Direita: Fechar / Iniciar / Aprovar */}
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setRhLoteSelecionado(null)}>Fechar</Button>
+              <Button variant="outline" onClick={handleFecharModalLote}>Fechar</Button>
               {rhLoteDetalhe && rhLoteSelecionado?.tipo !== "DIARISTAS" && rhLoteSelecionado?.tipo !== "INTERMITENTES" && ["VALIDADO_RH", "AGUARDANDO_FINANCEIRO", "DEVOLVIDO_RH"].includes(rhLoteDetalhe.status) && (
                 <Button variant="outline" onClick={() => iniciarAnaliseMutation.mutate(rhLoteDetalhe.id)} disabled={iniciarAnaliseMutation.isPending}>
                   {iniciarAnaliseMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}

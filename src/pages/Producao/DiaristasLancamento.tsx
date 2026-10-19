@@ -533,7 +533,7 @@ const DiaristasLancamento = () => {
     const fecharMutation = useMutation({
         mutationFn: async () => {
             if (!empresaIdSelecionada) throw new Error("Empresa não identificada.");
-            return LoteFechamentoDiaristaService.fecharPeriodo({
+            const res = await LoteFechamentoDiaristaService.fecharPeriodo({
                 empresaId: empresaIdSelecionada,
                 periodoInicio: inicioISO,
                 periodoFim: fimISO,
@@ -542,9 +542,16 @@ const DiaristasLancamento = () => {
                 fechadoPorRole: (perfil as any)?.role || "encarregado",
                 observacoes: `Fechamento semanal: ${labelSemana}`,
             });
+            if ((res as any)?.error) {
+                throw new Error((res as any).error);
+            }
+            if (!res?.id) {
+                throw new Error("Lote não retornado pelo servidor após fechamento.");
+            }
+            return res;
         },
         onSuccess: (lote: any) => {
-            toast.success(`Período fechado. ${lote.total_registros} registro(s). ${formatCurrency(lote.valor_total)}`);
+            toast.success(`Período fechado. ${lote.total_registros ?? 0} registro(s). ${formatCurrency(lote.valor_total ?? 0)}`);
             queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_semana", empresaIdSelecionada] });
             queryClient.invalidateQueries({ queryKey: ["historico_recente_diaristas", empresaIdSelecionada] });
             setFechandoPeriodo(false);

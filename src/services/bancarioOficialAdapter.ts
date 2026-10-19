@@ -745,12 +745,13 @@ export const BancarioOficialAdapter = {
     });
 
     // ─────────────────────────────────────────────────────────────────────────
-    // FONTE 2: DIARISTAS (diaristas_lotes_fechamento)
+    // FONTE 2: DIARISTAS (diaristas_lotes_fechamento) — FIX-DIA-03
     // ─────────────────────────────────────────────────────────────────────────
     let diaristasQuery = supabase
       .from("diaristas_lotes_fechamento")
       .select("*")
       .eq("tenant_id", tenantId)
+      .in("status", ["FECHADO_FINANCEIRO", "AGUARDANDO_PAGAMENTO", "CNAB_GERADO", "cnab_gerado", "PAGO", "pago"])
       .order("created_at", { ascending: false });
     if (empresaId) {
       diaristasQuery = diaristasQuery.eq("empresa_id", empresaId);
@@ -766,6 +767,18 @@ export const BancarioOficialAdapter = {
     const { data: diaristasLotesDb } = await diaristasQuery;
 
     (diaristasLotesDb || []).forEach((lote) => {
+      const statusUpper = String(lote.status || "").toUpperCase();
+
+      // FIX-DIA-03: Lotes em status preliminares (EM_ABERTO, AGUARDANDO_VALIDACAO_RH, VALIDADO_RH)
+      // pertencem ao domínio RH/Operacional e NÃO podem aparecer como PRONTO_BANCO
+      if (
+        statusUpper === "EM_ABERTO" ||
+        statusUpper === "AGUARDANDO_VALIDACAO_RH" ||
+        statusUpper === "VALIDADO_RH"
+      ) {
+        return;
+      }
+
       const remessa = remessasPorLoteDiarista.get(lote.id);
       const retornos = retornosPorLoteDiarista.get(lote.id) || [];
       const emp = empresasMap.get(lote.empresa_id);
@@ -779,20 +792,23 @@ export const BancarioOficialAdapter = {
       } else if (retornos.some((r) => r.status === "divergente")) {
         situacao = "DIVERGENTE";
         estagioTab = "PENDENCIAS";
-      } else if (lote.status === "PAGO" || (remessa && remessa.status === "homologado")) {
+      } else if (statusUpper === "PAGO" || (remessa && remessa.status === "homologado")) {
         situacao = "LIQUIDADO";
         estagioTab = "CONCILIACAO";
-      } else if (remessa) {
-        if (remessa.status === "enviado_manual") {
+      } else if (remessa || statusUpper === "CNAB_GERADO") {
+        if (remessa?.status === "enviado_manual") {
           situacao = "ENVIADO_MANUAL";
           estagioTab = "AGUARDANDO_RETORNO";
-        } else if (remessa.status === "baixado") {
+        } else if (remessa?.status === "baixado") {
           situacao = "ARQUIVO_BAIXADO";
           estagioTab = "REMESSAS";
         } else {
           situacao = "REMESSA_GERADA";
           estagioTab = "REMESSAS";
         }
+      } else if (statusUpper === "FECHADO_FINANCEIRO" || statusUpper === "AGUARDANDO_PAGAMENTO") {
+        situacao = "PRONTO_BANCO";
+        estagioTab = "PRONTAS_BANCO";
       }
 
       const contaPagadora = resolveContaPagadora(

@@ -188,6 +188,7 @@ describe("CONV-17 / FIX 01 — Testes Comportamentais de Contratos CNAB e Segura
         empresaId: "22222222-2222-2222-2222-222222222222",
         geradoPor: "user-operador-123",
         geradoPorNome: "financeiro@esclog.com.br",
+        contaBancariaId: "33333333-3333-3333-3333-333333333333",
         empresaRemetente: {
           cnpj: "12345678000199",
           razao_social: "Empresa Teste Logística",

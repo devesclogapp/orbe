@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   Building2,
   Calendar,
@@ -88,6 +88,7 @@ export function CentralBancariaDrawerOficial({
   const [observacaoEnvio, setObservacaoEnvio] = useState("");
   const [justificativaInput, setJustificativaInput] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   if (!item) return null;
 
@@ -149,6 +150,10 @@ export function CentralBancariaDrawerOficial({
 
   // Ação 1: Gerar Remessa CNAB Real
   const handleGerarRemessa = async () => {
+    if (isSubmittingRef.current || isSubmitting) {
+      return;
+    }
+
     const contaIdLimpo = cleanUuid(item.contaPagadora?.id);
     const empresaIdLimpa = cleanUuid(item.empresaId);
 
@@ -187,6 +192,7 @@ export function CentralBancariaDrawerOficial({
       return;
     }
 
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     try {
       if (item.origemTipo === "CLT") {
@@ -281,13 +287,15 @@ export function CentralBancariaDrawerOficial({
       console.error("[CentralBancaria] Erro ao gerar remessa:", err);
       toast.error(`Falha ao gerar remessa: ${err.message || "Erro desconhecido"}`);
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };
 
   // Ação 2: Re-download de Arquivo Existente
   const handleDownloadArquivo = async () => {
-    if (!item.remessaId) return;
+    if (isSubmittingRef.current || isSubmitting || !item.remessaId) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     try {
       const result = await CNAB240BBWriter.redownload(item.remessaId);
@@ -302,6 +310,7 @@ export function CentralBancariaDrawerOficial({
     } catch (err: any) {
       toast.error(`Erro ao baixar arquivo: ${err.message}`);
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -921,7 +930,7 @@ export function CentralBancariaDrawerOficial({
             <Button
               size="sm"
               onClick={handleGerarRemessa}
-              disabled={isSubmitting || !isReadyParaGerar}
+              disabled={isSubmitting || isSubmittingRef.current || !isReadyParaGerar}
               className="bg-blue-600 hover:bg-blue-700 text-white font-semibold"
             >
               {isSubmitting ? (

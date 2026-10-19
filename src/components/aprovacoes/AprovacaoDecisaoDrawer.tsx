@@ -236,15 +236,16 @@ export function AprovacaoDecisaoDrawer({
     enabled: !!item && item.tipo === "OPERAÇÃO",
   });
 
+  const diaristaLoteId = item?.tipo === "DIARISTA" ? (item.raw_lote_id || item.id) : null;
   const { data: diaristaData, isLoading: diaristaLoading } = useQuery({
-    queryKey: ["diarista-detalhes", item?.raw_lote_id],
+    queryKey: ["diarista-detalhes", diaristaLoteId],
     queryFn: async () => {
-      if (item?.tipo === "DIARISTA" && item?.raw_lote_id) {
-        return await LoteFechamentoDiaristaService.getLoteDetalhe(item.raw_lote_id);
+      if (item?.tipo === "DIARISTA" && diaristaLoteId) {
+        return await LoteFechamentoDiaristaService.getLoteDetalhe(diaristaLoteId);
       }
       return null;
     },
-    enabled: !!item && item.tipo === "DIARISTA" && !!item.raw_lote_id,
+    enabled: !!item && item.tipo === "DIARISTA" && !!diaristaLoteId,
   });
 
   const { data: intermitenteData, isLoading: intermitenteLoading } = useQuery({
@@ -300,6 +301,10 @@ export function AprovacaoDecisaoDrawer({
 
   const handleAprovarClick = () => {
     if (isFailClosedBloqueado) return;
+    if (item.tipo === "DIARISTA" && !item.raw_lote_id && !item.id) {
+      toast.error("Lote de fechamento de diaristas inválido para aprovação.");
+      return;
+    }
     onAprovar(item);
   };
 

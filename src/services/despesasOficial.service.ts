@@ -686,6 +686,7 @@ export const DespesasContasPagarOficialService = {
           column: "empresa_id",
           includeNullInProduction: true,
           testIds,
+          targetEmpresaId: targetEmpresaId,
         });
 
         if (targetEmpresaId) {

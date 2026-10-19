@@ -380,6 +380,9 @@ export const CnabRemessaArquivoService = {
     // 3. Verificar hash duplicado
     const duplicado = await this.checkDuplicate(hash);
     if (duplicado) {
+      if (diaristasLoteId && duplicado.diaristas_lote_id === diaristasLoteId) {
+        return duplicado;
+      }
       throw new Error(
         `Arquivo CNAB idêntico já foi gerado anteriormente (${duplicado.nome_arquivo}, ${duplicado.data_geracao}). ` +
         `Hash SHA-256: ${hash.substring(0, 16)}...`
@@ -521,6 +524,26 @@ export const CnabRemessaArquivoService = {
     });
 
     if (error) {
+      const msg = error.message || '';
+      if (
+        msg.includes('BLOQUEIO_DUPLICIDADE_CNAB') ||
+        msg.includes('uq_cnab_remessas') ||
+        msg.includes('já possui remessa') ||
+        (error as any)?.code === '23505'
+      ) {
+        if (diaristasLoteId) {
+          const existente = await this.checkDiaristasLoteJaRemessado(diaristasLoteId);
+          if (existente) return existente;
+        }
+        if (intermitentesLoteId) {
+          const existente = await this.checkIntermitentesLoteJaRemessado(intermitentesLoteId);
+          if (existente) return existente;
+        }
+        if (loteId) {
+          const existente = await this.checkLoteJaRemessado(loteId);
+          if (existente) return existente;
+        }
+      }
       throw new Error(`Erro Crítico na Transação CNAB RPC: ${error.message}`);
     }
 

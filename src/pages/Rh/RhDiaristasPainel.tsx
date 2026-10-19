@@ -1964,6 +1964,7 @@ const RhDiaristasPainel = () => {
                                                                                 onClick={() => {
                                                                                     const params = new URLSearchParams();
                                                                                     params.set("tab", "lotes-rh");
+                                                                                    params.set("tipo", "DIARISTAS");
                                                                                     if (lote.id) params.set("rhLoteId", lote.id);
                                                                                     if (lote.empresa_id) params.set("empresaId", lote.empresa_id);
                                                                                     if (competenciaLote) params.set("competencia", competenciaLote);
