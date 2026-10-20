@@ -451,6 +451,7 @@ export const CnabRetornoService = {
       codigo_ocorrencia: item.codigo_ocorrencia,
       descricao_ocorrencia: item.descricao_ocorrencia,
       valor_esperado: item.valor_esperado,
+      valor_retornado: item.valor_retornado,
       valor_pago: item.valor_retornado,
       valor_retornado_grupo: item.parsed_json?.valor_retornado_grupo ?? item.valor_retornado,
       linha_original: item.linha_original,

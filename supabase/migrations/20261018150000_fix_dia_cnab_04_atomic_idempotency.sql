@@ -78,6 +78,8 @@ DECLARE
     v_num_linhas INTEGER;
     v_seq_declarado INTEGER;
     v_hash_calculado TEXT;
+    v_rem_existente RECORD;
+    v_itens_divergentes BOOLEAN;
     i INTEGER;
 BEGIN
     -- 5.1 Autenticação e Contexto de Tenant
@@ -126,17 +128,7 @@ BEGIN
         RAISE EXCEPTION 'Falha de Segurança: Conta Bancária % inválida, inativa ou não pertence à empresa % no tenant %.', p_conta_bancaria_id, p_empresa_id, v_tenant_id;
     END IF;
 
-    -- 5.4 Deduplicação por Hash Global
-    IF EXISTS (
-        SELECT 1 FROM public.cnab_remessas_arquivos
-        WHERE tenant_id = v_tenant_id 
-          AND hash_arquivo = p_hash_arquivo
-          AND status NOT IN ('cancelado', 'erro')
-    ) THEN
-        RAISE EXCEPTION 'BLOQUEIO_DUPLICIDADE_CNAB: Arquivo com hash % já foi registrado anteriormente.', p_hash_arquivo;
-    END IF;
-
-    -- 5.5 Resolução Prévia de Lotes a partir dos Itens (Elimina Inferência Tardia)
+    -- 5.4 Resolução Prévia de Lotes a partir dos Itens (Elimina Inferência Tardia)
     FOR v_item IN SELECT * FROM jsonb_array_elements(p_itens)
     LOOP
         v_item_origem_tipo := v_item->>'origem_tipo';
@@ -192,7 +184,7 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- 5.6 Validação Estrita do Contrato Estrutural de Homologação (ORBE_SIMULACAO_CNAB_V1)
+    -- 5.5 Validação Estrita do Contrato Estrutural de Homologação (ORBE_SIMULACAO_CNAB_V1)
     IF v_modo = 'homologacao' THEN
         -- Em homologação, o relatório de simulação estruturado é OBRIGATÓRIO (não permite NULL)
         IF p_conteudo_arquivo IS NULL OR length(trim(p_conteudo_arquivo)) = 0 THEN
@@ -341,7 +333,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- 5.7 Bloqueio Concorrente e Validação Prévia de Status/Duplicidade de Lotes Resolvidos
+    -- 5.6 Bloqueio Concorrente (FOR UPDATE), Idempotência Atômica e Validação Prévia de Status
     IF v_intermitentes_lote_id IS NOT NULL THEN
         SELECT empresa_id, status INTO v_lote_empresa_id, v_lote_status
         FROM public.intermitentes_lotes_fechamento
@@ -397,26 +389,80 @@ BEGIN
         END IF;
 
         -- IDEMPOTÊNCIA ATÔMICA SOB BLOQUEIO PESSIMISTA (FOR UPDATE):
-        -- Se outra sessão concorrente concluiu a geração da remessa enquanto esta sessão aguardava o lock:
-        SELECT id, sequencial_arquivo, nome_arquivo, hash_arquivo, conteudo_arquivo, banco_codigo, modo
-        INTO v_remessa_id, v_sequencial, p_nome_arquivo, p_hash_arquivo, p_conteudo_arquivo, v_banco_codigo, v_modo
+        -- Se outra sessão concorrente concluiu a geração da remessa enquanto esta sessão aguardava o lock,
+        -- ou se esta for uma repetição sequencial do mesmo lote:
+        SELECT id, sequencial_arquivo, nome_arquivo, hash_arquivo, conteudo_arquivo, banco_codigo, modo,
+               tenant_id, empresa_id, conta_bancaria_id, total_valor, total_registros
+        INTO v_rem_existente
         FROM public.cnab_remessas_arquivos 
         WHERE diaristas_lote_id = v_diaristas_lote_id 
           AND status NOT IN ('cancelado', 'erro')
         ORDER BY created_at DESC LIMIT 1;
 
-        IF v_remessa_id IS NOT NULL THEN
+        IF v_rem_existente.id IS NOT NULL THEN
+            -- VERIFICAÇÃO EXATA DE EQUIVALÊNCIA DOS ITENS (MULTISET / CONJUNTO EXATO):
+            -- Compara rigorosamente origem_tipo, origem_id, valor individual e quantidade de ocorrências
+            -- entre os itens já persistidos e os itens solicitados no payload.
+            SELECT EXISTS (
+                (
+                    SELECT cri.origem_tipo, cri.origem_id, cri.valor, count(*) AS qtd
+                    FROM public.cnab_remessa_itens cri
+                    WHERE cri.remessa_id = v_rem_existente.id
+                    GROUP BY cri.origem_tipo, cri.origem_id, cri.valor
+                    EXCEPT
+                    SELECT (elem->>'origem_tipo')::TEXT, 
+                           NULLIF(elem->>'origem_id', '')::UUID, 
+                           (elem->>'valor')::NUMERIC, 
+                           count(*) AS qtd
+                    FROM jsonb_array_elements(p_itens) elem
+                    GROUP BY (elem->>'origem_tipo')::TEXT, 
+                             NULLIF(elem->>'origem_id', '')::UUID, 
+                             (elem->>'valor')::NUMERIC
+                )
+                UNION ALL
+                (
+                    SELECT (elem->>'origem_tipo')::TEXT, 
+                           NULLIF(elem->>'origem_id', '')::UUID, 
+                           (elem->>'valor')::NUMERIC, 
+                           count(*) AS qtd
+                    FROM jsonb_array_elements(p_itens) elem
+                    GROUP BY (elem->>'origem_tipo')::TEXT, 
+                             NULLIF(elem->>'origem_id', '')::UUID, 
+                             (elem->>'valor')::NUMERIC
+                    EXCEPT
+                    SELECT cri.origem_tipo, cri.origem_id, cri.valor, count(*) AS qtd
+                    FROM public.cnab_remessa_itens cri
+                    WHERE cri.remessa_id = v_rem_existente.id
+                    GROUP BY cri.origem_tipo, cri.origem_id, cri.valor
+                )
+            ) INTO v_itens_divergentes;
+
+            -- VERIFICAÇÃO ESTRITA DE EQUIVALÊNCIA VS DIVERGÊNCIA:
+            -- Exige estritamente mesmo tenant, empresa, conta bancária, modalidade/modo, valor total, total de registros
+            -- e correspondência exata de cada item individual (origem_tipo, origem_id, valor individual e quantidade de ocorrências)
+            IF v_rem_existente.tenant_id IS DISTINCT FROM v_tenant_id
+               OR v_rem_existente.empresa_id IS DISTINCT FROM p_empresa_id
+               OR v_rem_existente.conta_bancaria_id IS DISTINCT FROM p_conta_bancaria_id
+               OR v_rem_existente.modo IS DISTINCT FROM v_modo
+               OR v_rem_existente.total_valor IS DISTINCT FROM p_total_valor
+               OR v_rem_existente.total_registros IS DISTINCT FROM p_total_registros
+               OR v_itens_divergentes IS TRUE THEN
+                RAISE EXCEPTION 'BLOQUEIO_DIVERGENCIA_CNAB: Lote de diaristas % já possui remessa CNAB registrada com parâmetros divergentes (empresa/conta/modo/valor/itens).', v_diaristas_lote_id;
+            END IF;
+
+            -- Se for estritamente equivalente, retorna a remessa existente de forma idempotente,
+            -- sem duplicar registros, sem reprocessar e sem queimar novo sequencial bancário (NSA)
             RETURN jsonb_build_object(
                 'sucesso', true,
-                'remessa_id', v_remessa_id,
-                'id', v_remessa_id,
-                'banco_codigo', v_banco_codigo,
-                'sequencial', v_sequencial,
-                'nome_arquivo', p_nome_arquivo,
-                'hash', p_hash_arquivo,
-                'conteudo_arquivo', p_conteudo_arquivo,
-                'linhas_afetadas', 0,
-                'modo', v_modo,
+                'remessa_id', v_rem_existente.id,
+                'id', v_rem_existente.id,
+                'banco_codigo', v_rem_existente.banco_codigo,
+                'sequencial', v_rem_existente.sequencial_arquivo,
+                'nome_arquivo', v_rem_existente.nome_arquivo,
+                'hash', v_rem_existente.hash_arquivo,
+                'conteudo_arquivo', v_rem_existente.conteudo_arquivo,
+                'linhas_afetadas', v_rem_existente.total_registros,
+                'modo', v_rem_existente.modo,
                 'idempotente', true
             );
         END IF;
@@ -464,6 +510,16 @@ BEGIN
         ) THEN
             RAISE EXCEPTION 'BLOQUEIO_DUPLICIDADE_CNAB: Lote CLT % já possui remessa CNAB registrada.', p_lote_id;
         END IF;
+    END IF;
+
+    -- 5.7 Deduplicação Global por Hash (Proteção contra reutilização indevida do mesmo arquivo em lotes diferentes)
+    IF EXISTS (
+        SELECT 1 FROM public.cnab_remessas_arquivos
+        WHERE tenant_id = v_tenant_id 
+          AND hash_arquivo = p_hash_arquivo
+          AND status NOT IN ('cancelado', 'erro')
+    ) THEN
+        RAISE EXCEPTION 'BLOQUEIO_DUPLICIDADE_CNAB: Arquivo com hash % já foi registrado anteriormente para outro lote.', p_hash_arquivo;
     END IF;
 
     -- 5.8 Validação Estrita de Existência, Tenant, Empresa e Ambiente de TODOS os Itens
@@ -644,6 +700,7 @@ BEGIN
             (v_item->>'valor')::NUMERIC, 'remetido', v_user_id
         );
 
+        -- Transição restrita a entidades com ciclo homologado de conciliação
         IF (v_item->>'origem_tipo') = 'CLT' THEN
              UPDATE public.rh_financeiro_lote_itens
              SET status = 'AGUARDANDO_RETORNO'
@@ -657,7 +714,7 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- 5.13 Transição Atômica de Status dos Lotes Pai
+    -- 5.13 Transição Atômica de Status dos Lotes Pai (Dentro da Mesma Transação)
     IF v_intermitentes_lote_id IS NOT NULL THEN
         UPDATE public.intermitentes_lotes_fechamento
         SET status = 'CNAB_GERADO',
@@ -716,8 +773,9 @@ BEGIN
 END;
 $$;
 
--- 6. PERMISSÕES DE EXECUÇÃO
-REVOKE ALL ON FUNCTION public.rpc_registrar_cnab_remessa FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.rpc_registrar_cnab_remessa TO authenticated;
+-- 6. PERMISSÕES DE EXECUÇÃO E OWNER
+REVOKE ALL ON FUNCTION public.rpc_registrar_cnab_remessa(UUID, UUID, UUID, TEXT, TEXT, TEXT, NUMERIC, INTEGER, JSONB, UUID, UUID, TEXT, TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.rpc_registrar_cnab_remessa(UUID, UUID, UUID, TEXT, TEXT, TEXT, NUMERIC, INTEGER, JSONB, UUID, UUID, TEXT, TEXT, TEXT) TO authenticated, service_role;
+ALTER FUNCTION public.rpc_registrar_cnab_remessa(UUID, UUID, UUID, TEXT, TEXT, TEXT, NUMERIC, INTEGER, JSONB, UUID, UUID, TEXT, TEXT, TEXT) OWNER TO postgres;
 
 COMMIT;
