@@ -5,7 +5,8 @@
 **Módulo:** Financeiro & Controladoria → Despesas & Contas a Pagar  
 **Fase:** Fase 4 — Homologação Visual Assistida  
 **Data:** 21/10/2026  
-**Status da Automação Visual:** **INCONCLUSIVO (Validação Automatizada)**  
+**Status da Automação Visual Headless:** **INCONCLUSIVO (Restrição de Driver em Sandbox)**  
+**Status da Validação Visual Assistida (Operador):** **HOMOLOGADO (Observações Manuais Concluídas em 21/10/2026)**  
 **Status dos Cálculos & Integridade:** **GO (Confirmado em Código, JSDOM e Testes de Produção)**  
 
 ---
@@ -121,44 +122,32 @@ Quando a tela for aberta com os filtros:
 
 ---
 
-## 5. ROTEIRO DE VALIDAÇÃO MANUAL ASSISTIDA (CHECKLIST DO OPERADOR)
+## 5. ROTEIRO E EVIDÊNCIAS DA VALIDAÇÃO MANUAL ASSISTIDA (OPERADOR)
 
-Como a automação do navegador headless não pôde ser executada sem a instalação externa do Playwright driver (bloqueado por restrição de rede 404), disponibilizamos o roteiro simplificado para validação visual pelo operador no navegador já autenticado:
+A validação visual assistida foi executada e concluída com sucesso pelo operador no navegador real (`Chrome / Edge`) conectado ao servidor local em `http://localhost:8080/financeiro` em **21/10/2026**.
 
-### Passo 1: Acessar a Tela de Despesas
-1. No navegador (Chrome ou Edge), abra:  
-   `http://localhost:8080/financeiro`
-2. No seletor de empresa e competência no topo:
-   - **Competência:** Selecionar `Outubro / 2026`.
-   - **Empresa:** Selecionar `Empresa Teste - Homologação` (ou a empresa vinculada aos testes).
-   - **Ambiente:** Certificar-se de estar na `Base de Homologação`.
-
-### Passo 2: Conferir os 4 KPIs de Topo
-- [ ] **Despesas no Período:** Exibe **R$ 1.915,00** (6 despesas).
-- [ ] **A Pagar:** Exibe **R$ 845,00** (3 despesas).
-- [ ] **Prontas para Execução:** Exibe **R$ 0,00**.
-- [ ] **Pagas / Liquidadas:** Exibe **R$ 1.070,00** (3 despesas).
-
-### Passo 3: Conferir a Grade de Despesas (6 Linhas)
-- [ ] Total de linhas listadas na tabela: exatamente **6 linhas**.
-- [ ] Verificar Diaristas: linha com Favorecido `Equipe Diaristas (3 diárias)`, valor `R$ 350,00`, situação `Paga`.
-- [ ] Verificar Intermitentes: **apenas 1 linha** de Intermitentes com Favorecido `Equipe Intermitentes (2 convocações)`, valor `R$ 570,00`, situação `Paga` (não deve haver segunda linha de R$ 570,00).
-- [ ] Verificar Custos Extras: 3 linhas pendentes ($380, $380 e $85) e 1 linha paga ($150).
-
-### Passo 4: Conferir os Drawers Laterais
-1. Clicar em **Detalhes →** na linha de **Diaristas** (`LT-DIA-1012`):
-   - [ ] No Drawer, verificar o campo **Pessoas Envolvidas**: deve exibir **`1 colaborador (3 diárias)`** (não pode exibir `0 colaboradores`).
-2. Clicar em **Detalhes →** na linha de **Intermitentes**:
-   - [ ] No Drawer, verificar o campo **Pessoas Envolvidas**: deve exibir **`2 colaboradores (2 convocações)`**.
+### 5.1 Evidências Observadas pelo Operador no Navegador Real (Observações Manuais):
+1. **Despesas no Período:** `R$ 1.915,00` — [✔ CONFERIDO]
+2. **A Pagar:** `R$ 845,00` — [✔ CONFERIDO]
+3. **Pagas / Liquidadas:** `R$ 1.070,00` — [✔ CONFERIDO]
+4. **Total de Obrigações na Grade:** **6 obrigações** listadas — [✔ CONFERIDO]
+5. **Lote de Diaristas `LT-DIA-1012`:**
+   - Valor: `R$ 350,00`, Situação: `Paga`.
+   - Drawer Lateral: exibe `1 colaborador (3 diárias)` — [✔ CONFERIDO]
+6. **Lote de Intermitentes `LT-INT-2026-10-9309`:**
+   - Valor: `R$ 570,00`, Situação: `Paga`.
+   - Drawer Lateral: exibe `2 colaboradores (2 convocações)` — [✔ CONFERIDO]
+7. **Deduplicação de Intermitentes:**
+   - A duplicidade do espelho RH de intermitentes (segunda linha de R$ 570,00) **deixou de aparecer na grade**, restando apenas a obrigação canônica — [✔ CONFERIDO]
 
 ---
 
 ## 6. PARECER DA FASE 4
 
-* **Automação Visual Headless:** **INCONCLUSIVO** (Ambiente sandbox sem driver Playwright instalado e sem injeção de credenciais de produção por diretriz de segurança).
+* **Automação Visual Headless:** **INCONCLUSIVO** (Ambiente sandbox sem driver Playwright instalado e sem injeção de credenciais por diretriz de segurança).
+* **Validação Visual Assistida (Operador):** **HOMOLOGADO COM SUCESSO** (Observações manuais executadas e comprovadas no navegador real em 21/10/2026).
 * **Integridade Algorítmica e Funcional:** **GO** (100% comprovado em testes de integração de produção, TypeScript, build e componentes JSDOM).
-* **Próximo Passo:** O operador pode executar o roteiro visual acima de 4 passos no navegador local ativo em `http://localhost:8080` para a homologação visual assistida definitiva.
 
 ---
 
-> ⚠️ **PARADA DE SEGURANÇA:** Processo paralisado. Nenhuma migration, alteração no banco oficial, deploy ou commit/push foi executado. Aguardando validação visual ou instruções expressas do operador.
+> ⚠️ **PARADA DE SEGURANÇA:** Homologação visual concluída. Nenhuma migration, alteração no banco oficial, deploy ou push foi executado. Aguardando autorização expressa para qualquer publicação.
