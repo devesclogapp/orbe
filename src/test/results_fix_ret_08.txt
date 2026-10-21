@@ -1,0 +1,9 @@
+TEST 1 (Saneamento Exato): PASS
+TEST 2 (Tentativa R$ 999,00 Bloqueada com Sucesso): PASS
+TEST 3 (Adulteração de Outros Campos Bloqueada com Sucesso): PASS
+TEST 4 (ID Não Autorizado Bloqueado com Sucesso): PASS
+TEST 5 (Rejeição Pós-Preenchimento - Autoextinção): PASS
+TEST 6 (Função Canônica Restaurada Bloqueia R$ 999,00): PASS
+ARQUIVO SQL: y:/2026/ERP ESC LOG/Orbe/supabase/migrations/scripts/remediacao_historica_nsa11_fix_ret_08.sql
+TAMANHO SQL: 23170 bytes
+SHA-256 SQL: 70e2c6c455cbbc9682b90c41aea84f3f3aab8e8e9ccbffa5d37f2684d9300d7b

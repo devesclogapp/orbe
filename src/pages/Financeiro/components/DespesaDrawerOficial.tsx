@@ -368,11 +368,13 @@ export function DespesaDrawerOficial(props: DespesaDrawerOficialProps) {
                     <span className="font-medium text-foreground">{despesa.periodoReferencia}</span>
                   </div>
                 )}
-                {despesa.quantidadePessoas !== undefined && (
+                {(despesa.quantidadePessoas !== undefined || despesa.quantidadeLancamentos !== undefined) && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Pessoas Envolvidas:</span>
                     <span className="font-medium text-foreground">
-                      {despesa.quantidadePessoas} colaboradores ({despesa.quantidadeUnidades || "unidades"})
+                      {despesa.quantidadePessoas !== undefined && despesa.quantidadePessoas !== null
+                        ? `${despesa.quantidadePessoas} colaborador${despesa.quantidadePessoas === 1 ? "" : "es"} (${despesa.quantidadeLancamentos !== undefined ? `${despesa.quantidadeLancamentos} ${despesa.origem === "DIARISTAS" ? `diária${despesa.quantidadeLancamentos === 1 ? "" : "s"}` : `convocação${despesa.quantidadeLancamentos === 1 ? "" : "ões"}`}` : despesa.quantidadeUnidades || "unidades"})`
+                        : `Não identificado (${despesa.quantidadeLancamentos !== undefined ? `${despesa.quantidadeLancamentos} ${despesa.origem === "DIARISTAS" ? `diária${despesa.quantidadeLancamentos === 1 ? "" : "s"}` : `convocação${despesa.quantidadeLancamentos === 1 ? "" : "ões"}`}` : despesa.quantidadeUnidades || "unidades"})`}
                     </span>
                   </div>
                 )}

@@ -67,7 +67,8 @@ export interface DespesaFederadaItem {
   statusReal: string;
   dataPagamento?: string | null;
   formaLiquidacao?: string | null;
-  quantidadePessoas?: number;
+  quantidadePessoas?: number | null;
+  quantidadeLancamentos?: number;
   quantidadeUnidades?: string;
   readinessBancario: boolean;
   prontoParaBanco?: boolean; // Alias para compatibilidade
@@ -474,7 +475,12 @@ export function normalizarLoteClt(item: any, empresasMap: Map<string, string>, m
   };
 }
 
-export function normalizarLoteDiarista(item: any, empresasMap: Map<string, string>, mesContexto: string): DespesaFederadaItem {
+export function normalizarLoteDiarista(
+  item: any,
+  empresasMap: Map<string, string>,
+  mesContexto: string,
+  diaristasStats?: { diaristasDistintos?: number; totalLancamentos?: number }
+): DespesaFederadaItem {
   const rawId = String(item.id || "");
   const id = buildCanonicalFederatedId("DIARISTAS", rawId);
   const pInicio = item.periodo_inicio ? String(item.periodo_inicio).slice(0, 10) : "";
@@ -495,7 +501,26 @@ export function normalizarLoteDiarista(item: any, empresasMap: Map<string, strin
 
   const codigo = `LT-DIA-${pInicio ? pInicio.slice(5).replace("-", "") : rawId.slice(0, 6)}`;
   const titulo = `Lote Diaristas — Semana ${pInicio ? formatDate(pInicio) : ""}`;
-  const qtdPessoas = Number(item.total_colaboradores || item.quantidade_diarias || 0);
+
+  // 1. Quantidade de Lançamentos / Diárias (total_registros do lote ou contagem comprovada)
+  const qtdLancamentos = diaristasStats?.totalLancamentos !== undefined
+    ? diaristasStats.totalLancamentos
+    : Number(item.total_registros ?? item.quantidade_diarias ?? 0);
+
+  // 2. Quantidade de Pessoas Distintas (diaristas distintos comprovados)
+  let qtdPessoas: number | null | undefined;
+  if (diaristasStats?.diaristasDistintos !== undefined) {
+    qtdPessoas = diaristasStats.diaristasDistintos;
+  } else if (item.total_colaboradores !== undefined && item.total_colaboradores !== null) {
+    qtdPessoas = Number(item.total_colaboradores);
+  } else if (qtdLancamentos === 0) {
+    qtdPessoas = 0; // Comprovadamente zero
+  } else {
+    // Há lançamentos, mas diaristas distintos não puderam ser comprovados (Desconhecido)
+    qtdPessoas = undefined;
+  }
+
+  const textoDiarias = `${qtdLancamentos} diária${qtdLancamentos === 1 ? "" : "s"}`;
 
   return {
     id,
@@ -504,9 +529,9 @@ export function normalizarLoteDiarista(item: any, empresasMap: Map<string, strin
     tipo: "MAO_DE_OBRA",
     codigo,
     titulo,
-    descricao: `Fechamento semanal da grade operacional de diaristas (${qtdPessoas} diárias)`,
+    descricao: `Fechamento semanal da grade operacional de diaristas (${textoDiarias})`,
     categoria: "Mão de Obra Diaristas",
-    beneficiarioNome: `Equipe Diaristas (${qtdPessoas} diárias)`,
+    beneficiarioNome: `Equipe Diaristas (${textoDiarias})`,
     empresaId: item.empresa_id || "",
     empresaNome,
     competencia,
@@ -518,7 +543,8 @@ export function normalizarLoteDiarista(item: any, empresasMap: Map<string, strin
     situacaoVisual: situacao,
     statusReal: item.status || "VALIDADO_RH",
     quantidadePessoas: qtdPessoas,
-    quantidadeUnidades: `${qtdPessoas} diárias`,
+    quantidadeLancamentos: qtdLancamentos,
+    quantidadeUnidades: textoDiarias,
     readinessBancario: situacao === "PRONTA_BANCO",
     prontoParaBanco: situacao === "PRONTA_BANCO",
     rotaEspecialista: "/bancario?origem=DIARISTA",
@@ -536,7 +562,12 @@ export function normalizarLoteDiarista(item: any, empresasMap: Map<string, strin
   };
 }
 
-export function normalizarLoteIntermitente(item: any, empresasMap: Map<string, string>, mesContexto: string): DespesaFederadaItem {
+export function normalizarLoteIntermitente(
+  item: any,
+  empresasMap: Map<string, string>,
+  mesContexto: string,
+  intermitentesStats?: { pessoasDistintas?: number; totalLancamentos?: number }
+): DespesaFederadaItem {
   const rawId = String(item.id || "");
   const id = buildCanonicalFederatedId("INTERMITENTES", rawId);
   const pInicio = item.periodo_inicio ? String(item.periodo_inicio).slice(0, 10) : "";
@@ -557,7 +588,24 @@ export function normalizarLoteIntermitente(item: any, empresasMap: Map<string, s
 
   const codigo = `LT-INT-${competencia}-${rawId.slice(0, 4).toUpperCase()}`;
   const titulo = `Lote Intermitentes — ${competencia}`;
-  const qtdPessoas = Number(item.total_registros || item.quantidade_registros || 0);
+
+  // Resolução correta da contagem de convocações e de colaboradores conforme a fonte consultada:
+  const qtdLancamentos = intermitentesStats?.totalLancamentos !== undefined
+    ? intermitentesStats.totalLancamentos
+    : Number(item.quantidade_registros ?? item.total_registros ?? item.total_colaboradores ?? 0);
+
+  let qtdPessoas: number | null | undefined;
+  if (intermitentesStats?.pessoasDistintas !== undefined) {
+    qtdPessoas = intermitentesStats.pessoasDistintas;
+  } else if (item.total_colaboradores !== undefined && item.total_colaboradores !== null) {
+    qtdPessoas = Number(item.total_colaboradores);
+  } else if (qtdLancamentos > 0) {
+    qtdPessoas = qtdLancamentos;
+  } else {
+    qtdPessoas = 0;
+  }
+
+  const textoConvocacoes = `${qtdLancamentos} convocação${qtdLancamentos === 1 ? "" : "ões"}`;
 
   return {
     id,
@@ -566,9 +614,9 @@ export function normalizarLoteIntermitente(item: any, empresasMap: Map<string, s
     tipo: "MAO_DE_OBRA",
     codigo,
     titulo,
-    descricao: `Apuração de jornadas convocadas e horas apuradas (${qtdPessoas} eventos)`,
+    descricao: `Apuração de jornadas convocadas e horas apuradas (${textoConvocacoes})`,
     categoria: "Mão de Obra Intermitentes",
-    beneficiarioNome: `Equipe Intermitentes (${qtdPessoas} convocações)`,
+    beneficiarioNome: `Equipe Intermitentes (${textoConvocacoes})`,
     empresaId: item.empresa_id || "",
     empresaNome,
     competencia,
@@ -580,7 +628,8 @@ export function normalizarLoteIntermitente(item: any, empresasMap: Map<string, s
     situacaoVisual: situacao,
     statusReal: item.status || "VALIDADO_RH",
     quantidadePessoas: qtdPessoas,
-    quantidadeUnidades: `${qtdPessoas} convocações`,
+    quantidadeLancamentos: qtdLancamentos,
+    quantidadeUnidades: textoConvocacoes,
     readinessBancario: situacao === "PRONTA_BANCO",
     prontoParaBanco: situacao === "PRONTA_BANCO",
     rotaEspecialista: "/bancario?origem=INTERMITENTE",
@@ -705,7 +754,197 @@ export const DespesasContasPagarOficialService = {
       }),
     ]);
 
-    // 3. Normalização Individual com Proteção Canônica
+    // 3. Resolução Relacional e Agregada em Lote (Sem N+1)
+    
+    // 3.1. Diaristas: Contagem de diárias e diaristas distintos
+    const diaristasStatsMap = new Map<string, { diaristasDistintos?: number; totalLancamentos?: number }>();
+    const diaristasLoteIds = (resDiaristas || []).map((l: any) => l.id).filter(Boolean);
+
+    if (diaristasLoteIds.length > 0) {
+      try {
+        let qItens = supabase
+          .from("lancamentos_diaristas")
+          .select("lote_fechamento_id, diarista_id")
+          .in("lote_fechamento_id", diaristasLoteIds);
+
+        if (targetEmpresaId) {
+          qItens = qItens.eq("empresa_id", targetEmpresaId);
+        }
+
+        const { data: itensDb, error: errItens } = await qItens;
+        if (!errItens && itensDb) {
+          const gruposDiaristas = new Map<string, Set<string>>();
+          const contagensLancamentos = new Map<string, number>();
+          const temDiaristaNulo = new Map<string, boolean>();
+
+          itensDb.forEach((it: any) => {
+            const lid = it.lote_fechamento_id;
+            if (!lid) return;
+            if (!gruposDiaristas.has(lid)) {
+              gruposDiaristas.set(lid, new Set());
+              contagensLancamentos.set(lid, 0);
+              temDiaristaNulo.set(lid, false);
+            }
+            contagensLancamentos.set(lid, (contagensLancamentos.get(lid) || 0) + 1);
+            if (it.diarista_id) {
+              gruposDiaristas.get(lid)!.add(it.diarista_id);
+            } else {
+              temDiaristaNulo.set(lid, true);
+            }
+          });
+
+          diaristasLoteIds.forEach((lid: string) => {
+            const totalLanc = contagensLancamentos.get(lid);
+            const grupo = gruposDiaristas.get(lid);
+            const teveNulo = temDiaristaNulo.get(lid);
+
+            if (totalLanc === undefined || totalLanc === 0) {
+              diaristasStatsMap.set(lid, {
+                totalLancamentos: undefined,
+                diaristasDistintos: undefined,
+              });
+            } else if (teveNulo && (!grupo || grupo.size === 0)) {
+              diaristasStatsMap.set(lid, {
+                totalLancamentos: totalLanc,
+                diaristasDistintos: undefined,
+              });
+            } else {
+              diaristasStatsMap.set(lid, {
+                totalLancamentos: totalLanc,
+                diaristasDistintos: grupo?.size || 0,
+              });
+            }
+          });
+        }
+      } catch (err) {
+        console.warn("[DespesasOficialService] Falha ao consultar diaristas distintos em lote:", err);
+      }
+    }
+
+    // 3.2. Intermitentes: Deduplicação relacional estrita e contagens
+    // Um espelho RH só poderá ser suprimido da projeção visual quando existir correspondência
+    // comprovada com o fechamento operacional por identificadores dos eventos de origem.
+    const suppressedRhIntermitenteIds = new Set<string>();
+    const intermitentesStatsMap = new Map<string, { pessoasDistintas?: number; totalLancamentos?: number }>();
+    const rhIntermitentes = (resLotesRh || []).filter((l: any) => l.tipo === "INTERMITENTES");
+    const opIntermitentes = resIntermitentes || [];
+
+    if (rhIntermitentes.length > 0 && opIntermitentes.length > 0) {
+      try {
+        const rhLoteIds = rhIntermitentes.map((l: any) => l.id).filter(Boolean);
+        const { data: rhItensDb, error: errRhItens } = await supabase
+          .from("rh_financeiro_lote_itens")
+          .select("lote_id, referencia_evento_id")
+          .in("lote_id", rhLoteIds)
+          .eq("origem_evento", "lancamentos_intermitentes");
+
+        if (!errRhItens && rhItensDb && rhItensDb.length > 0) {
+          const refEventIds = [...new Set(rhItensDb.map((it: any) => it.referencia_evento_id).filter(Boolean))];
+
+          if (refEventIds.length > 0) {
+            const { data: lancDb, error: errLanc } = await supabase
+              .from("lancamentos_intermitentes")
+              .select("id, lote_fechamento_id, colaborador_id")
+              .in("id", refEventIds);
+
+            if (!errLanc && lancDb) {
+              const lancMap = new Map<string, { lote_fechamento_id: string; colaborador_id: string }>();
+              lancDb.forEach((l: any) => {
+                if (l.id) {
+                  lancMap.set(l.id, {
+                    lote_fechamento_id: l.lote_fechamento_id,
+                    colaborador_id: l.colaborador_id,
+                  });
+                }
+              });
+
+              // Mapear cada rh_lote_id para os fechamentos operacionais correspondentes
+              const rhParaOpMap = new Map<string, Set<string>>();
+              const opParaRhMap = new Map<string, Set<string>>();
+
+              rhItensDb.forEach((it: any) => {
+                const rhId = it.lote_id;
+                const lancInfo = lancMap.get(it.referencia_evento_id);
+                if (rhId && lancInfo?.lote_fechamento_id) {
+                  const opId = lancInfo.lote_fechamento_id;
+                  if (!rhParaOpMap.has(rhId)) rhParaOpMap.set(rhId, new Set());
+                  rhParaOpMap.get(rhId)!.add(opId);
+
+                  if (!opParaRhMap.has(opId)) opParaRhMap.set(opId, new Set());
+                  opParaRhMap.get(opId)!.add(rhId);
+                }
+              });
+
+              // Regra de equivalência estrita:
+              // 1. rhLote deve possuir eventos comprovadamente ligados
+              // 2. Todos os eventos do rhLote devem apontar para exatamente 1 lote operacional
+              // 3. Nenhum outro rhLote pode apontar ambiguamente para o mesmo lote operacional
+              // 4. Verificação adicional de coerência de empresa e tenant
+              rhIntermitentes.forEach((rhLote: any) => {
+                const targetOpIds = rhParaOpMap.get(rhLote.id);
+                if (targetOpIds && targetOpIds.size === 1) {
+                  const targetOpId = Array.from(targetOpIds)[0];
+                  const opLotesMatching = opIntermitentes.filter((op: any) => op.id === targetOpId);
+
+                  if (opLotesMatching.length === 1) {
+                    const opLote = opLotesMatching[0];
+                    const rhSourcesForOp = opParaRhMap.get(targetOpId);
+
+                    const coerenciaEmpresa = !targetEmpresaId || String(rhLote.empresa_id) === String(opLote.empresa_id);
+                    const coerenciaTenant = !rhLote.tenant_id || !opLote.tenant_id || String(rhLote.tenant_id) === String(opLote.tenant_id);
+
+                    // Ausência de ambiguidade: exatamente 1 RH lote aponta para este lote operacional
+                    if (rhSourcesForOp && rhSourcesForOp.size === 1 && coerenciaEmpresa && coerenciaTenant) {
+                      suppressedRhIntermitenteIds.add(rhLote.id);
+                    }
+                  }
+                }
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[DespesasOficialService] Falha ao verificar equivalência relacional de intermitentes. Preservando todos os registros por segurança:", err);
+      }
+    }
+
+    // 3.3. Contagem de pessoas e convocações para lotes operacionais de intermitentes
+    const opLoteIds = (opIntermitentes || []).map((l: any) => l.id).filter(Boolean);
+    if (opLoteIds.length > 0) {
+      try {
+        const { data: lancOpDb, error: errLancOp } = await supabase
+          .from("lancamentos_intermitentes")
+          .select("lote_fechamento_id, colaborador_id")
+          .in("lote_fechamento_id", opLoteIds);
+
+        if (!errLancOp && lancOpDb) {
+          const colabsPorLote = new Map<string, Set<string>>();
+          const totalPorLote = new Map<string, number>();
+
+          lancOpDb.forEach((it: any) => {
+            const lid = it.lote_fechamento_id;
+            if (!lid) return;
+            if (!colabsPorLote.has(lid)) {
+              colabsPorLote.set(lid, new Set());
+              totalPorLote.set(lid, 0);
+            }
+            totalPorLote.set(lid, (totalPorLote.get(lid) || 0) + 1);
+            if (it.colaborador_id) colabsPorLote.get(lid)!.add(it.colaborador_id);
+          });
+
+          opLoteIds.forEach((lid: string) => {
+            intermitentesStatsMap.set(lid, {
+              totalLancamentos: totalPorLote.get(lid),
+              pessoasDistintas: colabsPorLote.get(lid)?.size,
+            });
+          });
+        }
+      } catch (err) {
+        console.warn("[DespesasOficialService] Falha ao consultar contagens de intermitentes em lote:", err);
+      }
+    }
+
+    // 4. Normalização Individual com Proteção Canônica
     const listaNormalizada: DespesaFederadaItem[] = [];
 
     // A. Custos Extras
@@ -716,11 +955,13 @@ export const DespesasContasPagarOficialService = {
     // B. CLT / RH
     for (const item of resLotesRh || []) {
       if (item.tipo === "DIARISTAS") {
-        // Se já vier mapeado em rh_financeiro_lotes, normaliza como Diaristas
+        // Se vier mapeado em rh_financeiro_lotes, normaliza como Diaristas
         listaNormalizada.push(normalizarLoteDiarista(item, empresasMap, mesCompetencia));
       } else if (item.tipo === "INTERMITENTES") {
-        // Se já vier mapeado em rh_financeiro_lotes, normaliza como Intermitente
-        listaNormalizada.push(normalizarLoteIntermitente(item, empresasMap, mesCompetencia));
+        // Suprime o espelho RH SOMENTE se houver correspondência relacional comprovada
+        if (!suppressedRhIntermitenteIds.has(item.id)) {
+          listaNormalizada.push(normalizarLoteIntermitente(item, empresasMap, mesCompetencia));
+        }
       } else {
         listaNormalizada.push(normalizarLoteClt(item, empresasMap, mesCompetencia));
       }
@@ -728,15 +969,17 @@ export const DespesasContasPagarOficialService = {
 
     // C. Diaristas Lotes
     for (const item of resDiaristas || []) {
-      listaNormalizada.push(normalizarLoteDiarista(item, empresasMap, mesCompetencia));
+      const stats = diaristasStatsMap.get(item.id);
+      listaNormalizada.push(normalizarLoteDiarista(item, empresasMap, mesCompetencia, stats));
     }
 
     // D. Intermitentes Lotes
     for (const item of resIntermitentes || []) {
-      listaNormalizada.push(normalizarLoteIntermitente(item, empresasMap, mesCompetencia));
+      const stats = intermitentesStatsMap.get(item.id);
+      listaNormalizada.push(normalizarLoteIntermitente(item, empresasMap, mesCompetencia, stats));
     }
 
-    // 4. DEDUPLICAÇÃO ESTRITA por Chave Canônica (ORIGEM:ID_CANONICO)
+    // 5. DEDUPLICAÇÃO ESTRITA por Chave Canônica (ORIGEM:ID_CANONICO)
     const itensDeduplicados = deduplicarDespesas(listaNormalizada);
 
     // Ordenação canônica por data / vencimento descendente

@@ -70,6 +70,21 @@ vi.mock("@/contexts/OperationalPipelineContext", () => ({
   }),
 }));
 
+vi.mock("@/contexts/ContextualHelpContext", () => ({
+  useContextualHelp: () => ({
+    openHelp: vi.fn(),
+    registerHelp: vi.fn(),
+    unregisterHelp: vi.fn(),
+    helpContent: null,
+    isOpen: false,
+    closeHelp: vi.fn(),
+  }),
+}));
+
+vi.mock("@/components/help/ContextualHelpButton", () => ({
+  ContextualHelpButton: () => null,
+}));
+
 global.ResizeObserver = class ResizeObserver {
   observe() {}
   unobserve() {}
