@@ -560,14 +560,27 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
         return;
       }
 
-      // 4. CUSTO EXTRA
+      // 4. CUSTO EXTRA (Transição canônica via RPC com justificativa e OCC)
       if (item.tipo === "CUSTO EXTRA") {
-        const { error } = await supabase
+        if (!motivo || !motivo.trim()) {
+          throw new Error("Justificativa obrigatória para devolução de custo extra.");
+        }
+
+        const { data: custoData, error: fetchErr } = await supabase
           .from("custos_extras_operacionais" as any)
-          .update({ pipeline_status: "REPROVADO", atualizado_em: new Date().toISOString() })
-          .eq("id", item.id);
+          .select("id, atualizado_em")
+          .eq("id", item.id)
+          .single();
+        if (fetchErr) throw fetchErr;
+
+        const { data: result, error } = await supabase.rpc("rpc_custo_extra_transicionar" as any, {
+          p_id: item.id,
+          p_acao: "devolver",
+          p_updated_at: custoData?.atualizado_em || null,
+          p_justificativa: motivo.trim(),
+        });
         if (error) throw error;
-        return;
+        return result;
       }
 
       // 5. SERVIÇO EXTRA

@@ -198,6 +198,11 @@ export function CustosExtrasDetalhesDrawer({
   const statusPagamento = custo.status_pagamento || (custo.origem_recurso === "PAGO_EMPRESA" ? "PAGO" : "A_PAGAR");
   const origemRecurso = custo.origem_recurso || "PAGO_EMPRESA";
 
+  // GATE 5.16-D: Critério canônico e seguro de devolução financeira ativa
+  const isDevolvidoAtivo =
+    pipelineStatus === "RECEBIDO" &&
+    Boolean(custo.justificativa_devolucao && custo.justificativa_devolucao.trim().length > 0);
+
   const isAprovadoOuProtegido = [
     "APROVADO_OPERACAO",
     "ENVIADO_FINANCEIRO",
@@ -241,6 +246,14 @@ export function CustosExtrasDetalhesDrawer({
           orientacaoOperacional: "Bloqueio impeditivo. Nenhum pagamento será efetuado enquanto a pendência persistir.",
         };
       case "RECEBIDO":
+        if (isDevolvidoAtivo) {
+          return {
+            responsavelAtual: "Gestor Operacional / RH (Devolução Financeira)",
+            proximoPasso: "Verificar justificativa do Financeiro, tratar pendência documental e reavaliar lançamento.",
+            orientacaoOperacional:
+              "Caso a pendência envolva alteração de valor ou favorecido, encaminhe a situação à administração para regularização antes de reapresentar a despesa.",
+          };
+        }
         return {
           responsavelAtual: "Gestor Operacional / RH",
           proximoPasso: "Atestar recibo e encaminhar para validação de despesa extraordinária.",
@@ -452,12 +465,33 @@ export function CustosExtrasDetalhesDrawer({
                   Diagnóstico da Despesa
                 </span>
               </div>
-              <Badge variant="outline" className="text-[10px] bg-background">
-                {getFriendlyPipelineStatus(pipelineStatus)}
-              </Badge>
+              <div className="flex items-center gap-1.5">
+                {isDevolvidoAtivo && (
+                  <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/60 font-semibold flex items-center gap-1">
+                    <RotateCcw className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                    Devolvido
+                  </Badge>
+                )}
+                <Badge variant="outline" className="text-[10px] bg-background">
+                  {getFriendlyPipelineStatus(pipelineStatus)}
+                </Badge>
+              </div>
             </div>
 
-            {/* SE REPROVADO: DESTAQUE CLARO DA JUSTIFICATIVA DE DEVOLUÇÃO */}
+            {/* SE DEVOLVIDO PELO FINANCEIRO: DESTAQUE CLARO EM CARD ÂMBAR */}
+            {isDevolvidoAtivo && (
+              <div className="rounded-md border border-amber-200 dark:border-amber-900/60 bg-amber-50/80 dark:bg-amber-950/30 p-3 space-y-1.5 text-amber-900 dark:text-amber-200">
+                <div className="flex items-center gap-1.5 font-semibold text-xs text-amber-800 dark:text-amber-300">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <span>Devolvido pelo Financeiro — Justificativa:</span>
+                </div>
+                <p className="text-xs leading-relaxed pl-5 font-normal whitespace-pre-wrap break-words">
+                  {custo.justificativa_devolucao}
+                </p>
+              </div>
+            )}
+
+            {/* SE REPROVADO: DESTAQUE CLARO DA JUSTIFICATIVA DE CANCELAMENTO / REJEIÇÃO */}
             {pipelineStatus === "REPROVADO" && (
               <div className="rounded-md border border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/30 p-3 space-y-1.5 text-rose-800 dark:text-rose-300">
                 <div className="flex items-center gap-1.5 font-semibold text-xs text-rose-700 dark:text-rose-400">
@@ -465,7 +499,7 @@ export function CustosExtrasDetalhesDrawer({
                   <span>Justificativa de Devolução / Bloqueio:</span>
                 </div>
                 <p className="text-xs leading-relaxed pl-5 font-normal">
-                  {custo.justificativa_devolucao || "Despesa devolvida para saneamento de pendências documentais."}
+                  {custo.motivo_rejeicao || custo.justificativa_devolucao || "Despesa reprovada / cancelada."}
                 </p>
               </div>
             )}
@@ -506,6 +540,13 @@ export function CustosExtrasDetalhesDrawer({
                       isException: true,
                       label: "Reprovado",
                       stepKey: "EM_VALIDACAO",
+                      description: custo.justificativa_devolucao || undefined,
+                    }
+                  : isDevolvidoAtivo
+                  ? {
+                      isException: true,
+                      label: "Devolvido",
+                      stepKey: "RECEBIDO",
                       description: custo.justificativa_devolucao || undefined,
                     }
                   : null

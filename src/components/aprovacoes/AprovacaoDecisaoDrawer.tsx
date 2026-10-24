@@ -284,6 +284,14 @@ export function AprovacaoDecisaoDrawer({
   const isIntermitenteIncompleto = item.tipo === "INTERMITENTE" && valData?.podeAprovar === false;
   const isFailClosedBloqueado = isOperacaoRestrita || isOperacaoAguardandoAprovacaoOperacional || isIntermitenteIncompleto;
 
+  // Custo Extra em RECEBIDO não permite devolução na máquina da RPC (apenas após EM_VALIDACAO / APROVADO_OPERACAO)
+  const isCustoExtraRecebido =
+    item.tipo === "CUSTO EXTRA" &&
+    ((custoExtraData as any)?.pipeline_status === "RECEBIDO" ||
+      item.raw_status === "RECEBIDO" ||
+      !item.raw_status ||
+      item.raw_status === "PENDENTE");
+
   const situacaoBadge = SITUACAO_BADGES[item.situacao] || SITUACAO_BADGES["Em análise"];
   const SituacaoIcon = situacaoBadge.icon;
 
@@ -353,7 +361,19 @@ export function AprovacaoDecisaoDrawer({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent className="w-full sm:max-w-xl md:max-w-2xl overflow-y-auto p-0 flex flex-col bg-card border-l border-border text-foreground transition-colors duration-200">
+        <SheetContent
+          onInteractOutside={(e) => {
+            if (modalDevolucaoOpen) {
+              e.preventDefault();
+            }
+          }}
+          onPointerDownOutside={(e) => {
+            if (modalDevolucaoOpen) {
+              e.preventDefault();
+            }
+          }}
+          className="w-full sm:max-w-xl md:max-w-2xl overflow-y-auto p-0 flex flex-col bg-card border-l border-border text-foreground transition-colors duration-200"
+        >
           {/* Header do Drawer */}
           <div className="sticky top-0 z-20 bg-card/95 backdrop-blur border-b border-border p-5 pb-4 space-y-3">
             <div className="flex items-center justify-between gap-3">
@@ -912,7 +932,7 @@ export function AprovacaoDecisaoDrawer({
             </Button>
 
             <div className="flex items-center gap-2 w-full sm:w-auto">
-              {item.situacao !== "Devolvido" && !isFailClosedBloqueado && (
+              {item.situacao !== "Devolvido" && !isFailClosedBloqueado && !isCustoExtraRecebido && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -965,7 +985,7 @@ export function AprovacaoDecisaoDrawer({
 
       {/* Modal de Justificativa de Devolução */}
       <Dialog open={modalDevolucaoOpen} onOpenChange={setModalDevolucaoOpen}>
-        <DialogContent className="sm:max-w-md bg-card border-border text-foreground">
+        <DialogContent className="sm:max-w-md bg-card border-border text-foreground z-[60]">
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <RotateCcw className="w-4 h-4 text-rose-600" />

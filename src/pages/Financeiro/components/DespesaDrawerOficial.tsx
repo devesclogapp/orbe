@@ -97,6 +97,17 @@ export function DespesaDrawerOficial(props: DespesaDrawerOficialProps) {
         toast.error("Contexto de empresa não determinado inequivocamente. Ação bloqueada (Fail Closed).");
         throw new Error("Contexto de empresa não determinado inequivocamente.");
       }
+      if (
+        despesa.origem === "CUSTOS_EXTRAS" &&
+        (despesa.situacao === "EM_ANALISE" ||
+          despesa.statusReal === "RECEBIDO" ||
+          despesa.statusReal === "EM_VALIDACAO" ||
+          despesa.rawItem?.pipeline_status === "RECEBIDO" ||
+          despesa.rawItem?.pipeline_status === "EM_VALIDACAO")
+      ) {
+        toast.error("Despesa em estágio operacional pré-aprovação não pode ser liberada para pagamento.");
+        throw new Error("Despesa em estágio operacional pré-aprovação não pode ser liberada para pagamento.");
+      }
       return CustoExtraOperacionalService.transicionar(
         despesa.canonicalId,
         "enviar_financeiro",
@@ -150,7 +161,7 @@ export function DespesaDrawerOficial(props: DespesaDrawerOficialProps) {
       if (despesa.origem === "CUSTOS_EXTRAS") {
         return CustoExtraOperacionalService.transicionar(
           despesa.canonicalId,
-          "reprovar",
+          "devolver",
           despesa.rawItem?.atualizado_em || new Date().toISOString(),
           motivoDevolucao.trim()
         );
@@ -238,10 +249,24 @@ export function DespesaDrawerOficial(props: DespesaDrawerOficialProps) {
   const isDiaristas = despesa.origem === "DIARISTAS";
   const isIntermitentes = despesa.origem === "INTERMITENTES";
 
+  const isAnyActionModalOpen = modalLiberarOpen || modalLiquidarOpen || modalDevolverOpen || modalAprovarLoteOpen;
+
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent className="w-full sm:max-w-xl md:max-w-2xl overflow-y-auto p-0 flex flex-col bg-background border-l border-border">
+        <SheetContent
+          onInteractOutside={(e) => {
+            if (isAnyActionModalOpen) {
+              e.preventDefault();
+            }
+          }}
+          onPointerDownOutside={(e) => {
+            if (isAnyActionModalOpen) {
+              e.preventDefault();
+            }
+          }}
+          className="w-full sm:max-w-xl md:max-w-2xl overflow-y-auto p-0 flex flex-col bg-background border-l border-border"
+        >
           {/* HEADER DO DRAWER */}
           <SheetHeader className="p-6 pb-5 border-b border-border bg-card/60">
             <div className="flex items-center justify-between gap-3">
@@ -627,6 +652,11 @@ export function DespesaDrawerOficial(props: DespesaDrawerOficialProps) {
               <Button variant="outline" size="sm" className="h-9 rounded-lg text-xs font-medium" onClick={() => onOpenChange(false)}>
                 Fechar
               </Button>
+            ) : despesa.situacao === "EM_ANALISE" || despesa.statusReal === "RECEBIDO" || despesa.statusReal === "EM_VALIDACAO" || despesa.rawItem?.pipeline_status === "RECEBIDO" || despesa.rawItem?.pipeline_status === "EM_VALIDACAO" ? (
+              // Custo Extra em estágio operacional pré-aprovação: somente leitura no financeiro
+              <Button variant="outline" size="sm" className="h-9 rounded-lg text-xs font-medium" onClick={() => onOpenChange(false)}>
+                Fechar
+              </Button>
             ) : despesa.situacao === "AGUARDANDO_LIBERACAO" ? (
               // Custo Extra Aguardando Liberação: Devolver ou Liberar
               <>
@@ -678,7 +708,7 @@ export function DespesaDrawerOficial(props: DespesaDrawerOficialProps) {
 
       {/* Dialog: Confirmar Liberação de Custo Extra */}
       <Dialog open={modalLiberarOpen} onOpenChange={setModalLiberarOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md z-[60]">
           <DialogHeader>
             <DialogTitle>Liberar para Pagamento</DialogTitle>
             <DialogDescription>
@@ -704,7 +734,7 @@ export function DespesaDrawerOficial(props: DespesaDrawerOficialProps) {
 
       {/* Dialog: Confirmar Liquidação de Custo Extra */}
       <Dialog open={modalLiquidarOpen} onOpenChange={setModalLiquidarOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md z-[60]">
           <DialogHeader>
             <DialogTitle>Confirmar Liquidação / Pagamento</DialogTitle>
             <DialogDescription>
@@ -732,7 +762,7 @@ export function DespesaDrawerOficial(props: DespesaDrawerOficialProps) {
 
       {/* Dialog: Aprovar Lote Financeiro (Mão de Obra) */}
       <Dialog open={modalAprovarLoteOpen} onOpenChange={setModalAprovarLoteOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md z-[60]">
           <DialogHeader>
             <DialogTitle>Aprovação Financeira do Lote</DialogTitle>
             <DialogDescription>
@@ -771,7 +801,7 @@ export function DespesaDrawerOficial(props: DespesaDrawerOficialProps) {
 
       {/* Dialog: Devolver para Operação ou RH */}
       <Dialog open={modalDevolverOpen} onOpenChange={setModalDevolverOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md z-[60]">
           <DialogHeader>
             <DialogTitle className="text-destructive flex items-center gap-2">
               <RotateCcw className="h-4 w-4" /> Devolver para Ajustes

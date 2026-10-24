@@ -21,7 +21,8 @@ export type SituacaoFinanceiraUX =
   | "AGUARDANDO_LIBERACAO"
   | "A_PAGAR"
   | "PRONTA_BANCO"
-  | "PAGA";
+  | "PAGA"
+  | "EM_ANALISE";
 
 export interface HistoricoEventoDespesa {
   id: string;
@@ -919,6 +920,12 @@ export function getSituacaoBadge(situacao: SituacaoFinanceiraUX, dataVencimento?
         label: "Paga / Liquidada",
         variant: "default",
         className: "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 font-semibold",
+      };
+    case "EM_ANALISE":
+      return {
+        label: "Em Análise",
+        variant: "secondary",
+        className: "bg-slate-50 text-slate-700 border-slate-300 dark:bg-slate-950/40 dark:text-slate-300 dark:border-slate-800 font-medium",
       };
     default:
       return {

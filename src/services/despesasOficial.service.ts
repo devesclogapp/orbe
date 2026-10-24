@@ -31,7 +31,8 @@ export type SituacaoFinanceiraUX =
   | "AGUARDANDO_LIBERACAO"
   | "A_PAGAR"
   | "PRONTA_BANCO"
-  | "PAGA";
+  | "PAGA"
+  | "EM_ANALISE";
 
 export interface HistoricoEventoFederado {
   id: string;
@@ -236,6 +237,12 @@ export function getSituacaoBadge(situacao: SituacaoFinanceiraUX, dataVencimento?
         variant: "outline",
         className: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-900",
       };
+    case "EM_ANALISE":
+      return {
+        label: "Em Análise",
+        variant: "secondary",
+        className: "bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-950/60 dark:text-slate-300 dark:border-slate-900 font-medium",
+      };
     default:
       return {
         label: situacao,
@@ -348,13 +355,15 @@ export function normalizarCustoExtra(item: any, empresasMap: Map<string, string>
   const sStatus = String(item.pipeline_status || "").toUpperCase();
   const sPag = String(item.status_pagamento || "").toUpperCase();
 
-  let situacao: SituacaoFinanceiraUX = "A_PAGAR";
+  let situacao: SituacaoFinanceiraUX = "EM_ANALISE";
   if (sStatus === "FINALIZADO" || sPag === "PAGO" || tipo === "PAGO_EMPRESA") {
     situacao = "PAGA";
   } else if (sStatus === "ENVIADO_FINANCEIRO") {
     situacao = "A_PAGAR";
-  } else if (sStatus === "APROVADO_OPERACAO" || sStatus === "EM_VALIDACAO" || sStatus === "RECEBIDO") {
+  } else if (sStatus === "APROVADO_OPERACAO") {
     situacao = "AGUARDANDO_LIBERACAO";
+  } else if (sStatus === "RECEBIDO" || sStatus === "EM_VALIDACAO") {
+    situacao = "EM_ANALISE";
   }
 
   const empresaNome = item.empresas?.nome || item.empresa_nome || empresasMap.get(item.empresa_id) || "Empresa";
@@ -949,6 +958,18 @@ export const DespesasContasPagarOficialService = {
 
     // A. Custos Extras
     for (const item of resCustosExtras || []) {
+      const sStatus = String(item.pipeline_status || "").toUpperCase();
+      const sPag = String(item.status_pagamento || "").toUpperCase();
+
+      // Regra FIX CEX-01 (GATE 5.14): Custos extras sob custódia operacional (RECEBIDO / EM_VALIDACAO)
+      // não são obrigações financeiras aprovadas e não compõem a carteira de Contas a Pagar.
+      // Somente registros aprovados pela operação (APROVADO_OPERACAO, ENVIADO_FINANCEIRO, FINALIZADO)
+      // ou liquidados (status_pagamento = PAGO) são federados ao financeiro.
+      const isOperacionalPendente = (sStatus === "RECEBIDO" || sStatus === "EM_VALIDACAO") && sPag !== "PAGO" && sStatus !== "FINALIZADO";
+      if (isOperacionalPendente) {
+        continue;
+      }
+
       listaNormalizada.push(normalizarCustoExtra(item, empresasMap, mesCompetencia));
     }
 

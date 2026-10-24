@@ -89,6 +89,19 @@ vi.mock("@/contexts/OperationalPipelineContext", () => ({
   }),
 }));
 
+vi.mock("@/contexts/ContextualHelpContext", () => ({
+  useContextualHelp: () => ({
+    openHelp: vi.fn(),
+    closeHelp: vi.fn(),
+    isOpen: false,
+    currentGuide: null,
+  }),
+}));
+
+vi.mock("@/components/help/ContextualHelpButton", () => ({
+  ContextualHelpButton: () => null,
+}));
+
 // Dataset Representativo do Supabase para Custos Extras (Zero Mock em produção)
 const SAMPLE_CUSTOS_EXTRAS: CustoExtraItemReal[] = [
   {

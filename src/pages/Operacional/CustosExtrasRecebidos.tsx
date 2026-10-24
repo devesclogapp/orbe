@@ -855,6 +855,13 @@ export default function CustosExtrasRecebidos() {
                                     stepKey: "EM_VALIDACAO",
                                     description: c.justificativa_devolucao || undefined,
                                   }
+                                : stPip === "RECEBIDO" && Boolean(c.justificativa_devolucao && c.justificativa_devolucao.trim().length > 0)
+                                ? {
+                                    isException: true,
+                                    label: "Devolvido",
+                                    stepKey: "RECEBIDO",
+                                    description: c.justificativa_devolucao || undefined,
+                                  }
                                 : null
                             }
                             variant="compact"
