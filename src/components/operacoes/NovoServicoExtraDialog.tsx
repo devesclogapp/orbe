@@ -31,7 +31,7 @@ import {
     ServicosEspecificosRegrasService,
     FornecedorValorServicoService,
 } from "@/services/base.service";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, Package } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
@@ -158,6 +158,24 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
         }
         if (initialData) {
             previousTipoServicoIdRef.current = initialData.tipo_servico_id || "";
+
+            // P0: Evitar dupla aplicação de multiplicador de período na edição.
+            // No banco, valor_unitario armazena o preço efetivo (com multiplicador já embutido),
+            // enquanto valor_unitario_snapshot armazena o preço base original.
+            let unitarioBaseCarregado = "";
+            const regraIdOriginal = initialData.regra_id || "";
+            const regraOriginal = (regrasPeriodo as any[]).find((r: any) => r.id === regraIdOriginal);
+            const multOriginal = Number(regraOriginal?.peso_multiplicador || 1);
+
+            if (initialData.valor_unitario_snapshot !== null && initialData.valor_unitario_snapshot !== undefined && Number(initialData.valor_unitario_snapshot) > 0) {
+                unitarioBaseCarregado = String(initialData.valor_unitario_snapshot);
+            } else if (regraIdOriginal && multOriginal > 1 && initialData.valor_unitario !== null) {
+                // Registro legado sem snapshot: desfaz o multiplicador para carregar a base correta
+                unitarioBaseCarregado = String(Number((Number(initialData.valor_unitario) / multOriginal).toFixed(4)));
+            } else if (initialData.valor_unitario !== null && initialData.valor_unitario !== undefined) {
+                unitarioBaseCarregado = String(initialData.valor_unitario);
+            }
+
             setForm({
                 data: initialData.data || format(new Date(), "yyyy-MM-dd"),
                 empresa_id: initialData.empresa_id || "",
@@ -166,7 +184,7 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                 quantidade: initialData.quantidade !== null && initialData.quantidade !== undefined ? String(initialData.quantidade) : "",
                 quantidade_colaboradores: initialData.quantidade_colaboradores ? String(initialData.quantidade_colaboradores) : "",
                 regra_periodo_id: initialData.regra_id || "",
-                valor_unitario: initialData.valor_unitario !== null ? String(initialData.valor_unitario) : "",
+                valor_unitario: unitarioBaseCarregado,
                 forma_cobranca: (initialData.modalidade_financeira as FormaCobranca) || "DEPOSITO_IMEDIATO",
                 forma_pagamento_id: initialData.forma_pagamento_id || "",
                 nf_emite: initialData.emite_nf || false,
@@ -175,13 +193,13 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                 observacao: initialData.observacao || "",
                 tipo_calculo_snapshot: initialData.tipo_calculo_snapshot || "por_operacao",
                 unidade_cobranca_snapshot: initialData.unidade_cobranca_snapshot || "op",
-                valor_unitario_snapshot: initialData.valor_unitario_snapshot || 0,
+                valor_unitario_snapshot: Number(initialData.valor_unitario_snapshot || 0),
                 iss_percentual: initialData.iss_percentual ? String(Number(initialData.iss_percentual) * 100) : "0",
             });
         } else {
             previousTipoServicoIdRef.current = "";
         }
-    }, [open, initialData]);
+    }, [open, initialData, regrasPeriodo]);
 
     useEffect(() => {
         if (form.responsavel_nome) return;
@@ -191,9 +209,16 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
 
     // ─── Calculations ─────────────────────────────────────────────────────────
 
-    const parseNumeric = (value: string): number => {
-        const normalized = String(value).replace(/\./g, "").replace(",", ".");
-        const parsed = Number(normalized);
+    const parseNumeric = (value: string | number): number => {
+        if (typeof value === "number") return Number.isFinite(value) && value >= 0 ? value : 0;
+        const str = String(value).trim();
+        if (!str) return 0;
+        if (str.includes(",")) {
+            const normalized = str.replace(/\./g, "").replace(",", ".");
+            const parsed = Number(normalized);
+            return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+        }
+        const parsed = Number(str);
         return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
     };
 
@@ -208,6 +233,22 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
     const valorUnitarioBase = parseNumeric(form.valor_unitario);
     const valorUnitarioEfetivo = valorUnitarioBase * multiplicadorPeriodo;
     const valorTotalServico = quantidade * valorUnitarioEfetivo;
+
+    // Preservação de materiais existentes (P0)
+    const custoMateriaisPreservado = Number(initialData?.custo_materiais || 0);
+
+    // Se o usuário não alterou quantidade, regra de período, tipo de serviço nem valor, preservar exatamente o total original
+    const isEdicaoSemAlteracaoFinanceira = Boolean(
+        initialData &&
+        String(form.quantidade).trim() === String(initialData.quantidade ?? "").trim() &&
+        String(form.regra_periodo_id || "") === String(initialData.regra_id || "") &&
+        String(form.tipo_servico_id || "") === String(initialData.tipo_servico_id || "") &&
+        Number(initialData.total || 0) > 0
+    );
+
+    const valorTotalGeral = isEdicaoSemAlteracaoFinanceira
+        ? Number(initialData.total)
+        : valorTotalServico + custoMateriaisPreservado;
 
     const issPercentual = parseNumeric(form.iss_percentual);
     const valorIss = form.nf_emite ? (valorTotalServico * (issPercentual / 100)) : 0;
@@ -283,16 +324,19 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                 if (nomeUpper.includes("MENSAL") || nomeUpper.includes("FATURAMENTO")) modalidadeFinal = "FATURAMENTO_MENSAL";
                 else if (["PIX", "DINHEIRO", "CART", "DEBITO", "DÉBITO"].some(k => nomeUpper.includes(k))) modalidadeFinal = "CAIXA_IMEDIATO";
                 else modalidadeFinal = "DUPLICATA";
-            } else if (form.forma_cobranca) {
-                modalidadeFinal = form.forma_cobranca;
+            }
+
+            // P2: Bloqueio de governança no frontend contra edição pós-aprovação
+            if (initialData && ['APROVADO_OPERACAO', 'APROVADO_FINANCEIRO', 'FATURADO', 'CONCLUIDO'].includes(String(initialData.pipeline_status || '').toUpperCase())) {
+                throw new Error(`OPERACAO_BLOQUEADA: Este serviço extra já se encontra no estágio ${initialData.pipeline_status} e não pode ser alterado.`);
             }
 
             const payload = {
                 data: form.data,
                 empresa_id: form.empresa_id,
                 quantidade: quantidade,
-                valor_unitario: valorUnitarioEfetivo,
-                total: valorTotalServico,
+                valor_unitario: isEdicaoSemAlteracaoFinanceira ? Number(initialData.valor_unitario || valorUnitarioEfetivo) : valorUnitarioEfetivo,
+                total: valorTotalGeral,
                 tipo_servico: tipoServicoSelecionado?.nome || "Outro",
                 tipo_servico_id: form.tipo_servico_id,
                 descricao_servico: form.descricao.trim(),
@@ -310,10 +354,9 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                 regra_id: (form.regra_periodo_id && form.regra_periodo_id !== "none") ? form.regra_periodo_id : null,
                 emite_nf: form.nf_emite,
                 nf_numero: form.nf_numero,
-                materiais_snapshot: null,
-                custo_materiais: 0,
-                transportadora_id: null,
-                // Status direto como PENDENTE para aparecer na lista do RH/Admin, se aplicável
+                materiais_snapshot: initialData ? (initialData.materiais_snapshot ?? null) : null,
+                custo_materiais: custoMateriaisPreservado,
+                transportadora_id: initialData?.transportadora_id ?? null,
             };
 
             if (initialData) {
@@ -495,13 +538,31 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                         )}
                     </div>
 
+                    {/* Aviso de Materiais Preservados (P0) */}
+                    {initialData && custoMateriaisPreservado > 0 && (
+                        <div className="flex items-center gap-2 p-3 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/40 rounded-lg text-xs text-blue-800 dark:text-blue-300">
+                            <Package className="h-4 w-4 shrink-0 text-blue-600" />
+                            <span>
+                                Este lançamento possui <strong>{formatCurrency(custoMateriaisPreservado)}</strong> em materiais extras vinculados que serão preservados no total.
+                            </span>
+                        </div>
+                    )}
+
                     {/* Resumo Financeiro */}
                     {quantidade && valorUnitarioEfetivo > 0 && (
-                        <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg flex items-center justify-between">
-                            <span className="text-sm font-medium text-muted-foreground">Total Previsto:</span>
-                            <span className="text-lg font-bold text-primary">
-                                {formatCurrency(valorTotalServico)}
-                            </span>
+                        <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg space-y-1">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-muted-foreground">Total Previsto:</span>
+                                <span className="text-lg font-bold text-primary">
+                                    {formatCurrency(valorTotalGeral)}
+                                </span>
+                            </div>
+                            {custoMateriaisPreservado > 0 && (
+                                <div className="text-[11px] text-muted-foreground flex justify-between pt-1 border-t border-border/40">
+                                    <span>Serviço: {formatCurrency(valorTotalServico)}</span>
+                                    <span>+ Materiais: {formatCurrency(custoMateriaisPreservado)}</span>
+                                </div>
+                            )}
                         </div>
                     )}
 

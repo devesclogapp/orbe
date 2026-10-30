@@ -113,8 +113,11 @@ export const generateCobrancaPDF = (receita: any, detalhesReceita: any, formato:
                 const qtd = se.quantidade ? String(se.quantidade) : "1";
                 const unitValor = Number(se.valor_unitario || 0);
                 const unitStr = unitValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                const subtotalSe = Number(item.valor_item ?? se.valor_total ?? (Number(se.quantidade || 1) * unitValor));
-                const subtotalSeStr = subtotalSe.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                
+                const valorMateriais = Number(se.custo_materiais || 0);
+                const subtotalServico = Number(se.quantidade || 1) * unitValor;
+                const subtotalServicoFinal = valorMateriais > 0 ? subtotalServico : Number(item.valor_item ?? se.valor_total ?? se.total ?? subtotalServico);
+                const subtotalSeStr = subtotalServicoFinal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
                 tableData.push([
                     dataSeStr,
@@ -123,6 +126,16 @@ export const generateCobrancaPDF = (receita: any, detalhesReceita: any, formato:
                     unitStr,
                     subtotalSeStr
                 ]);
+
+                if (valorMateriais > 0) {
+                    tableData.push([
+                        "-",
+                        "Materiais e Insumos Operacionais",
+                        "-",
+                        "-",
+                        valorMateriais.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                    ]);
+                }
             } else {
                 tableData.push([
                     "-",

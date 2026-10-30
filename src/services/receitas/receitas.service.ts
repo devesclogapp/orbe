@@ -319,6 +319,23 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
       });
     }
 
+    // P2: Governança fail-closed no service antes de persistir
+    const { data: current, error: fetchErr } = await operationalClient
+      .from('servicos_extras_operacionais')
+      .select('pipeline_status')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchErr) throw fetchErr;
+
+    if (current && ['APROVADO_OPERACAO', 'APROVADO_FINANCEIRO', 'FATURADO', 'CONCLUIDO'].includes(String(current.pipeline_status || '').toUpperCase())) {
+      const camposProtegidos = ['total', 'valor_unitario', 'quantidade', 'custo_materiais', 'materiais_snapshot', 'empresa_id', 'tipo_servico_id'];
+      const tentaAlterarProtegido = Object.keys(payload).some(k => camposProtegidos.includes(k));
+      if (tentaAlterarProtegido) {
+        throw new Error(`OPERACAO_BLOQUEADA: Não é permitido alterar dados financeiros de um serviço extra que já se encontra no estágio ${current.pipeline_status}.`);
+      }
+    }
+
     const { data, error } = await operationalClient
       .from('servicos_extras_operacionais')
       .update(payload)

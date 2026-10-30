@@ -387,7 +387,7 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
 
     const { data: seData, error: seErr } = await supabase
       .from("servicos_extras_operacionais" as any)
-      .select("id, empresa_id, data, descricao_servico, total, modalidade_financeira, pipeline_status")
+      .select("id, empresa_id, data, descricao_servico, total, modalidade_financeira, pipeline_status, empresas(nome)")
       .eq("id", item.id)
       .maybeSingle();
 
@@ -396,18 +396,25 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
       return;
     }
 
-    const candidateCompetencia = item.competencia || item.data_recebimento || "";
-    const parsedData = (seData as any).data || (candidateCompetencia ? candidateCompetencia.substring(0, 10) : "");
+    const effectiveData = (seData as any).data || (item.competencia ? `${item.competencia}-01` : "");
+    const effectiveCompetencia = (seData as any).data
+      ? String((seData as any).data).slice(0, 7)
+      : (item.competencia || "");
+    const nomeEmpresa = (seData as any).empresas?.nome || item.empresa || "Empresa";
+    const pipelineStatus = (seData as any).pipeline_status || "APROVADO_OPERACAO";
+    const modalidade = (seData as any).modalidade_financeira ?? null;
 
     openPipeline(
       buildServicosExtrasPipeline({
-        registroId: (seData as any).id,
-        empresaId: (seData as any).empresa_id || "",
-        data: parsedData,
-        descricao: (seData as any).descricao_servico || "",
-        valorTotal: Number((seData as any).total || 0),
-        modalidade: (seData as any).modalidade_financeira || "CAIXA_IMEDIATO",
-        pipelineStatus: (seData as any).pipeline_status || "APROVADO_OPERACAO",
+        competencia: effectiveCompetencia,
+        empresa: nomeEmpresa,
+        currentStep: "aprovacao",
+        pipelineStatus,
+        modalidade_financeira: modalidade,
+        registroId: item.id,
+        descricao: (seData as any).descricao_servico || item.descricao || "",
+        valor: (seData as any).total != null ? Number((seData as any).total) : (item.valor || 0),
+        data: effectiveData,
       })
     );
   };
@@ -470,20 +477,29 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
           .from("servicos_extras_operacionais" as any)
           .update({ pipeline_status: "APROVADO_OPERACAO", atualizado_em: new Date().toISOString() })
           .eq("id", item.id)
-          .select("id, empresa_id, data, descricao_servico, total, modalidade_financeira, pipeline_status")
+          .select("id, empresa_id, data, descricao_servico, total, modalidade_financeira, pipeline_status, empresas(nome)")
           .maybeSingle();
         if (error) throw error;
 
         const currentItem = item;
+        const result = updated as any;
+        const effectiveData = result?.data || (currentItem.competencia ? `${currentItem.competencia}-01` : "");
+        const effectiveCompetencia = result?.data
+          ? String(result.data).slice(0, 7)
+          : (currentItem.competencia || "");
+        const nomeEmpresa = result?.empresas?.nome || currentItem.empresa || "Empresa";
+
         openPipeline(
           buildServicosExtrasPipeline({
+            competencia: effectiveCompetencia,
+            empresa: nomeEmpresa,
+            currentStep: "aprovacao",
+            pipelineStatus: result?.pipeline_status || "APROVADO_OPERACAO",
+            modalidade_financeira: result?.modalidade_financeira ?? null,
             registroId: currentItem.id,
-            empresaId: (updated as any)?.empresa_id || "",
-            data: (updated as any)?.data || "",
-            descricao: (updated as any)?.descricao_servico || "",
-            valorTotal: Number((updated as any)?.total || 0),
-            modalidade: (updated as any)?.modalidade_financeira || "CAIXA_IMEDIATO",
-            pipelineStatus: (updated as any)?.pipeline_status || "APROVADO_OPERACAO",
+            descricao: result?.descricao_servico || currentItem.descricao || "",
+            valor: currentItem.valor || result?.total || 0,
+            data: effectiveData,
           })
         );
         return updated;

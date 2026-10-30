@@ -315,10 +315,9 @@ const UsuariosGestao = () => {
 
   const deleteInviteMutation = useMutation({
     mutationFn: async (inviteId: string) => {
-      const { error } = await supabase
-        .from("tenant_invitations")
-        .delete()
-        .eq("id", inviteId);
+      const { error } = await supabase.rpc("admin_delete_tenant_invitation", {
+        p_invitation_id: inviteId,
+      });
 
       if (error) throw error;
     },

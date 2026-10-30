@@ -661,18 +661,20 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                                         <RotateCcw className="h-4 w-4" />
                                                     </button>
                                                 )}
-                                                <button
-                                                    className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        // Dispatch custom event passing the item, so NovoServicoExtraDialog can intercept and open in edit mode
-                                                        const event = new CustomEvent('open-edit-servico-extra', { detail: item });
-                                                        window.dispatchEvent(event);
-                                                    }}
-                                                    title="Editar"
-                                                >
-                                                    <Pencil className="h-4 w-4" />
-                                                </button>
+                                                {["PENDENTE", "EM_VALIDACAO", "DEVOLVIDO"].includes(String(item.pipeline_status || "").toUpperCase()) && (
+                                                    <button
+                                                        className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            // Dispatch custom event passing the item, so NovoServicoExtraDialog can intercept and open in edit mode
+                                                            const event = new CustomEvent('open-edit-servico-extra', { detail: item });
+                                                            window.dispatchEvent(event);
+                                                        }}
+                                                        title="Editar"
+                                                    >
+                                                        <Pencil className="h-4 w-4" />
+                                                    </button>
+                                                )}
                                                 {(isAdmin || item.pipeline_status === "PENDENTE") && (
                                                     <button
                                                         className="h-7 w-7 rounded-md hover:bg-red-50 flex items-center justify-center text-muted-foreground hover:text-destructive"
@@ -714,7 +716,7 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                 onVerFluxoCompleto={() => setIsFlowDrawerOpen(true)}
                 onAdvance={selectedItem && canAdvance(selectedItem) ? () => handleAdvance(selectedItem) : undefined}
                 onDevolve={selectedItem && canDevolve(selectedItem) ? () => handleDevolve(selectedItem) : undefined}
-                onEdit={selectedItem ? () => {
+                onEdit={selectedItem && ["PENDENTE", "EM_VALIDACAO", "DEVOLVIDO"].includes(String(selectedItem.pipeline_status || "").toUpperCase()) ? () => {
                     const event = new CustomEvent('open-edit-servico-extra', { detail: selectedItem });
                     window.dispatchEvent(event);
                     setSelectedItem(null);
