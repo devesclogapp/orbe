@@ -1,24 +1,25 @@
 -- ==============================================================================
--- SCRIPT 05: sec_02_script_05_auditoria_pos.sql
+-- SCRIPT 05: sec_02_script_05_auditoria_pos.sql (VERSÃO DEFINITIVA CONSOLIDADA)
 -- PROJETO: ERP ORBE - ESC LOG 2026
 -- GATE: SEC-02.5 - Auditoria Pós-Migration (READ-ONLY)
 -- FINALIDADE:
---   Verificar e comprovar formalmente a aplicação correta da migration SEC-02.
---   Audita privilégios revogados, colunas protegidas, triggers instaladas,
---   políticas RLS ativas e funções de segurança.
--- MODO: 100% READ-ONLY. NÃO EXECUTA DDL NEM DML.
+--   Comprovar formalmente a aplicação da migration SEC-02 no PostgreSQL 17.
+--   Audita os 13 critérios em uma ÚNICA consulta tabular autônoma no Supabase Studio.
+-- MODO: 100% READ-ONLY. NÃO CRIA TABELAS TEMPORÁRIAS. SEM DEPENDÊNCIAS DE SESSÃO.
 -- ==============================================================================
 
--- ------------------------------------------------------------------------------
--- 1. SCORECARD AUTOMÁTICO DE CONFORMIDADE PÓS-MIGRATION (PASSA / FALHA)
--- ------------------------------------------------------------------------------
 WITH audit_checks AS (
   -- Check 1: RLS habilitada
   SELECT 
+    1 AS ordem,
     '1. RLS em public.profiles' AS item,
     'Habilitada' AS esperado,
-    CASE WHEN rowsecurity THEN 'Habilitada' ELSE 'DESABILITADA' END AS obtido,
-    (rowsecurity = true) AS conforme
+    CASE 
+      WHEN COUNT(*) = 0 THEN 'TABELA NÃO ENCONTRADA'
+      WHEN bool_and(rowsecurity) THEN 'Habilitada' 
+      ELSE 'DESABILITADA' 
+    END AS obtido,
+    (COUNT(*) > 0 AND bool_and(rowsecurity = true)) AS conforme
   FROM pg_tables 
   WHERE schemaname = 'public' AND tablename = 'profiles'
 
@@ -26,6 +27,7 @@ WITH audit_checks AS (
 
   -- Check 2: Ausência de privilégios de tabela perigosos para authenticated
   SELECT 
+    2,
     '2. Privilégios de Tabela para authenticated',
     'Apenas SELECT',
     COALESCE(string_agg(privilege_type, ', ' ORDER BY privilege_type), 'Nenhum'),
@@ -39,6 +41,7 @@ WITH audit_checks AS (
 
   -- Check 3: Zero privilégios de tabela para anon
   SELECT 
+    3,
     '3. Privilégios de Tabela para anon',
     'Nenhum',
     COALESCE(string_agg(privilege_type, ', ' ORDER BY privilege_type), 'Nenhum'),
@@ -52,6 +55,7 @@ WITH audit_checks AS (
 
   -- Check 4: Coluna role sem privilégio de UPDATE para authenticated
   SELECT 
+    4,
     '4. UPDATE na coluna role para authenticated',
     'Bloqueado (0 grants)',
     CASE WHEN COUNT(*) = 0 THEN 'Bloqueado (0 grants)' ELSE 'VULNERÁVEL (' || COUNT(*) || ' grants)' END,
@@ -67,6 +71,7 @@ WITH audit_checks AS (
 
   -- Check 5: Coluna tenant_id sem privilégio de UPDATE para authenticated
   SELECT 
+    5,
     '5. UPDATE na coluna tenant_id para authenticated',
     'Bloqueado (0 grants)',
     CASE WHEN COUNT(*) = 0 THEN 'Bloqueado (0 grants)' ELSE 'VULNERÁVEL (' || COUNT(*) || ' grants)' END,
@@ -80,8 +85,9 @@ WITH audit_checks AS (
 
   UNION ALL
 
-  -- Check 6: Triggers de segurança instaladas
+  -- Check 6: Triggers de segurança instaladas em profiles
   SELECT 
+    6,
     '6. Triggers de Proteção de Profiles',
     '3 triggers (insert, delete, sensitive_fields)',
     COUNT(*)::text || ' triggers ativas',
@@ -97,11 +103,12 @@ WITH audit_checks AS (
 
   UNION ALL
 
-  -- Check 7: Políticas RLS ativas
+  -- Check 7: Políticas RLS ativas em profiles
   SELECT 
+    7,
     '7. Políticas RLS em profiles',
     'Exatamente profiles_select_policy e profiles_update_own',
-    string_agg(policyname, ', ' ORDER BY policyname),
+    COALESCE(string_agg(policyname, ', ' ORDER BY policyname), 'Nenhuma'),
     (
       COUNT(*) = 2 
       AND bool_and(policyname IN ('profiles_select_policy', 'profiles_update_own'))
@@ -113,21 +120,25 @@ WITH audit_checks AS (
 
   -- Check 8: Função can_view_tenant_profiles existe e é SECURITY DEFINER
   SELECT 
+    8,
     '8. Função can_view_tenant_profiles (Anti-Recursão)',
     'Existe, SECURITY DEFINER, search_path = public',
     CASE 
-      WHEN p.prosecdef AND array_to_string(p.proconfig, ', ') ILIKE '%search_path=public%' THEN 'Existe, SECURITY DEFINER, search_path = public'
+      WHEN COUNT(*) = 0 THEN 'NÃO ENCONTRADA'
+      WHEN bool_and(p.prosecdef AND array_to_string(p.proconfig, ', ') ILIKE '%search_path=public%')
+        THEN 'Existe, SECURITY DEFINER, search_path = public'
       ELSE 'Incompleta ou insegura'
     END,
-    (p.prosecdef AND array_to_string(p.proconfig, ', ') ILIKE '%search_path=public%')
+    (COUNT(*) > 0 AND bool_and(p.prosecdef AND array_to_string(p.proconfig, ', ') ILIKE '%search_path=public%'))
   FROM pg_proc p
   JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname = 'public' AND p.proname = 'can_view_tenant_profiles'
 
   UNION ALL
 
-  -- Check 9: current_tenant_id sem acesso para anon/PUBLIC
+  -- Check 9: current_tenant_id restrita a authenticated/service_role
   SELECT 
+    9,
     '9. current_tenant_id restrita a authenticated/service_role',
     'Sem acesso para anon/PUBLIC',
     CASE WHEN COUNT(*) = 0 THEN 'Sem acesso para anon/PUBLIC' ELSE 'VULNERÁVEL (' || COUNT(*) || ' grants)' END,
@@ -141,6 +152,7 @@ WITH audit_checks AS (
 
   -- Check 10: tenant_invitations sem UPDATE/INSERT direto para anon/authenticated
   SELECT 
+    10,
     '10. tenant_invitations sem mutação direta por clientes',
     'Apenas SELECT para authenticated (0 mutações)',
     CASE WHEN COUNT(*) = 0 THEN 'Apenas SELECT para authenticated (0 mutações)' ELSE 'VULNERÁVEL (' || COUNT(*) || ' grants)' END,
@@ -155,13 +167,15 @@ WITH audit_checks AS (
 
   -- Check 11: Constraint tenant_invitations_status_check inclui 'em_processamento'
   SELECT 
+    11,
     '11. Constraint tenant_invitations_status_check',
     'Inclui em_processamento no conjunto permitido',
     CASE 
-      WHEN pg_get_constraintdef(c.oid) ILIKE '%em_processamento%' THEN 'Atualizada com em_processamento'
+      WHEN COUNT(*) = 0 THEN 'NÃO ENCONTRADA'
+      WHEN bool_and(pg_get_constraintdef(c.oid) ILIKE '%em_processamento%') THEN 'Atualizada com em_processamento'
       ELSE 'INCOMPATÍVEL / BLOQUEANTE'
     END,
-    (pg_get_constraintdef(c.oid) ILIKE '%em_processamento%')
+    (COUNT(*) > 0 AND bool_and(pg_get_constraintdef(c.oid) ILIKE '%em_processamento%'))
   FROM pg_constraint c
   JOIN pg_class t ON t.oid = c.conrelid
   JOIN pg_namespace n ON n.oid = t.relnamespace
@@ -173,18 +187,19 @@ WITH audit_checks AS (
 
   -- Check 12: Trigger trg_protect_tenant_invitations_state instalada e ativa (UPDATE e DELETE)
   SELECT 
-    '12. Trigger trg_protect_tenant_invitations_state' AS item,
-    'Ativa (O), não-interna, eventos UPDATE e DELETE' AS esperado,
+    12,
+    '12. Trigger trg_protect_tenant_invitations_state',
+    'Ativa (O), não-interna, eventos UPDATE e DELETE',
     CASE 
       WHEN COUNT(*) = 1 AND bool_and(tg.tgenabled = 'O' AND NOT tg.tgisinternal AND (tg.tgtype::integer & 16) <> 0 AND (tg.tgtype::integer & 8) <> 0)
         THEN 'Ativa (O), eventos UPDATE e DELETE confirmados'
       WHEN COUNT(*) = 0 THEN 'NÃO ENCONTRADA'
       ELSE 'CONFIGURAÇÃO INCOMPLETA (' || COUNT(*)::text || ' encontrada, status=' || COALESCE(max(tg.tgenabled), 'NULL') || ')'
-    END AS obtido,
+    END,
     (
       COUNT(*) = 1 
       AND bool_and(tg.tgenabled = 'O' AND NOT tg.tgisinternal AND (tg.tgtype::integer & 16) <> 0 AND (tg.tgtype::integer & 8) <> 0)
-    ) AS conforme
+    )
   FROM pg_trigger tg
   JOIN pg_class c ON tg.tgrelid = c.oid
   JOIN pg_namespace n ON c.relnamespace = n.oid
@@ -196,110 +211,94 @@ WITH audit_checks AS (
 
   -- Check 13: Função admin_delete_tenant_invitation existe, é SECURITY DEFINER, search_path=public, sem acesso anon/PUBLIC
   SELECT 
-    '13. Função admin_delete_tenant_invitation' AS item,
-    'Existe, SECURITY DEFINER, search_path=public, restrita' AS esperado,
+    13,
+    '13. Função admin_delete_tenant_invitation',
+    'Existe, SECURITY DEFINER, search_path=public, restrita',
     CASE 
-      WHEN p.prosecdef 
+      WHEN COUNT(*) = 0 THEN 'NÃO ENCONTRADA'
+      WHEN bool_and(
+        p.prosecdef 
         AND array_to_string(p.proconfig, ', ') ILIKE '%search_path=public%'
         AND NOT EXISTS (
           SELECT 1 FROM information_schema.routine_privileges 
           WHERE specific_schema = 'public' AND routine_name = 'admin_delete_tenant_invitation' AND grantee IN ('anon', 'PUBLIC')
         )
-      THEN 'Existe, SECURITY DEFINER, search_path=public, restrita'
-      WHEN p.proname IS NULL THEN 'NÃO ENCONTRADA'
+      ) THEN 'Existe, SECURITY DEFINER, search_path=public, restrita'
       ELSE 'CONFIGURAÇÃO INSEGURA OU INCOMPLETA'
-    END AS obtido,
+    END,
     (
-      p.prosecdef 
-      AND array_to_string(p.proconfig, ', ') ILIKE '%search_path=public%'
-      AND NOT EXISTS (
-        SELECT 1 FROM information_schema.routine_privileges 
-        WHERE specific_schema = 'public' AND routine_name = 'admin_delete_tenant_invitation' AND grantee IN ('anon', 'PUBLIC')
+      COUNT(*) > 0 AND bool_and(
+        p.prosecdef 
+        AND array_to_string(p.proconfig, ', ') ILIKE '%search_path=public%'
+        AND NOT EXISTS (
+          SELECT 1 FROM information_schema.routine_privileges 
+          WHERE specific_schema = 'public' AND routine_name = 'admin_delete_tenant_invitation' AND grantee IN ('anon', 'PUBLIC')
+        )
       )
-    ) AS conforme
+    )
   FROM pg_proc p
   JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname = 'public' AND p.proname = 'admin_delete_tenant_invitation'
+),
+scorecard AS (
+  SELECT 
+    ordem,
+    item,
+    esperado,
+    obtido,
+    conforme,
+    CASE WHEN conforme THEN 'APROVADO [PASS]' ELSE 'REPROVADO [FAIL]' END AS status_final
+  FROM audit_checks
+),
+resumo AS (
+  SELECT 
+    14 AS ordem,
+    '14. TOTAL DE CRITÉRIOS APROVADOS' AS item,
+    '13 de 13 (100%)' AS esperado,
+    count(*) FILTER (WHERE conforme)::text || ' de 13 aprovados' AS obtido,
+    (count(*) FILTER (WHERE conforme) = 13) AS conforme,
+    CASE 
+      WHEN count(*) FILTER (WHERE conforme) = 13 THEN 'APROVADO [PASS]'
+      ELSE 'REPROVADO [FAIL]'
+    END AS status_final
+  FROM scorecard
+
+  UNION ALL
+
+  SELECT 
+    15 AS ordem,
+    '15. TOTAL DE CRITÉRIOS REPROVADOS' AS item,
+    '0 (Zero)' AS esperado,
+    count(*) FILTER (WHERE NOT conforme)::text || ' reprovado(s)' AS obtido,
+    (count(*) FILTER (WHERE NOT conforme) = 0) AS conforme,
+    CASE 
+      WHEN count(*) FILTER (WHERE NOT conforme) = 0 THEN 'APROVADO [PASS]'
+      ELSE 'BLOQUEANTE [FAIL]'
+    END AS status_final
+  FROM scorecard
+
+  UNION ALL
+
+  SELECT 
+    16 AS ordem,
+    '=== PARECER FINAL DE HOMOLOGAÇÃO ===' AS item,
+    'TODOS OS 13 CRITÉRIOS APROVADOS' AS esperado,
+    count(*) FILTER (WHERE conforme)::text || ' Aprovados / ' || count(*) FILTER (WHERE NOT conforme)::text || ' Reprovados' AS obtido,
+    bool_and(conforme) AS conforme,
+    CASE 
+      WHEN bool_and(conforme) THEN 'HOMOLOGADO [APTO]'
+      ELSE 'NÃO HOMOLOGADO [BLOQUEANTE]'
+    END AS status_final
+  FROM scorecard
 )
 SELECT 
   item,
   esperado,
   obtido,
-  conforme,
-  CASE WHEN conforme THEN 'APROVADO [PASS]' ELSE 'REPROVADO [FAIL]' END AS status_final
-INTO TEMPORARY TABLE temp_sec02_audit_scorecard
-FROM audit_checks;
-
--- Exibir o scorecard tabular de conformidade
-SELECT 
-  item,
-  esperado,
-  obtido,
   status_final
-FROM temp_sec02_audit_scorecard
-ORDER BY item;
-
--- ------------------------------------------------------------------------------
--- 1.1. VALIDAÇÃO FAIL-CLOSED (ABORTA COM ERRO SE QUALQUER CRITÉRIO FALHAR)
--- ------------------------------------------------------------------------------
-DO $$
-DECLARE
-  v_reprovados text;
-  v_total_reprovados integer;
-BEGIN
-  SELECT 
-    COUNT(*),
-    string_agg(item || ' (Obtido: ' || obtido || ')', E'\n  - ')
-  INTO v_total_reprovados, v_reprovados
-  FROM temp_sec02_audit_scorecard
-  WHERE NOT conforme;
-
-  IF v_total_reprovados > 0 THEN
-    RAISE EXCEPTION E'AUDITORIA PÓS-MIGRATION REPROVADA! % critério(s) não conforme(s):\n  - %',
-      v_total_reprovados, v_reprovados;
-  ELSE
-    RAISE NOTICE '==================================================================';
-    RAISE NOTICE 'AUDITORIA PÓS-MIGRATION SEC-02: 13/13 CRITÉRIOS APROVADOS [PASS]!';
-    RAISE NOTICE '==================================================================';
-  END IF;
-END $$;
-
--- ------------------------------------------------------------------------------
--- 2. DETALHAMENTO DE POLÍTICAS RLS VIGENTES
--- ------------------------------------------------------------------------------
-SELECT 
-  policyname,
-  permissive,
-  roles,
-  cmd,
-  qual AS using_expression,
-  with_check AS with_check_expression
-FROM pg_policies
-WHERE schemaname = 'public' 
-  AND tablename = 'profiles'
-ORDER BY policyname;
-
--- ------------------------------------------------------------------------------
--- 3. DETALHAMENTO DOS PRIVILÉGIOS DE COLUNA CONCEDIDOS
--- ------------------------------------------------------------------------------
-SELECT 
-  grantee,
-  column_name,
-  privilege_type
-FROM information_schema.column_privileges
-WHERE table_schema = 'public' 
-  AND table_name = 'profiles'
-ORDER BY column_name, grantee, privilege_type;
-
--- ------------------------------------------------------------------------------
--- 4. DETALHAMENTO DAS TRIGGERS DE SEGURANÇA
--- ------------------------------------------------------------------------------
-SELECT 
-  trigger_name,
-  event_manipulation,
-  action_timing,
-  action_statement
-FROM information_schema.triggers
-WHERE event_object_schema = 'public'
-  AND event_object_table = 'profiles'
-ORDER BY trigger_name;
+FROM (
+  SELECT ordem, item, esperado, obtido, status_final FROM scorecard
+  UNION ALL
+  SELECT ordem, item, esperado, obtido, status_final FROM resumo
+) final_result
+ORDER BY ordem;
