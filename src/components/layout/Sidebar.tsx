@@ -70,6 +70,7 @@ export type MenuItem = {
   end?: boolean;
   module?: AccessModule;
   pulseKey?: PulseKey;
+  adminOnly?: boolean;
   badge?: {
     count?: number | string;
     variant?: "critical" | "warning" | "info" | "success" | "neutral";
@@ -303,6 +304,14 @@ export const SECTIONS: MenuGroup[] = [
         module: "regras_operacionais",
       },
       {
+        id: "usuarios-gestao",
+        label: "Gestão de Usuários e Acessos",
+        to: "/governanca/usuarios",
+        icon: Users,
+        module: "governanca",
+        adminOnly: true,
+      },
+      {
         id: "preferencias",
         label: "Preferências",
         to: "/configuracoes",
@@ -403,12 +412,19 @@ export const isRouteMatchingItem = (
     }
   }
 
-  // 7. Se item possui 'end: true', não faz match por prefixo
+  // 7. Gestão de Usuários e Acessos
+  if (itemPath === "/governanca/usuarios") {
+    if (currentPath === "/governanca/usuarios" || currentPath === "/admin/usuarios-acessos") {
+      return true;
+    }
+  }
+
+  // 8. Se item possui 'end: true', não faz match por prefixo
   if (end) {
     return currentPath === itemPath;
   }
 
-  // 8. Match por sub-rotas/prefixo
+  // 9. Match por sub-rotas/prefixo
   if (currentPath.startsWith(itemPath + "/")) {
     return true;
   }
@@ -497,6 +513,7 @@ export const Sidebar = () => {
 
   const filterItems = (items: MenuItem[]) =>
     items.filter((item) => {
+      if (item.adminOnly && !isAdmin) return false;
       if (!item.module || isAdmin) return true;
       return canAccess(item.module);
     });
