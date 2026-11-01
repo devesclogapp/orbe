@@ -13,8 +13,10 @@ import {
   KeyRound,
   Loader2,
   Lock,
+  LogOut,
   ShieldAlert,
   ShieldCheck,
+  UserCheck,
   Users,
   X,
 } from "lucide-react";
@@ -26,6 +28,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { useAuth } from "@/contexts/AuthContext";
+import { useAccessControl } from "@/contexts/AccessControlContext";
 import { ACCESS_ROLE_LABELS, getDefaultRouteForRole, normalizeRole } from "@/lib/access-control";
 import { supabase } from "@/lib/supabase";
 
@@ -51,10 +55,29 @@ const Cadastro = () => {
   const [searchParams] = useSearchParams();
   const token = (searchParams.get("token") || searchParams.get("invite") || "").trim();
 
+  // Autenticação existente no navegador
+  const { user, signOut } = useAuth();
+  const { role: currentUserRole } = useAccessControl();
+
   // Estados de navegação e carregamento
   const [loadingInvitation, setLoadingInvitation] = useState(true);
   const [invitationData, setInvitationData] = useState<InvitationData | null>(null);
   const [invitationError, setInvitationError] = useState<string | null>(null);
+
+  // Detecção de conflito de sessão
+  const hasActiveSession = Boolean(user?.email);
+  const isSameUser = Boolean(
+    hasActiveSession &&
+    invitationData?.email &&
+    user?.email?.toLowerCase() === invitationData.email.toLowerCase()
+  );
+  const hasSessionConflict = Boolean(
+    hasActiveSession &&
+    invitationData?.email &&
+    user?.email?.toLowerCase() !== invitationData.email.toLowerCase()
+  );
+  const activeRole = currentUserRole || (user?.user_metadata?.role as string) || "user";
+  const activeRoleLabel = ACCESS_ROLE_LABELS[normalizeRole(activeRole)] || activeRole;
 
   // Passo ativo: 1 = Identidade, 2 = Código OTP, 3 = Criação de Senha
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -270,6 +293,12 @@ const Cadastro = () => {
         throw new Error(efResult?.message || "Não foi possível concluir a ativação.");
       }
 
+      // Limpeza preventiva de qualquer sessão anterior divergente antes de registrar os novos tokens
+      const { data: curAuth } = await supabase.auth.getUser();
+      if (curAuth?.user && curAuth.user.email?.toLowerCase() !== invitationData.email.toLowerCase()) {
+        await supabase.auth.signOut();
+      }
+
       // Sessão emitida e assinada pelo backend de produção
       if (efResult.session) {
         await supabase.auth.setSession(efResult.session);
@@ -404,20 +433,97 @@ const Cadastro = () => {
             </div>
           </div>
 
-          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 text-xs text-foreground/80 leading-relaxed">
-            <p>
-              Você está ativando sua credencial de acesso corporativo. No próximo passo, informe o <strong>código de 6 dígitos</strong> recebido do administrador para desbloquear a definição da sua senha.
-            </p>
-          </div>
+          {/* Alerta de Conflito de Sessão: Administrador ou usuário diferente autenticado no navegador */}
+          {hasSessionConflict ? (
+            <div className="rounded-2xl border border-amber-300 bg-amber-50/90 dark:border-amber-900/60 dark:bg-amber-950/30 p-5 space-y-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                  <ShieldAlert className="h-5 w-5" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-foreground">
+                    Sessão Ativa Detectada no Navegador
+                  </h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Você já está conectado como <strong className="text-foreground">{user?.email}</strong> ({activeRoleLabel}).
+                  </p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Este convite foi emitido para <strong className="text-foreground">{invitationData.email}</strong> ({roleLabel}).
+                  </p>
+                </div>
+              </div>
 
-          <Button
-            type="button"
-            className="w-full gap-2 text-sm font-semibold"
-            onClick={() => setStep(2)}
-          >
-            Avançar para Verificação
-            <ArrowRight className="h-4 w-4" />
-          </Button>
+              <div className="rounded-xl border border-amber-200/60 bg-amber-100/50 dark:border-amber-900/40 dark:bg-amber-900/20 p-3 text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
+                Ativar este convite substituirá a sessão de <strong>{user?.email}</strong> neste navegador e desconectará o acesso atual. Escolha como deseja prosseguir:
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                <Button
+                  type="button"
+                  variant="default"
+                  className="w-full gap-2 text-xs font-semibold"
+                  onClick={() => navigate(getDefaultRouteForRole(activeRole))}
+                >
+                  <UserCheck className="h-4 w-4" />
+                  Manter sessão de {user?.email?.split("@")[0]}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full gap-2 text-xs font-semibold border-amber-300 hover:bg-amber-100/80 dark:border-amber-800 dark:hover:bg-amber-900/40"
+                  onClick={async () => {
+                    await signOut();
+                    toast.info("Sessão anterior encerrada com segurança. Você já pode ativar o novo acesso.");
+                  }}
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sair e Ativar Convite
+                </Button>
+              </div>
+
+              <p className="text-[11px] text-muted-foreground text-center pt-1">
+                💡 <strong>Dica:</strong> Para testar este convite sem sair da sua conta, abra este link em uma <strong>Janela Anônima (Incógnito)</strong>.
+              </p>
+            </div>
+          ) : isSameUser ? (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50/70 dark:border-blue-900/50 dark:bg-blue-950/20 p-5 space-y-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-foreground">Você já está conectado</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Sua sessão atual no navegador já corresponde a <strong className="text-foreground">{user?.email}</strong>.
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                className="w-full text-xs font-semibold"
+                onClick={() => navigate(getDefaultRouteForRole(activeRole))}
+              >
+                Acessar o ERP ORBE
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 text-xs text-foreground/80 leading-relaxed">
+                <p>
+                  Você está ativando sua credencial de acesso corporativo. No próximo passo, informe o <strong>código de 6 dígitos</strong> recebido do administrador para desbloquear a definição da sua senha.
+                </p>
+              </div>
+
+              <Button
+                type="button"
+                className="w-full gap-2 text-sm font-semibold"
+                onClick={() => setStep(2)}
+              >
+                Avançar para Verificação
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </>
+          )}
 
           <p className="text-center text-xs text-muted-foreground">
             Já possui acesso ativo?{" "}
