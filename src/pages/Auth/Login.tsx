@@ -9,7 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Eye, EyeOff, HardHat, Loader2 } from "lucide-react";
+import { Eye, EyeOff, HardHat, Loader2, LogOut, UserCheck } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useAccessControl } from "@/contexts/AccessControlContext";
+import { ACCESS_ROLE_LABELS, getDefaultRouteForRole, normalizeRole } from "@/lib/access-control";
 
 const loginSchema = z.object({
     email: z.string().email("E-mail inválido"),
@@ -22,6 +25,11 @@ const Login = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+
+    const { user, signOut } = useAuth();
+    const { role: currentUserRole } = useAccessControl();
+    const activeRole = currentUserRole || (user?.user_metadata?.role as string) || "user";
+    const activeRoleLabel = ACCESS_ROLE_LABELS[normalizeRole(activeRole)] || activeRole;
 
     const {
         register,
@@ -68,6 +76,46 @@ const Login = () => {
             title="Bem-vindo de volta"
             subtitle="Insira suas credenciais para acessar sua conta"
         >
+            {user && (
+                <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50/80 p-4 text-left dark:border-amber-900/50 dark:bg-amber-950/20 space-y-3">
+                    <div className="flex items-start gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                            <UserCheck className="h-5 w-5" />
+                        </div>
+                        <div className="text-xs space-y-0.5">
+                            <p className="font-semibold text-foreground">Sessão Ativa Detectada</p>
+                            <p className="text-muted-foreground">
+                                Conectado como <strong className="text-foreground">{user.email}</strong> ({activeRoleLabel}).
+                            </p>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                        <Button
+                            type="button"
+                            size="sm"
+                            className="text-xs font-semibold gap-1.5"
+                            onClick={() => navigate(getDefaultRouteForRole(activeRole))}
+                        >
+                            <UserCheck className="h-3.5 w-3.5" />
+                            Continuar no ERP
+                        </Button>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="text-xs font-semibold gap-1.5 border-amber-300 dark:border-amber-800"
+                            onClick={async () => {
+                                await signOut();
+                                toast.info("Sessão anterior desconectada. Você pode fazer um novo login.");
+                            }}
+                        >
+                            <LogOut className="h-3.5 w-3.5" />
+                            Trocar de Conta
+                        </Button>
+                    </div>
+                </div>
+            )}
+
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <div className="space-y-2">
                     <Label htmlFor="email">E-mail</Label>
