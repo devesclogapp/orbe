@@ -5,7 +5,7 @@ import { CompetenciaService } from "@/services/domain/core.service";
 import { ConsolidadoService } from "@/services/domain/producao.service";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
-import { FileCheck, Search, Filter, Loader2, ExternalLink, Printer, Building2 } from "lucide-react";
+import { FileCheck, Search, Filter, Loader2, ExternalLink, Printer, Building2, Info, ArrowRight } from "lucide-react";
 import { EmpresaService } from "@/services/base.service";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -118,6 +118,24 @@ const FaturamentoCliente = () => {
     return (
         <AppShell title="Faturamento por Cliente" subtitle="Detalhamento e memória de cálculo por competência">
             <div className="mx-auto max-w-[1700px] w-full space-y-4">
+                {/* Banner de Orientação do Pipeline Financeiro */}
+                <div className="bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-900/40 rounded-lg p-3.5 flex items-start gap-3 text-xs text-blue-900 dark:text-blue-200">
+                    <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+                    <div className="flex-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <span>
+                            <strong>Consolidação por Competência:</strong> Esta visão consolida operações faturáveis a prazo ou mensais para geração de faturas dos clientes. Operações de <strong>Caixa Imediato</strong> são tratadas diretamente no pipeline de Receitas Operacionais.
+                        </span>
+                        <Button
+                            variant="link"
+                            size="sm"
+                            className="h-auto p-0 text-xs text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100 font-semibold inline-flex items-center gap-1 shrink-0 self-start sm:self-center"
+                            onClick={() => navigate("/financeiro/receitas", { state: { activeTab: 'CAIXA_IMEDIATO' } })}
+                        >
+                            Ver Receitas <ArrowRight className="h-3 w-3" />
+                        </Button>
+                    </div>
+                </div>
+
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div className="relative w-full max-w-sm">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -216,7 +234,23 @@ const FaturamentoCliente = () => {
                                 ))}
                                 {filtered.length === 0 && (
                                     <tr>
-                                        <td colSpan={7} className="p-12 text-center text-muted-foreground italic">Nenhum cliente processado nesta competência.</td>
+                                        <td colSpan={7} className="p-12 text-center">
+                                            <div className="flex flex-col items-center justify-center gap-2 max-w-md mx-auto text-muted-foreground">
+                                                <Info className="h-8 w-8 text-muted-foreground/60 mb-1" />
+                                                <p className="font-medium text-foreground text-sm">Nenhuma operação faturável nesta competência</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Operações com modalidade <strong>Caixa Imediato</strong> não geram fatura mensal consolidada e são recebidas diretamente no pipeline de Receitas Operacionais.
+                                                </p>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="mt-2 text-xs"
+                                                    onClick={() => navigate("/financeiro/receitas", { state: { activeTab: 'CAIXA_IMEDIATO' } })}
+                                                >
+                                                    <ArrowRight className="h-3.5 w-3.5 mr-1.5" /> Consultar Receitas Operacionais
+                                                </Button>
+                                            </div>
+                                        </td>
                                     </tr>
                                 )}
                             </tbody>

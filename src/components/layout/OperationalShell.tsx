@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { PipelineTrigger, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { ContextualHelpButton } from "@/components/help/ContextualHelpButton";
 
 interface OperationalShellProps {
     children: ReactNode;
@@ -83,6 +84,12 @@ export const OperationalShell = ({ children, title = "Coletor Orbe", unitName, s
                             Ver pipeline
                         </Button>
                     )}
+
+                    <ContextualHelpButton
+                        showLabel
+                        variant="outline"
+                        className="h-9 px-3 rounded-xl border-primary/25 bg-primary/5 text-primary hover:bg-primary/10 transition-all font-semibold text-xs shadow-xs"
+                    />
 
                     <Button
                         variant="ghost"

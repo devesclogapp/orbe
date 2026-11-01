@@ -82,6 +82,8 @@ export interface OpcoesCNAB240 {
   incluir_segmento_b?: boolean;
   /** Tipo serviço do lote: 20=Fornecedor, 30=Salários. Default: 20 */
   tipo_servico?: number;
+  /** Finalidade do lote no Header (máx 40 chars). Default: 'PAGAMENTO DIARISTAS' */
+  finalidade_lote?: string;
 }
 
 export interface ResultadoCNAB240 {
@@ -97,6 +99,8 @@ export interface ResultadoCNAB240 {
   valor_total: number;
   /** Total de beneficiários processados */
   total_beneficiarios: number;
+  /** Código do banco pagador da remessa (ex: '001', '341') */
+  banco_codigo?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,7 +258,8 @@ function buildHeaderLote(
   emp: EmpresaRemessa,
   numLote: number,
   tipoServico: number,
-  agora: Date
+  agora: Date,
+  opcoes?: OpcoesCNAB240
 ): string {
   const cnpj = num(emp.cnpj.replace(/\D/g, ''), 14);
   const tipoInscricao = '2'; // sempre CNPJ
@@ -300,7 +305,8 @@ function buildHeaderLote(
   // Pos 073-102 (30) Nome empresa
   l += alfa(emp.razao_social, 30);
   // Pos 103-142 (40) Mensagem 1 / Finalidade do lote
-  l += alfa('PAGAMENTO DIARISTAS', 40);
+  const finalidadeLoteBB = opcoes?.finalidade_lote?.trim() || 'PAGAMENTO DIARISTAS';
+  l += alfa(finalidadeLoteBB, 40);
   // Pos 143-172 (30) Logradouro
   l += alfa(emp.logradouro || '', 30);
   // Pos 173-177  (5) Número
@@ -440,7 +446,7 @@ function buildSegmentoB(
   // Pos 123-125  (3) Sufixo CEP
   l += num(cepDigits.slice(5, 8) || '0', 3);
   // Pos 126-127  (2) Estado
-  l += alfa(ben.estado || 'SP', 2);
+  l += alfa(ben.estado || '', 2);
   // Pos 128-135  (8) Data vencimento (zeros = pagto imediato)
   l += zeros(8);
   // Pos 136-150 (15) Valor documento
@@ -664,7 +670,7 @@ export function gerarCNAB240BB(
   linhas.push(buildHeaderArquivo(empresa, agora, numArquivo));
 
   // ── 2. Header de Lote ─────────────────────────────────────────────────────
-  linhas.push(buildHeaderLote(empresa, numLote, tipoServico, agora));
+  linhas.push(buildHeaderLote(empresa, numLote, tipoServico, agora, opcoes));
 
   // ── 3. Detalhes ───────────────────────────────────────────────────────────
   let numSeqLote = 1;
@@ -757,3 +763,9 @@ export function verificarLinhas(conteudo: string): { ok: boolean; erros: string[
 
   return { ok: erros.length === 0, erros };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RE-EXPORTS MULTIBANCO
+// ─────────────────────────────────────────────────────────────────────────────
+export { MotorCNAB240, validarEmpresaPagadora } from './motorCNAB240.service';
+export { gerarCNAB240Itau } from './cnab240-itau';

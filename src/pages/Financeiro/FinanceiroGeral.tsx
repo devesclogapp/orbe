@@ -41,18 +41,25 @@ const FinanceiroGeral = () => {
         enabled: !!selectedEmpresaId,
     });
 
-    const consolidarMutation = useMutation({
+    const processarIndicadoresMutation = useMutation({
         mutationFn: async () => {
-            // Em cenários reais, aqui haveria uma lógica de fechamento de competência
+            // Executa exclusivamente o serviço analítico/IA para checagem de inconsistências de ponto vs operações
             return AIService.processDay(`${selectedMonth}-01`, selectedEmpresaId!);
         },
         onSuccess: () => {
-            toast.success("Faturamento consolidado", { description: "A competência foi processada e os valores atualizados." });
+            toast.success("Indicadores analíticos atualizados", { 
+                description: "A análise estatística de consistência operacional foi recalculada com sucesso." 
+            });
             queryClient.invalidateQueries({ queryKey: ["consolidado", selectedMonth, selectedEmpresaId] });
             queryClient.invalidateQueries({ queryKey: ["competencia", selectedMonth, selectedEmpresaId] });
         },
         onError: (err: any) => {
-            toast.error("Erro ao consolidar", { description: err.message });
+            const isCorsOrNetwork = err?.message?.includes("Failed to fetch") || err?.name === "FunctionsFetchError";
+            toast.error("Falha no serviço de indicadores (Edge Function)", { 
+                description: isCorsOrNetwork
+                    ? "A Edge Function process-day está inacessível ou com bloqueio de CORS. A operação financeira transacional permanece intacta."
+                    : (err.message || "Erro ao consultar serviço analítico.")
+            });
         }
     });
 
@@ -105,12 +112,13 @@ const FinanceiroGeral = () => {
                     <div className="flex gap-2">
                         <Button
                             size="sm"
-                            onClick={() => consolidarMutation.mutate()}
-                            disabled={consolidarMutation.isPending || comp?.status === 'fechada'}
-                            title={comp?.status === 'fechada' ? "Competência fechada não pode ser reprocessada livremente." : "Processa os lançamentos do período"}
+                            variant="outline"
+                            onClick={() => processarIndicadoresMutation.mutate()}
+                            disabled={processarIndicadoresMutation.isPending}
+                            title="Executa verificação analítica de apontamentos de ponto vs operações do dia. Não altera o fechamento financeiro oficial."
                         >
-                            {consolidarMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Layers className="h-4 w-4 mr-2" />}
-                            Consolidar Faturamento
+                            {processarIndicadoresMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Layers className="h-4 w-4 mr-2 text-primary" />}
+                            Processar Indicadores (IA)
                         </Button>
                     </div>
                 </div>

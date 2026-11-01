@@ -1183,17 +1183,23 @@ class FormaPagamentoOperacionalServiceClass {
 
   /**
    * Retorna formas de pagamento filtradas por modalidade.
-   * modalidade: 'CAIXA_IMEDIATO' (à vista) | 'DUPLICATA' (boleto/fat. mensal)
-   * Inclui também registros com modalidade = 'AMBOS'.
+   * - Quando modalidade for 'DUPLICATA' ou 'FATURAMENTO_MENSAL' (família comercial "receitas futuras"),
+   *   retorna formas com modalidade DUPLICATA, FATURAMENTO_MENSAL, AMBOS e NULL.
+   * - Nos demais contextos (ex: 'CAIXA_IMEDIATO'), preserva o filtro específico com AMBOS e NULL.
    */
-  async getByModalidade(modalidade: 'CAIXA_IMEDIATO' | 'DUPLICATA') {
+  async getByModalidade(modalidade: 'CAIXA_IMEDIATO' | 'DUPLICATA' | 'FATURAMENTO_MENSAL' | string) {
     await this.repararTenants();
     try {
+      const isFamiliaFutura = modalidade === 'DUPLICATA' || modalidade === 'FATURAMENTO_MENSAL';
+      const orFilter = isFamiliaFutura
+        ? `modalidade.eq.DUPLICATA,modalidade.eq.FATURAMENTO_MENSAL,modalidade.eq.AMBOS,modalidade.is.null`
+        : `modalidade.eq.${modalidade},modalidade.eq.AMBOS,modalidade.is.null`;
+
       const { data, error } = await operationalClient
         .from('formas_pagamento_operacional')
         .select('*')
         .eq('ativo', true)
-        .or(`modalidade.eq.${modalidade},modalidade.eq.AMBOS,modalidade.is.null`)
+        .or(orFilter)
         .order('nome', { ascending: true });
 
       if (error) {

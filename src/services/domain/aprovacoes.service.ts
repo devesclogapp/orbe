@@ -42,8 +42,11 @@ export class AprovacoesService {
     let query = supabase
       .from('vw_aprovacoes_rh')
       .select('*', { count: 'exact' })
-      .eq('situacao', situacao)
       .order('data_recebimento', { ascending: false });
+
+    if (situacao) {
+      query = query.eq('situacao', situacao);
+    }
 
     // Conditional Application
     if (isHomologacao) {

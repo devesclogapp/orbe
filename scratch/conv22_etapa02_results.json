@@ -1,0 +1,54 @@
+{
+  "1440x900": {
+    "diaristas": {
+      "winW": 1440,
+      "docW": 1430,
+      "hasPageHOverflow": false,
+      "btnExists": true,
+      "btnLeft": 1213,
+      "btnRight": 1357,
+      "btnTop": 294,
+      "btnVisibleInsideViewport": true
+    },
+    "inadimplencia": {
+      "winW": 1440,
+      "docW": 1430,
+      "hasPageHOverflow": false,
+      "tableCount": 1,
+      "tables": [
+        {
+          "width": 1114,
+          "parentOverflowX": "auto",
+          "isContainedInHScroll": true,
+          "overflowsWindow": false
+        }
+      ]
+    }
+  },
+  "1366x768": {
+    "diaristas": {
+      "winW": 1366,
+      "docW": 1356,
+      "hasPageHOverflow": false,
+      "btnExists": true,
+      "btnLeft": 1139,
+      "btnRight": 1283,
+      "btnTop": 294,
+      "btnVisibleInsideViewport": true
+    },
+    "inadimplencia": {
+      "winW": 1366,
+      "docW": 1356,
+      "hasPageHOverflow": false,
+      "tableCount": 1,
+      "tables": [
+        {
+          "width": 1040,
+          "parentOverflowX": "auto",
+          "isContainedInHScroll": true,
+          "overflowsWindow": false
+        }
+      ]
+    }
+  }
+}

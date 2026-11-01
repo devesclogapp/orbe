@@ -25,6 +25,8 @@ export interface ReceitaOperacionalItem {
   servico_extra_id?: string | null;
   valor_item: number;
   created_at: string;
+  operacoes_producao?: any;
+  servicos_extras_operacionais?: any;
 }
 
 export interface ReceitaOperacionalHistorico {

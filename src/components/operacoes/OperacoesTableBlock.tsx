@@ -28,10 +28,12 @@ import {
   Plus,
   Trash,
   PackagePlus,
+  Printer,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { generateOperacaoFichaPDF } from "@/utils/pdfOperacao";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -114,7 +116,7 @@ const buildEditableForm = (item: any): EditableOperationForm => {
     forma_pagamento: getContextoImportacaoValue(item, "forma_pagamento") ?? "",
     observacao: getContextoImportacaoValue(item, "observacao") ?? "",
     modalidade_financeira: getContextoImportacaoValue(item, "modalidade_financeira_override") ?? "",
-    data_vencimento: getContextoImportacaoValue(item, "data_vencimento_override") ?? "",
+    data_vencimento: item.data_vencimento ? toInputValue(item.data_vencimento) : (getContextoImportacaoValue(item, "data_vencimento_override") ?? ""),
     status_pagamento: toInputValue(item.status_pagamento ?? item.statusPagamento ?? "PENDENTE"),
   };
 };
@@ -190,6 +192,7 @@ const buildOperationUpdatePayload = (editingItem: any, editForm: EditableOperati
     valor_total_filme: valores.totalFilmeCalculado, // Valor correto calculado para filme
     valor_total_materiais: Number(editingItem.valor_total_materiais || 0),
     valor_total: valores.totalFinalCalculado,
+    data_vencimento: editForm.data_vencimento || null,
     status_pagamento: editForm.status_pagamento || null,
     data_pagamento: editForm.status_pagamento === "RECEBIDO"
       ? (editingItem.data_pagamento ?? new Date().toISOString().split("T")[0])
@@ -694,8 +697,8 @@ export const OperacoesTableBlock = ({
   const processedRows = useMemo(() => {
     const sourceRows = Array.isArray(rowsData) ? rowsData : rows;
     if (!Array.isArray(sourceRows)) return [];
-    return sourceRows.map((item: any) => processarOperacao(item, empresas as any[]));
-  }, [rows, rowsData, empresas]);
+    return sourceRows.map((item: any) => processarOperacao(item, empresas as any[], regrasFinanceiras as any[]));
+  }, [rows, rowsData, empresas, regrasFinanceiras]);
 
   const updateMutation = useMutation({
     mutationFn: async () => {
@@ -1207,6 +1210,8 @@ export const OperacoesTableBlock = ({
       queryClient.invalidateQueries({ queryKey: ["operacoes-pipeline"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+      queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] });
+      queryClient.invalidateQueries({ queryKey: ["receita-detalhes"] });
     },
     onError: (error: unknown) => {
       console.error("[DEBUG] Erro ao aprovar operação:", error);
@@ -1233,11 +1238,11 @@ export const OperacoesTableBlock = ({
         onSuccess: () => {
           setSelectedOpDetails(null);
 
-          toast.success("Operação dividida com sucesso!", {
-            description: "O faturamento (Receita) foi gerado e as comissões (Despesa) foram enviadas ao RH.",
+          toast.success("Operação enviada para processamento com sucesso!", {
+            description: "A operação foi encaminhada para validação do RH e processamento financeiro.",
             action: {
               label: "Ver Faturamento",
-              onClick: () => navigate("/financeiro/receitas", { state: { highlight: item.id } })
+              onClick: () => navigate("/financeiro/receitas?tab=FATURAMENTO_MENSAL&origem=OPERACAO", { state: { highlight: item.id } })
             },
             duration: 8000
           });
@@ -1435,6 +1440,7 @@ export const OperacoesTableBlock = ({
         forma_pagamento: value,
       },
       empresa,
+      regrasFinanceiras as any[],
     );
   };
 
@@ -1694,8 +1700,9 @@ export const OperacoesTableBlock = ({
         forma_pagamento: editForm.forma_pagamento,
       },
       empresa,
+      regrasFinanceiras as any[],
     );
-  }, [editForm?.forma_pagamento, editingItem, empresas]);
+  }, [editForm?.forma_pagamento, editingItem, empresas, regrasFinanceiras]);
 
   if (!rowsData && isLoading) {
     return (
@@ -2571,7 +2578,7 @@ export const OperacoesTableBlock = ({
 
 
       <Sheet open={!!selectedOpDetails} onOpenChange={(value) => !value && setSelectedOpDetails(null)}>
-        <SheetContent className="sm:max-w-md overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Detalhes da operação</SheetTitle>
             <SheetDescription>Informações completas relativas à operação do dia.</SheetDescription>
@@ -2703,15 +2710,25 @@ export const OperacoesTableBlock = ({
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-border flex justify-end gap-2">
+              <div className="pt-4 border-t border-border flex flex-wrap items-center justify-end gap-2">
+                <Button variant="outline" onClick={() => generateOperacaoFichaPDF(selectedOpDetails)} title="Imprimir / Baixar Ficha Documental da Operação">
+                  <Printer className="mr-2 h-4 w-4" />
+                  Imprimir Ficha
+                </Button>
+
                 <Button variant="outline" onClick={() => setSelectedOpDetails(null)}>
                   Fechar
                 </Button>
 
                 {!["AGUARDANDO_FATURAMENTO", "FATURADO", "RECEBIDO_FINANCEIRO", "CONCLUIDO", "APROVADO", "FECHADO"].includes(selectedOpDetails.status?.toUpperCase() || "") && (
-                  <Button onClick={() => handleAprovar(selectedOpDetails)} className="bg-brand text-white border-0 hover:bg-brand/90 focus:ring-brand" disabled={aprovarOpMutation.isPending}>
+                  <Button
+                    onClick={() => handleAprovar(selectedOpDetails)}
+                    className="bg-brand text-white border-0 hover:bg-brand/90 focus:ring-brand"
+                    disabled={aprovarOpMutation.isPending}
+                    title="Encaminha a operação para validação do RH e processamento financeiro."
+                  >
                     {aprovarOpMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Dividir (Faturamento / RH)
+                    Enviar para processamento
                   </Button>
                 )}
               </div>

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, Ban, Save, X, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
+import { cn } from "@/lib/utils";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { RegraCampo, RegraDado, RegrasCamposService, RegrasDadosService, RegraModulo, RegrasModulosService } from "@/services/base.service";
 
 const FIXED_FIELDS = [
@@ -236,20 +243,31 @@ const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId,
 
   return (
     <>
-      <Card className="p-5 space-y-4">
+      <Card className="border border-border/80 bg-card rounded-xl p-4 md:p-5 shadow-xs space-y-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="font-semibold text-foreground">{title || "Regras cadastradas"}</h2>
-            {description && <p className="text-sm text-muted-foreground">{description}</p>}
+            <h2 className="text-base font-semibold text-foreground tracking-tight">{title || "Regras cadastradas"}</h2>
+            {description && <p className="text-xs text-muted-foreground">{description}</p>}
           </div>
           <div className="flex w-full md:w-auto items-center gap-2">
             {!isFixedSchema && (
-              <Button type="button" variant="outline" className="shrink-0" onClick={() => setIsManageFieldsModalOpen(true)}>
-                <Pencil className="h-4 w-4 mr-2" /> Gerenciar Campos
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs font-medium gap-1.5 border-border/80 hover:bg-muted/50 shrink-0"
+                onClick={() => setIsManageFieldsModalOpen(true)}
+              >
+                <Pencil className="h-3.5 w-3.5" /> Gerenciar Campos
               </Button>
             )}
-            <Button type="button" className="shrink-0" onClick={() => setIsFormOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" /> Nova Regra
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 text-xs font-medium gap-1.5 font-display font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-xs shrink-0"
+              onClick={() => setIsFormOpen(true)}
+            >
+              <Plus className="h-3.5 w-3.5" /> Nova Regra
             </Button>
           </div>
         </div>
@@ -355,83 +373,127 @@ const DynamicRuleTabContent: React.FC<DynamicRuleTabContentProps> = ({ moduloId,
           </DialogContent>
         </Dialog>
 
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {(isFixedSchema ? customFixedFields : campos).map((campo) => (
-                  <TableHead key={campo.id} className="text-center text-[10px] uppercase font-bold text-muted-foreground">{campo.nome}</TableHead>
-                ))}
-                <TableHead className="text-right text-[10px] uppercase font-bold text-muted-foreground">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sortedDados.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={(isFixedSchema ? customFixedFields : campos).length + 1} className="h-24 text-center text-muted-foreground">
-                    Nenhuma regra cadastrada para este módulo.
-                  </TableCell>
+        <TooltipProvider delayDuration={150}>
+          <div className="relative rounded-lg border border-border/80 overflow-x-auto scrollbar-thin bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b border-border/80 bg-muted/30 hover:bg-muted/30">
+                  {(isFixedSchema ? customFixedFields : campos).map((campo) => (
+                    <TableHead key={campo.id} className="h-9 px-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center">{campo.nome}</TableHead>
+                  ))}
+                  <TableHead className="h-9 px-3.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right pr-4">Ações</TableHead>
                 </TableRow>
-              )}
-              {sortedDados.map((dado) => (
-                <TableRow key={dado.id}>
-                  {(isFixedSchema ? customFixedFields : campos).map((campo) => {
-                    const value = dado.dados?.[campo.nome];
+              </TableHeader>
+              <TableBody>
+                {sortedDados.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={(isFixedSchema ? customFixedFields : campos).length + 1} className="h-24 text-center py-8 text-muted-foreground text-sm">
+                      Nenhuma regra cadastrada para este módulo.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {sortedDados.map((dado) => (
+                  <TableRow key={dado.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                    {(isFixedSchema ? customFixedFields : campos).map((campo) => {
+                      const value = dado.dados?.[campo.nome];
 
-                    if (campo.tipo === "boolean") {
-                      return (
-                        <TableCell key={campo.id} className="text-center">
-                          <span className="flex justify-center">
-                            <span className={`inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 uppercase ${value ? "border-transparent bg-emerald-100 text-emerald-800" : "border-transparent bg-zinc-100 text-zinc-800"}`}>
-                              {value ? "Sim" : "Não"}
+                      if (campo.tipo === "boolean") {
+                        return (
+                          <TableCell key={campo.id} className="px-3.5 py-2.5 text-center">
+                            <span className="flex justify-center">
+                              <span className={cn(
+                                "inline-flex items-center px-2 py-0.5 rounded-[6px] text-[11px] font-medium border uppercase",
+                                value
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50"
+                                  : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-white/[0.04] dark:text-[#A0A7B2] dark:border-white/[0.08]"
+                              )}>
+                                {value ? "Sim" : "Não"}
+                              </span>
                             </span>
-                          </span>
-                        </TableCell>
-                      );
-                    }
-                    if (campo.nome.toLowerCase().includes("percentual") && value !== undefined && value !== null && value !== "") {
-                      return <TableCell key={campo.id} className="text-center font-medium">{value}%</TableCell>;
-                    }
-                    if (campo.nome.toLowerCase() === "status") {
-                      const isAtivo = value === "Ativo" || value === true;
-                      return (
-                        <TableCell key={campo.id} className="text-center">
-                          <span className="flex justify-center">
-                            <span className={`inline-flex items-center rounded border px-2 py-0.5 text-[10px] font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 uppercase ${isAtivo ? 'border-transparent bg-emerald-100 text-emerald-800' : 'border-transparent bg-zinc-100 text-zinc-800'}`}>
-                              {value?.toString() || "Inativo"}
+                          </TableCell>
+                        );
+                      }
+                      if (campo.nome.toLowerCase().includes("percentual") && value !== undefined && value !== null && value !== "") {
+                        return <TableCell key={campo.id} className="px-3.5 py-2.5 text-center font-mono font-medium text-xs text-foreground">{value}%</TableCell>;
+                      }
+                      if (campo.nome.toLowerCase() === "status") {
+                        const isAtivo = value === "Ativo" || value === true;
+                        return (
+                          <TableCell key={campo.id} className="px-3.5 py-2.5 text-center">
+                            <span className="flex justify-center">
+                              <span className={cn(
+                                "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[6px] text-[11px] font-medium border uppercase",
+                                isAtivo
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50"
+                                  : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-white/[0.04] dark:text-[#A0A7B2] dark:border-white/[0.08]"
+                              )}>
+                                <span className={cn(
+                                  "h-1.5 w-1.5 rounded-full",
+                                  isAtivo ? "bg-emerald-600 dark:bg-emerald-400" : "bg-slate-400 dark:bg-[#A0A7B2]"
+                                )} />
+                                {value?.toString() || "Inativo"}
+                              </span>
                             </span>
-                          </span>
-                        </TableCell>
-                      );
-                    }
-                    return <TableCell key={campo.id} className="text-center font-medium">{value?.toString() ?? "-"}</TableCell>;
-                  })}
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Editar" onClick={() => handleEdit(dado)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Duplicar" onClick={() => handleDuplicate(dado)}>
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8"
-                        title="Excluir"
-                        disabled={deleteDadoMutation.isPending}
-                        onClick={() => setDadoToDelete(dado)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+                          </TableCell>
+                        );
+                      }
+                      return <TableCell key={campo.id} className="px-3.5 py-2.5 text-center text-xs text-foreground font-medium">{value?.toString() ?? "-"}</TableCell>;
+                    })}
+                    <TableCell className="px-3.5 py-2.5 text-right pr-4">
+                      <div className="flex justify-end gap-1 items-center">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                              onClick={() => handleEdit(dado)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Editar Registro</TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                              onClick={() => handleDuplicate(dado)}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Duplicar Registro</TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                              disabled={deleteDadoMutation.isPending}
+                              onClick={() => setDadoToDelete(dado)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Excluir Registro</TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </TooltipProvider>
 
         <AlertDialog open={!!dadoToDelete} onOpenChange={(open) => !open && setDadoToDelete(null)}>
           <AlertDialogContent>

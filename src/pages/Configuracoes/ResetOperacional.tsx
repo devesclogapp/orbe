@@ -376,29 +376,41 @@ const ResetOperacional = () => {
 
   return (
     <div className="space-y-6">
-      <section className="esc-card p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <div className="rounded-xl border border-border/80 bg-card p-6 shadow-xs space-y-4 transition-colors">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           <div className="space-y-2">
-            <Badge className="bg-warning-soft text-warning-strong">Impacto crítico</Badge>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                <AlertTriangle className="h-3 w-3" />
+                Área Restrita — Operações Críticas
+              </span>
+            </div>
             <div>
-              <h2 className="font-display font-semibold text-foreground">Manutenção do Ambiente</h2>
-              <p className="text-sm text-muted-foreground">
-                Reinicialize escopos transacionais do tenant <strong>{tenant?.name ?? "atual"}</strong> preservando sempre
-                tenant, perfis, autenticação, permissões e auditoria sistêmica. O nível <strong>Reset Ambiente Demo</strong>
+              <h2 className="font-display font-semibold text-base tracking-tight text-foreground">
+                Manutenção do Ambiente & Resets Transacionais
+              </h2>
+              <p className="text-xs text-muted-foreground max-w-3xl leading-relaxed mt-1">
+                Reinicialize escopos transacionais do tenant <strong className="text-foreground">{tenant?.name ?? "atual"}</strong> preservando sempre
+                tenant, perfis, autenticação, permissões e auditoria sistêmica. O nível <strong className="text-foreground">Reset Ambiente Demo</strong>
                 também remove cadastros mestres, regras operacionais e contas bancárias do tenant.
               </p>
             </div>
           </div>
-          <Alert className="max-w-xl border-destructive/20 bg-destructive/5">
-            <ShieldAlert className="h-4 w-4" />
-            <AlertTitle>Dupla proteção obrigatória</AlertTitle>
-            <AlertDescription>
-              Toda execução exige justificativa, confirmação textual exata, auditoria persistente em múltiplas trilhas e
-              validação explícita do tenant.
-            </AlertDescription>
-          </Alert>
+
+          <div className="rounded-xl border border-border/70 bg-muted/30 p-4 max-w-md shrink-0 flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
+              <ShieldAlert className="h-4 w-4" />
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs font-semibold text-foreground">Dupla Proteção Obrigatória</div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Toda execução exige justificativa, confirmação textual exata, auditoria persistente em múltiplas trilhas e
+                validação explícita do tenant.
+              </p>
+            </div>
+          </div>
         </div>
-      </section>
+      </div>
 
       <div className="grid gap-4 xl:grid-cols-4">
         {MODE_CONFIG.map((config) => {

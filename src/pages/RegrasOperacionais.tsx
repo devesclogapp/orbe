@@ -5,17 +5,24 @@ import {
   AlertCircle,
   Ban,
   Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronsUpDown,
   Copy,
   Pencil,
   Plus,
+  RotateCcw,
   Save,
+  Search,
   ShieldAlert,
   Trash2,
   MoreVertical,
   Upload,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TabRegrasDiaristas } from "@/pages/Rh/TabRegrasDiaristas";
 import { TabMeiosPagamento } from "@/pages/Financeiro/TabMeiosPagamento";
@@ -771,6 +778,15 @@ const RegrasOperacionais = () => {
   });
   const [editingModuleId, setEditingModuleId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  const [filterEmpresa, setFilterEmpresa] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(15);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterEmpresa, filterStatus]);
+
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [applyGlobally, setApplyGlobally] = useState(false);
   const [bindingMode, setBindingMode] = useState<RuleBindingMode>("empresa_fornecedor");
@@ -907,20 +923,43 @@ const RegrasOperacionais = () => {
 
   const filteredRules = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const filtered = !term ? (regras as any[]) : (regras as any[]).filter((item) =>
-      [
-        item.empresas?.nome,
-        item.tipos_servico_operacional?.nome,
-        item.transportadoras_clientes?.nome,
-        item.fornecedores?.nome,
-        item.produtos_carga?.nome,
-        item.tipos_regra_operacional?.nome,
-        getTipoCalculoLabel(item.tipo_calculo),
-        item.formas_pagamento_operacional?.nome,
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(term)),
-    );
+    const rulesList = (regras as any[]) || [];
+
+    const filtered = rulesList.filter((item) => {
+      // 1. Filtro por Empresa
+      if (filterEmpresa !== "all") {
+        if (filterEmpresa === "global") {
+          if (item.empresa_id) return false;
+        } else {
+          if (item.empresa_id !== filterEmpresa) return false;
+        }
+      }
+
+      // 2. Filtro por Status
+      if (filterStatus !== "all") {
+        if (filterStatus === "ativo" && !item.ativo) return false;
+        if (filterStatus === "inativo" && item.ativo) return false;
+      }
+
+      // 3. Filtro por Texto (busca)
+      if (term) {
+        const matches = [
+          item.empresas?.nome,
+          item.tipos_servico_operacional?.nome,
+          item.transportadoras_clientes?.nome,
+          item.fornecedores?.nome,
+          item.produtos_carga?.nome,
+          item.tipos_regra_operacional?.nome,
+          getTipoCalculoLabel(item.tipo_calculo),
+          item.formas_pagamento_operacional?.nome,
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(term));
+        if (!matches) return false;
+      }
+
+      return true;
+    });
 
     if (!recentDuplicatedRuleId) return filtered;
 
@@ -929,7 +968,24 @@ const RegrasOperacionais = () => {
       if (b.id === recentDuplicatedRuleId) return 1;
       return 0;
     });
-  }, [recentDuplicatedRuleId, regras, search]);
+  }, [filterEmpresa, filterStatus, recentDuplicatedRuleId, regras, search]);
+
+  const totalCount = filteredRules.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  const paginatedRules = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredRules.slice(start, start + pageSize);
+  }, [filteredRules, currentPage, pageSize]);
+
+  const hasActiveFilters = search.trim() !== "" || filterEmpresa !== "all" || filterStatus !== "all";
+
+  const clearFilters = () => {
+    setSearch("");
+    setFilterEmpresa("all");
+    setFilterStatus("all");
+    setCurrentPage(1);
+  };
 
   const tipoServicoItems = (tiposServico as any[]).map((item) => ({ ...item, nome: item.nome })) as LookupItem[];
   const transportadoraItems = (transportadoras as any[]).map((item) => ({ ...item, nome: item.nome })) as LookupItem[];
@@ -2158,7 +2214,7 @@ const RegrasOperacionais = () => {
 
   if (authLoading || accessLoading || tenantLoading || isLoadingPerfil) {
     return (
-      <AppShell title="Regras Operacionais" subtitle="Carregando permissões..." backPath="/cadastros">
+      <AppShell title="Regras & Tabelas Operacionais" subtitle="Carregando permissões..." backPath="/cadastros">
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="animate-pulse flex flex-col items-center gap-4">
             <div className="h-10 w-10 bg-primary/20 rounded-full animate-bounce" />
@@ -2171,7 +2227,7 @@ const RegrasOperacionais = () => {
 
   if (!canAccess) {
     return (
-      <AppShell title="Regras Operacionais" subtitle="Acesso restrito a Admin e Financeiro" backPath="/cadastros">
+      <AppShell title="Regras & Tabelas Operacionais" subtitle="Acesso restrito a Admin e Financeiro" backPath="/cadastros">
         <Card className="p-8 border-dashed">
           <div className="flex items-start gap-3">
             <ShieldAlert className="h-5 w-5 text-amber-600 mt-0.5" />
@@ -2189,272 +2245,456 @@ const RegrasOperacionais = () => {
 
   return (
     <AppShell
-      title="Regras Operacionais"
+      title="Regras & Tabelas Operacionais"
       subtitle="Gerencie valores unitários de produção e multiplicadores para diaristas"
       backPath="/cadastros"
     >
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="bg-slate-100/50 border p-1 text-muted-foreground w-full flex flex-nowrap overflow-x-auto h-auto justify-start gap-1 md:w-auto md:inline-flex md:h-11 mb-2 no-scrollbar scroll-smooth rounded-lg">
-          <TabsTrigger value="operacional" className="px-5 flex-none">
-            Operacional
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-2" onClick={(e) => e.stopPropagation()}>
-                  <MoreVertical className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem disabled>Abas fixas não podem ser editadas</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </TabsTrigger>
-          <TabsTrigger value="diaristas" className="px-5 flex-none">
-            Diaristas
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-2" onClick={(e) => e.stopPropagation()}>
-                  <MoreVertical className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem disabled>Abas fixas não podem ser editadas</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </TabsTrigger>
-          <TabsTrigger value="meios_pagamento" className="px-5 flex-none">
-            Meios de Pagamento
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-2" onClick={(e) => e.stopPropagation()}>
-                  <MoreVertical className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem disabled>Abas fixas não podem ser editadas</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </TabsTrigger>
-          <TabsTrigger value="taxas_impostos" className="px-5 flex-none">
-            Taxas e Impostos
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-2" onClick={(e) => e.stopPropagation()}>
-                  <MoreVertical className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem disabled>Abas fixas não podem ser editadas</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </TabsTrigger>
-          {dynamicModules.filter(m => m.module_type !== 'tax' && m.module_type !== 'financial').map((module) => {
-            const isFixedModule = module.module_type === 'system_fixed';
-            return (
-              <TabsTrigger key={module.slug} value={module.slug} className="px-5 flex-none">
-                {module.nome}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-6 w-4 p-0 ml-2" onClick={(e) => e.stopPropagation()}>
-                      <MoreVertical className="h-3 w-3" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    {isFixedModule ? (
-                      <DropdownMenuItem disabled>Abas fixas não podem ser editadas</DropdownMenuItem>
-                    ) : (
-                      <>
-                        <DropdownMenuItem onClick={() => {
-                          setNewTabForm({ nome: module.nome, slug: module.slug, descricao: module.descricao || "" });
-                          setEditingModuleId(module.id);
-                          setIsNewTabModalOpen(true);
-                        }}>
-                          <Pencil className="h-4 w-4 mr-2" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => {
-                          if (confirm(`Deseja duplicar a aba "${module.nome}"? Todas as configurações de campos e dados serão copiadas.`)) {
-                            duplicateModuleMutation.mutate(module.id);
-                          }
-                        }}>
-                          <Copy className="h-4 w-4 mr-2" />
-                          Duplicar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => {
-                          if (confirm(`Tem certeza que deseja excluir a aba "${module.nome}"?`)) {
-                            deleteModuleMutation.mutate(module.id);
-                          }
-                        }} className="text-red-600">
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Excluir
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+      <div className="space-y-4 pb-12 w-full max-w-[1560px] mx-auto pt-1 animate-in fade-in-50 duration-200">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/80 pb-2">
+            <TabsList className="bg-muted/40 border border-border/80 p-1 text-muted-foreground w-full flex flex-nowrap overflow-x-auto h-auto justify-start gap-1 md:w-auto md:inline-flex md:h-10 no-scrollbar scroll-smooth rounded-lg">
+              <TabsTrigger value="operacional" className="px-4 py-1.5 text-xs font-medium flex-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs">
+                Operacional
               </TabsTrigger>
-            )
-          })}
-          <TabsTrigger value="especificos" className="px-5 flex-none">Períodos Operacionais</TabsTrigger>
-          {canAccess && (
+              <TabsTrigger value="diaristas" className="px-4 py-1.5 text-xs font-medium flex-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs">
+                Diaristas
+              </TabsTrigger>
+              <TabsTrigger value="meios_pagamento" className="px-4 py-1.5 text-xs font-medium flex-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs">
+                Meios de Pagamento
+              </TabsTrigger>
+              <TabsTrigger value="taxas_impostos" className="px-4 py-1.5 text-xs font-medium flex-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs">
+                Taxas e Impostos
+              </TabsTrigger>
+              {dynamicModules.filter(m => m.module_type !== 'tax' && m.module_type !== 'financial').map((module) => {
+                const isFixedModule = module.module_type === 'system_fixed';
+                return (
+                  <TabsTrigger key={module.slug} value={module.slug} className="px-4 py-1.5 text-xs font-medium flex-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs">
+                    {module.nome}
+                    {!isFixedModule && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-5 w-4 p-0 ml-1.5 text-muted-foreground hover:text-foreground" onClick={(e) => e.stopPropagation()}>
+                            <MoreVertical className="h-3 w-3" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => {
+                            setNewTabForm({ nome: module.nome, slug: module.slug, descricao: module.descricao || "" });
+                            setEditingModuleId(module.id);
+                            setIsNewTabModalOpen(true);
+                          }}>
+                            <Pencil className="h-3.5 w-3.5 mr-2" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => {
+                            if (confirm(`Deseja duplicar a aba "${module.nome}"? Todas as configurações de campos e dados serão copiadas.`)) {
+                              duplicateModuleMutation.mutate(module.id);
+                            }
+                          }}>
+                            <Copy className="h-3.5 w-3.5 mr-2" />
+                            Duplicar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => {
+                            if (confirm(`Tem certeza que deseja excluir a aba "${module.nome}"?`)) {
+                              deleteModuleMutation.mutate(module.id);
+                            }
+                          }} className="text-red-600">
+                            <Trash2 className="h-3.5 w-3.5 mr-2" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </TabsTrigger>
+                );
+              })}
+              <TabsTrigger value="especificos" className="px-4 py-1.5 text-xs font-medium flex-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs">
+                Períodos Operacionais
+              </TabsTrigger>
+            </TabsList>
 
-            <Button variant="outline" size="sm" onClick={() => setIsNewTabModalOpen(true)} className="flex-none">
-              <Plus className="h-4 w-4 mr-2" /> Nova Aba
-            </Button>
-          )}
-        </TabsList>
-        <TabsContent value="operacional" className="m-0">
-          <div className="space-y-6">
-            <Card className="p-5 space-y-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            {canAccess && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsNewTabModalOpen(true)}
+                className="h-8 text-xs font-medium gap-1.5 shrink-0 border-border/80 self-end sm:self-auto"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Nova aba dinâmica
+              </Button>
+            )}
+          </div>
+
+          <TabsContent value="operacional" className="m-0 space-y-4">
+            <Card className="border border-border/80 bg-card rounded-xl p-4 md:p-5 shadow-xs space-y-4">
+              {/* Header da Aba Operacional */}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="font-semibold text-foreground">Regras cadastradas</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Edite valores ou inative regras para impedir novos lançamentos com essa configuração.
+                  <h3 className="font-display font-bold text-base text-foreground tracking-tight">
+                    Regras e Tarifas Operacionais
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Valores unitários, vigências e bases de cálculo para produção e faturamento.
                   </p>
                 </div>
-                <div className="flex w-full md:w-auto items-center gap-2">
-                  <Input
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Buscar por empresa, serviço..."
-                    className="flex-1 md:w-64"
-                  />
-                  <Button variant="outline" className="shrink-0" onClick={() => setImportModalOpen(true)}>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Importar Planilha
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs font-medium gap-1.5 border-border/80"
+                    onClick={() => setImportModalOpen(true)}
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    Importar planilha
                   </Button>
-                  <Button className="shrink-0" onClick={() => { setIsModalOpen(true); setCurrentStep(1); }}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Nova Regra
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs font-medium gap-1.5 font-display font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
+                    onClick={() => { setIsModalOpen(true); setCurrentStep(1); }}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Nova regra
                   </Button>
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-center">Empresa</TableHead>
-                      <TableHead className="text-center">Tipo de serviço</TableHead>
-                      <TableHead className="text-center">Transportadora</TableHead>
-                      <TableHead className="text-center">Fornecedor</TableHead>
-                      <TableHead className="text-center">Produto / Carga</TableHead>
-                      <TableHead className="text-center">Tipo de cálculo</TableHead>
-                      <TableHead className="text-center">Valor</TableHead>
-                      <TableHead className="text-center">Variável</TableHead>
-                      <TableHead className="text-center">Vigência</TableHead>
-                      <TableHead className="text-center">Status</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {!isLoadingRegras && filteredRules.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
-                          Nenhuma regra operacional encontrada.
-                        </TableCell>
-                      </TableRow>
+              {/* Barra Oficial de Filtros e Busca */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-muted/20 border border-border/70 rounded-lg p-2.5">
+                <div className="flex flex-wrap items-center gap-2 flex-1">
+                  <div className="relative flex-1 min-w-[200px] max-w-sm">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                    <Input
+                      placeholder="Buscar por empresa, serviço, transportadora..."
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      className="pl-8 h-8 text-xs bg-background border-border/80"
+                    />
+                    {search && (
+                      <button
+                        type="button"
+                        onClick={() => setSearch("")}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                        title="Limpar busca"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
                     )}
+                  </div>
 
-                    {filteredRules.map((item: any) => {
-                      const tr = (tiposRegra as any[]).find((t) => t.id === item.tipo_regra_id);
-                      const isPct = tr?.unidade_medida === "percentual";
-                      const isGlobalIssRule =
-                        !item.empresa_id &&
-                        !item.tipo_servico_id &&
-                        !item.transportadora_id &&
-                        !item.fornecedor_id &&
-                        !item.produto_carga_id;
-                      return (
-                        <TableRow key={item.id}>
-                          <TableCell className="text-center">{isGlobalIssRule ? "Global" : item.empresas?.nome ?? "-"}</TableCell>
-                          <TableCell className="text-center">{isGlobalIssRule ? "Todos" : item.tipos_servico_operacional?.nome ?? "-"}</TableCell>
-                          <TableCell className="text-center">{isGlobalIssRule ? "Todas" : item.transportadoras_clientes?.nome ?? "Todas"}</TableCell>
-                          <TableCell className="text-center">{isGlobalIssRule ? "Todos" : item.fornecedores?.nome ?? "Não aplicável"}</TableCell>
-                          <TableCell className="text-center">{item.produtos_carga?.nome ?? "Geral"}</TableCell>
-                          <TableCell className="text-center">{getTipoCalculoLabel(item.tipo_calculo)}</TableCell>
-                          <TableCell className="text-center font-medium">
-                            {isPct
-                              ? `${Number(item.valor_unitario)}%`
-                              : tr?.unidade_medida === "multiplicador"
-                                ? `x ${Number(item.valor_unitario)}`
-                                : formatCurrency(Number(item.valor_unitario || 0))}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="flex justify-center">
-                              <Badge variant="outline" className={cn(
-                                "w-fit text-[10px] h-4",
-                                tr?.unidade_medida === "percentual" ? "bg-amber-100 text-amber-700" :
-                                  tr?.unidade_medida === "multiplicador" ? "bg-blue-100 text-blue-700" :
-                                    "bg-emerald-100 text-emerald-700"
-                              )}>
-                                {tr?.nome ?? "Taxa Operacional"}
-                              </Badge>
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="block text-center">
-                              {formatDate(item.vigencia_inicio)}
-                              <span className="text-muted-foreground block text-center">até {formatDate(item.vigencia_fim)}</span>
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="flex justify-center">
-                              <Badge className={cn(item.ativo ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : "bg-zinc-200 text-zinc-700 hover:bg-zinc-200")}>
-                                {item.ativo ? "Ativo" : "Inativo"}
-                              </Badge>
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Editar" onClick={() => handleEdit(item)}>
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button type="button" size="icon" variant="ghost" className="h-8 w-8" title="Duplicar" disabled={duplicateMutation.isPending} onClick={() => handleDuplicate(item)}>
-                                <Copy className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8"
-                                title="Excluir"
-                                disabled={deleteMutation.isPending}
-                                onClick={() => setRuleToDelete(item)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8"
-                                title={item.ativo ? "Inativar" : "Ativar"}
-                                disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
-                                onClick={() => toggleStatusMutation.mutate({ id: item.id, ativo: !item.ativo })}
-                              >
-                                {item.ativo ? <Ban className="h-4 w-4" /> : <Check className="h-4 w-4" />}
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                  <Select value={filterEmpresa} onValueChange={setFilterEmpresa}>
+                    <SelectTrigger className="w-[190px] h-8 text-xs bg-background border-border/80">
+                      <SelectValue placeholder="Empresa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as empresas</SelectItem>
+                      <SelectItem value="global">Escopo Global</SelectItem>
+                      {(empresas as any[]).map((empresa) => (
+                        <SelectItem key={empresa.id} value={empresa.id}>
+                          {empresa.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="w-[140px] h-8 text-xs bg-background border-border/80">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os status</SelectItem>
+                      <SelectItem value="ativo">Ativo</SelectItem>
+                      <SelectItem value="inativo">Inativo</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {hasActiveFilters && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearFilters}
+                      className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Limpar filtros
+                    </Button>
+                  )}
+                </div>
+
+                <div className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">
+                  {totalCount} regra{totalCount === 1 ? "" : "s"} encontrada{totalCount === 1 ? "" : "s"}
+                </div>
+              </div>
+
+              {/* Container da Tabela com Rolagem Interna Controlada e Ações Protegidas */}
+              <div
+                data-testid="tabela-operacional-container"
+                className="relative rounded-lg border border-border/80 overflow-x-auto scrollbar-thin"
+              >
+                <table className="w-full text-xs text-left border-collapse min-w-[980px]">
+                  <thead className="bg-muted/40 border-b border-border/80">
+                    <tr className="hover:bg-transparent">
+                      <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground text-[11px] uppercase tracking-wider">Empresa</th>
+                      <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground text-[11px] uppercase tracking-wider">Tipo de serviço</th>
+                      <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground text-[11px] uppercase tracking-wider">Transportadora</th>
+                      <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground text-[11px] uppercase tracking-wider">Fornecedor</th>
+                      <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground text-[11px] uppercase tracking-wider">Produto / Carga</th>
+                      <th className="px-2.5 py-2.5 text-left font-semibold text-muted-foreground text-[11px] uppercase tracking-wider">Cálculo</th>
+                      <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground text-[11px] uppercase tracking-wider">Valor</th>
+                      <th className="px-2.5 py-2.5 text-center font-semibold text-muted-foreground text-[11px] uppercase tracking-wider">Variável</th>
+                      <th className="px-2.5 py-2.5 text-center font-semibold text-muted-foreground text-[11px] uppercase tracking-wider">Vigência</th>
+                      <th className="px-2.5 py-2.5 text-center font-semibold text-muted-foreground text-[11px] uppercase tracking-wider">Status</th>
+                      <th className="px-2.5 py-2.5 text-right font-semibold text-muted-foreground text-[11px] uppercase tracking-wider pr-3 w-[124px]">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {isLoadingRegras ? (
+                      <tr>
+                        <td colSpan={11} className="h-32 text-center text-muted-foreground">
+                          Carregando regras operacionais...
+                        </td>
+                      </tr>
+                    ) : paginatedRules.length === 0 ? (
+                      <tr>
+                        <td colSpan={11} className="h-32 text-center text-muted-foreground">
+                          Nenhuma regra operacional encontrada para os critérios selecionados.
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedRules.map((item: any) => {
+                        const tr = (tiposRegra as any[]).find((t) => t.id === item.tipo_regra_id);
+                        const isPct = tr?.unidade_medida === "percentual";
+                        const isGlobalIssRule =
+                          !item.empresa_id &&
+                          !item.tipo_servico_id &&
+                          !item.transportadora_id &&
+                          !item.fornecedor_id &&
+                          !item.produto_carga_id;
+                        return (
+                          <tr key={item.id} className="hover:bg-muted/30 transition-colors">
+                            <td className="px-2.5 py-2.5 text-left font-medium">
+                              {isGlobalIssRule || !item.empresa_id ? (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded-[4px] text-[10.5px] font-mono bg-muted/60 text-muted-foreground border border-border/60">
+                                  Global
+                                </span>
+                              ) : (
+                                <span className="text-xs text-foreground font-medium">{item.empresas?.nome ?? "-"}</span>
+                              )}
+                            </td>
+                            <td className="px-2.5 py-2.5 text-left font-medium text-foreground">
+                              {isGlobalIssRule ? "Todos" : item.tipos_servico_operacional?.nome ?? "-"}
+                            </td>
+                            <td className="px-2.5 py-2.5 text-left text-muted-foreground">
+                              {isGlobalIssRule ? "Todas" : item.transportadoras_clientes?.nome ?? "Todas"}
+                            </td>
+                            <td className="px-2.5 py-2.5 text-left text-muted-foreground">
+                              {isGlobalIssRule ? "Todos" : item.fornecedores?.nome ?? "Não aplicável"}
+                            </td>
+                            <td className="px-2.5 py-2.5 text-left text-muted-foreground">
+                              {item.produtos_carga?.nome ?? "Geral"}
+                            </td>
+                            <td className="px-2.5 py-2.5 text-left">
+                              <span className="inline-block rounded-[4px] px-1.5 py-0.5 font-mono text-[10.5px] bg-muted/60 text-muted-foreground border border-border/50">
+                                {getTipoCalculoLabel(item.tipo_calculo)}
+                              </span>
+                            </td>
+                            <td className="px-2.5 py-2.5 text-right font-mono tabular-nums text-xs font-semibold text-foreground">
+                              {isPct
+                                ? `${Number(item.valor_unitario)}%`
+                                : tr?.unidade_medida === "multiplicador"
+                                  ? `x ${Number(item.valor_unitario)}`
+                                  : formatCurrency(Number(item.valor_unitario || 0))}
+                            </td>
+                            <td className="px-2.5 py-2.5 text-center">
+                              <span className="inline-flex justify-center">
+                                <span className="rounded-[4px] px-1.5 py-0.5 text-[10px] font-mono bg-muted/50 text-muted-foreground border border-border/60">
+                                  {tr?.nome ?? "Taxa Operacional"}
+                                </span>
+                              </span>
+                            </td>
+                            <td className="px-2.5 py-2.5 text-center font-mono text-[11px] tabular-nums text-foreground">
+                              <div>{formatDate(item.vigencia_inicio)}</div>
+                              <div className="text-[10px] text-muted-foreground">até {formatDate(item.vigencia_fim)}</div>
+                            </td>
+                            <td className="px-2.5 py-2.5 text-center">
+                              <span className="inline-flex justify-center">
+                                <span className={cn(
+                                  "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[6px] text-[11px] font-medium border",
+                                  item.ativo
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50"
+                                    : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-white/[0.04] dark:text-[#A0A7B2] dark:border-white/[0.08]"
+                                )}>
+                                  <span className={cn("h-1.5 w-1.5 rounded-full", item.ativo ? "bg-emerald-600 dark:bg-emerald-400" : "bg-slate-400")} />
+                                  {item.ativo ? "Ativo" : "Inativo"}
+                                </span>
+                              </span>
+                            </td>
+                            <td className="px-2.5 py-2.5 text-right pr-3">
+                              <TooltipProvider delayDuration={150}>
+                                <div className="flex justify-end items-center gap-1">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                        aria-label="Editar regra"
+                                        onClick={() => handleEdit(item)}
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Editar regra</TooltipContent>
+                                  </Tooltip>
+
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                        aria-label="Duplicar regra"
+                                        disabled={duplicateMutation.isPending}
+                                        onClick={() => handleDuplicate(item)}
+                                      >
+                                        <Copy className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Duplicar regra</TooltipContent>
+                                  </Tooltip>
+
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                                        aria-label="Excluir regra"
+                                        disabled={deleteMutation.isPending}
+                                        onClick={() => setRuleToDelete(item)}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Excluir regra</TooltipContent>
+                                  </Tooltip>
+
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="ghost"
+                                        className={cn(
+                                          "h-7 w-7",
+                                          item.ativo
+                                            ? "text-muted-foreground hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                                            : "text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                                        )}
+                                        aria-label={item.ativo ? "Inativar regra" : "Ativar regra"}
+                                        disabled={toggleStatusMutation.isPending || deleteMutation.isPending}
+                                        onClick={() => toggleStatusMutation.mutate({ id: item.id, ativo: !item.ativo })}
+                                      >
+                                        {item.ativo ? <Ban className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{item.ativo ? "Inativar" : "Ativar"}</TooltipContent>
+                                  </Tooltip>
+                                </div>
+                              </TooltipProvider>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+
+                {/* Barra Oficial de Paginação */}
+                <div className="px-4 py-3 border-t border-border/80 bg-muted/5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <span>
+                      {totalCount === 0
+                        ? "Nenhuma regra encontrada"
+                        : `Exibindo ${(currentPage - 1) * pageSize + 1}–${Math.min(
+                            currentPage * pageSize,
+                            totalCount
+                          )} de ${totalCount} regras`}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex items-center gap-1.5">
+                      <label htmlFor="regras-operacionais-page-size" className="text-[11px] font-medium text-muted-foreground whitespace-nowrap">
+                        Linhas por página:
+                      </label>
+                      <div className="relative inline-flex items-center">
+                        <select
+                          id="regras-operacionais-page-size"
+                          value={pageSize}
+                          onChange={(e) => {
+                            const nextSize = Number(e.target.value);
+                            setPageSize(nextSize);
+                            setCurrentPage(1);
+                          }}
+                          aria-label="Linhas por página"
+                          className="h-7 w-[72px] appearance-none rounded-md border border-border/80 bg-background px-2.5 pr-6 text-xs font-medium text-foreground transition-colors hover:bg-muted/40 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                        >
+                          <option value={15}>15</option>
+                          <option value={25}>25</option>
+                          <option value={50}>50</option>
+                          <option value={100}>100</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5 text-muted-foreground opacity-60" />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-medium whitespace-nowrap">
+                        Página {currentPage} de {totalPages}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          className="h-7 w-7 p-0"
+                          onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                          disabled={currentPage <= 1}
+                          aria-label="Página anterior"
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          className="h-7 w-7 p-0"
+                          onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                          disabled={currentPage >= totalPages}
+                          aria-label="Próxima página"
+                        >
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </Card>
-          </div>
-        </TabsContent>
+          </TabsContent>
 
         <TabsContent value="diaristas" className="m-0">
-          <Card className="p-5 space-y-4">
+          <Card className="border border-border/80 bg-card rounded-xl p-4 md:p-5 shadow-xs space-y-4">
             <TabRegrasDiaristas />
           </Card>
         </TabsContent>
 
         <TabsContent value="especificos" className="m-0">
-          <Card className="p-5 space-y-4">
+          <Card className="border border-border/80 bg-card rounded-xl p-4 md:p-5 shadow-xs space-y-4">
             <ServicosEspecificosRegrasTab />
           </Card>
         </TabsContent>
@@ -3142,7 +3382,8 @@ const RegrasOperacionais = () => {
           resetForm();
         }}
       />
-    </AppShell >
+      </div>
+    </AppShell>
   );
 };
 

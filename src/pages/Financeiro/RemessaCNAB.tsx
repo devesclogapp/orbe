@@ -58,6 +58,8 @@ const RemessaCNAB = () => {
         queryFn: () => EmpresaService.getAll()
     });
 
+    const isEmpresaTeste = Boolean(empresas?.find((e: any) => e.id === empresaId)?.is_teste);
+
     // Fetch Contas CNAB-elegíveis da Empresa selecionada
     const { data: contas, isLoading: isLoadingContas } = useQuery({
         queryKey: ["contas-cnab", empresaId],
@@ -112,9 +114,17 @@ const RemessaCNAB = () => {
         try {
             const passedRhLoteId = tipoRemessa === 'rh' ? rhLoteId : undefined;
             const res = await CNABService.generateRemessa({ competencia, empresaId, contaId, rhLoteId: passedRhLoteId });
-            toast.success(`CNAB Gerado: ${res.fileName}`);
+            
+            // FIX-CNAB-02: Bloqueio estrito de download se a remessa não foi confirmada no banco
+            if (!res?.arquivoId || res.arquivoId === 'nao-registrado') {
+                console.error("[FIX-CNAB-02] Tentativa de download bloqueada: remessa não foi persistida no banco com ID válido.", res);
+                toast.error("Falha ao registrar remessa no banco de dados. O arquivo não foi baixado para evitar inconsistência bancária.");
+                return;
+            }
 
-            // Trigger download
+            toast.success(`CNAB Gerado e Registrado: ${res.fileName}`);
+
+            // Trigger download apenas após confirmação transacional
             const element = document.createElement("a");
             const file = new Blob([res.content], { type: 'text/plain' });
             element.href = URL.createObjectURL(file);
@@ -122,9 +132,9 @@ const RemessaCNAB = () => {
             document.body.appendChild(element);
             element.click();
             document.body.removeChild(element);
-        } catch (error) {
-            console.error(error);
-            toast.error("Erro ao gerar arquivo");
+        } catch (error: any) {
+            console.error("[FIX-CNAB-02] Erro na geração/persistência de remessa:", error);
+            toast.error(error?.message || "Erro ao gerar arquivo CNAB");
         } finally {
             setIsGenerating(false);
         }
@@ -356,14 +366,26 @@ const RemessaCNAB = () => {
                                     )}
                                 </div>
 
+                                {isEmpresaTeste && (
+                                    <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 rounded-lg text-xs space-y-1">
+                                        <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
+                                            <AlertCircle className="w-4 h-4 text-amber-600" />
+                                            <span>SIMULAÇÃO DE HOMOLOGAÇÃO — ARQUIVO NÃO BANCÁRIO</span>
+                                        </div>
+                                        <p className="text-[11px] leading-relaxed text-amber-800/90 dark:text-amber-300/90">
+                                            A empresa selecionada está em ambiente de homologação. O arquivo gerado será um relatório de simulação para auditoria interna. Não possui estrutura posicional FEBRABAN válida e não deve ser transmitido ao banco.
+                                        </p>
+                                    </div>
+                                )}
+
                                 {validation.isValid && (
                                     <div className="pt-6 border-t border-border border-dashed flex flex-col sm:flex-row items-center justify-between gap-4">
                                         <div className="text-xs text-muted-foreground flex items-center gap-2 bg-card px-3 py-1.5 rounded-full border border-border">
                                             <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
-                                            Pronto para gerar arquivo
+                                            {isEmpresaTeste ? "Pronto para gerar simulação" : "Pronto para gerar arquivo"}
                                         </div>
                                         <Button
-                                            className="bg-brand hover:shadow-lg hover:shadow-brand/20 transition-all font-bold h-12 px-8"
+                                            className={isEmpresaTeste ? "bg-amber-600 hover:bg-amber-700 text-white transition-all font-bold h-12 px-8" : "bg-brand hover:shadow-lg hover:shadow-brand/20 transition-all font-bold h-12 px-8"}
                                             onClick={handleGenerate}
                                             disabled={isGenerating || !contaId}
                                         >
@@ -372,7 +394,7 @@ const RemessaCNAB = () => {
                                             ) : (
                                                 <Download className="w-4 h-4 mr-2" />
                                             )}
-                                            Gerar Arquivo CNAB (240)
+                                            {isEmpresaTeste ? "Gerar Simulação CNAB" : "Gerar Arquivo CNAB (240)"}
                                         </Button>
                                     </div>
                                 )}

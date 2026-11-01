@@ -1,0 +1,698 @@
+[
+  {
+    "module": "Dashboard Executivo",
+    "route": "/operacional/dashboard",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1440x900_dashboard_executivo.png",
+    "consoleErrorsCount": 8
+  },
+  {
+    "module": "Torre Operacional",
+    "route": "/operacional/pipeline",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1440x900_torre_operacional.png",
+    "consoleErrorsCount": 13
+  },
+  {
+    "module": "Operações por Volume",
+    "route": "/operacoes-volume",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1204,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": true
+      }
+    ],
+    "clippedButtons": 13,
+    "screenshot": "scratch/audit_1440x900_opera__es_por_volume.png",
+    "consoleErrorsCount": 13
+  },
+  {
+    "module": "Serviços Extras",
+    "route": "/operacional/servicos-extras",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1300,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": true
+      }
+    ],
+    "clippedButtons": 12,
+    "screenshot": "scratch/audit_1440x900_servi_os_extras.png",
+    "consoleErrorsCount": 13
+  },
+  {
+    "module": "Custos Extras",
+    "route": "/operacional/custos-extras",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1219,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": true
+      }
+    ],
+    "clippedButtons": 9,
+    "screenshot": "scratch/audit_1440x900_custos_extras.png",
+    "consoleErrorsCount": 13
+  },
+  {
+    "module": "Ponto CLT",
+    "route": "/clt/pontos",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1282,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": true
+      }
+    ],
+    "clippedButtons": 341,
+    "screenshot": "scratch/audit_1440x900_ponto_clt.png",
+    "consoleErrorsCount": 18
+  },
+  {
+    "module": "Fechamento Mensal CLT",
+    "route": "/banco-horas/fechamento",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1440x900_fechamento_mensal_clt.png",
+    "consoleErrorsCount": 18
+  },
+  {
+    "module": "Diaristas Painel",
+    "route": "/operacional/diaristas",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 1,
+    "screenshot": "scratch/audit_1440x900_diaristas_painel.png",
+    "consoleErrorsCount": 18
+  },
+  {
+    "module": "Intermitentes Jornadas",
+    "route": "/operacional/intermitentes",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1392,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": true
+      }
+    ],
+    "clippedButtons": 2,
+    "screenshot": "scratch/audit_1440x900_intermitentes_jornadas.png",
+    "consoleErrorsCount": 18
+  },
+  {
+    "module": "Intermitentes Lotes",
+    "route": "/operacional/intermitentes/lotes",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1440x900_intermitentes_lotes.png",
+    "consoleErrorsCount": 18
+  },
+  {
+    "module": "Central Aprovações RH",
+    "route": "/rh/aprovacoes",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 1,
+    "screenshot": "scratch/audit_1440x900_central_aprova__es_rh.png",
+    "consoleErrorsCount": 18
+  },
+  {
+    "module": "Central Inconsistências",
+    "route": "/inconsistencias",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1114,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": false
+      }
+    ],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1440x900_central_inconsist_ncias.png",
+    "consoleErrorsCount": 23
+  },
+  {
+    "module": "Fechamento de Ciclos Hub",
+    "route": "/fechamento",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1440x900_fechamento_de_ciclos_hub.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Receitas Operacionais",
+    "route": "/financeiro/receitas",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1114,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": false
+      }
+    ],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1440x900_receitas_operacionais.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Despesas & Contas a Pagar",
+    "route": "/financeiro",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1114,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": false
+      }
+    ],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1440x900_despesas___contas_a_pagar.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Central Bancária",
+    "route": "/bancario",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1114,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": false
+      }
+    ],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1440x900_central_banc_ria.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Inadimplência & Cobrança",
+    "route": "/financeiro/inadimplencia",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1112,
+        "parentOverflowX": "hidden",
+        "isContained": false,
+        "overflowsWindow": false
+      }
+    ],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1440x900_inadimpl_ncia___cobran_a.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Resultado Operacional DRE",
+    "route": "/financeiro/dre",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1440x900_resultado_operacional_dre.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Central de Relatórios",
+    "route": "/relatorios",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1440x900_central_de_relat_rios.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Central de Cadastros",
+    "route": "/cadastros",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1110,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": false
+      }
+    ],
+    "clippedButtons": 2,
+    "screenshot": "scratch/audit_1440x900_central_de_cadastros.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Regras Operacionais",
+    "route": "/cadastros/regras-operacionais",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1072,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": false
+      }
+    ],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1440x900_regras_operacionais.png",
+    "consoleErrorsCount": 27
+  },
+  {
+    "module": "Configurações & Preferências",
+    "route": "/configuracoes",
+    "viewport": "1440x900",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1440x900_configura__es___prefer_ncias.png",
+    "consoleErrorsCount": 28
+  },
+  {
+    "module": "Dashboard Executivo",
+    "route": "/operacional/dashboard",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1366x768_dashboard_executivo.png",
+    "consoleErrorsCount": 8
+  },
+  {
+    "module": "Torre Operacional",
+    "route": "/operacional/pipeline",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1366x768_torre_operacional.png",
+    "consoleErrorsCount": 13
+  },
+  {
+    "module": "Operações por Volume",
+    "route": "/operacoes-volume",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1204,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": true
+      }
+    ],
+    "clippedButtons": 13,
+    "screenshot": "scratch/audit_1366x768_opera__es_por_volume.png",
+    "consoleErrorsCount": 13
+  },
+  {
+    "module": "Serviços Extras",
+    "route": "/operacional/servicos-extras",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1300,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": true
+      }
+    ],
+    "clippedButtons": 12,
+    "screenshot": "scratch/audit_1366x768_servi_os_extras.png",
+    "consoleErrorsCount": 13
+  },
+  {
+    "module": "Custos Extras",
+    "route": "/operacional/custos-extras",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1219,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": true
+      }
+    ],
+    "clippedButtons": 9,
+    "screenshot": "scratch/audit_1366x768_custos_extras.png",
+    "consoleErrorsCount": 13
+  },
+  {
+    "module": "Ponto CLT",
+    "route": "/clt/pontos",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1282,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": true
+      }
+    ],
+    "clippedButtons": 341,
+    "screenshot": "scratch/audit_1366x768_ponto_clt.png",
+    "consoleErrorsCount": 18
+  },
+  {
+    "module": "Fechamento Mensal CLT",
+    "route": "/banco-horas/fechamento",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1366x768_fechamento_mensal_clt.png",
+    "consoleErrorsCount": 18
+  },
+  {
+    "module": "Diaristas Painel",
+    "route": "/operacional/diaristas",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 1,
+    "screenshot": "scratch/audit_1366x768_diaristas_painel.png",
+    "consoleErrorsCount": 18
+  },
+  {
+    "module": "Intermitentes Jornadas",
+    "route": "/operacional/intermitentes",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1392,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": true
+      }
+    ],
+    "clippedButtons": 2,
+    "screenshot": "scratch/audit_1366x768_intermitentes_jornadas.png",
+    "consoleErrorsCount": 18
+  },
+  {
+    "module": "Intermitentes Lotes",
+    "route": "/operacional/intermitentes/lotes",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1366x768_intermitentes_lotes.png",
+    "consoleErrorsCount": 18
+  },
+  {
+    "module": "Central Aprovações RH",
+    "route": "/rh/aprovacoes",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 1,
+    "screenshot": "scratch/audit_1366x768_central_aprova__es_rh.png",
+    "consoleErrorsCount": 18
+  },
+  {
+    "module": "Central Inconsistências",
+    "route": "/inconsistencias",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1040,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": false
+      }
+    ],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1366x768_central_inconsist_ncias.png",
+    "consoleErrorsCount": 23
+  },
+  {
+    "module": "Fechamento de Ciclos Hub",
+    "route": "/fechamento",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1366x768_fechamento_de_ciclos_hub.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Receitas Operacionais",
+    "route": "/financeiro/receitas",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1040,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": false
+      }
+    ],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1366x768_receitas_operacionais.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Despesas & Contas a Pagar",
+    "route": "/financeiro",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1040,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": false
+      }
+    ],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1366x768_despesas___contas_a_pagar.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Central Bancária",
+    "route": "/bancario",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1040,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": false
+      }
+    ],
+    "clippedButtons": 1,
+    "screenshot": "scratch/audit_1366x768_central_banc_ria.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Inadimplência & Cobrança",
+    "route": "/financeiro/inadimplencia",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1038,
+        "parentOverflowX": "hidden",
+        "isContained": false,
+        "overflowsWindow": false
+      }
+    ],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1366x768_inadimpl_ncia___cobran_a.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Resultado Operacional DRE",
+    "route": "/financeiro/dre",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1366x768_resultado_operacional_dre.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Central de Relatórios",
+    "route": "/relatorios",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1366x768_central_de_relat_rios.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Central de Cadastros",
+    "route": "/cadastros",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1036,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": false
+      }
+    ],
+    "clippedButtons": 2,
+    "screenshot": "scratch/audit_1366x768_central_de_cadastros.png",
+    "consoleErrorsCount": 26
+  },
+  {
+    "module": "Regras Operacionais",
+    "route": "/cadastros/regras-operacionais",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 1,
+    "tableDetails": [
+      {
+        "width": 1009,
+        "parentOverflowX": "auto",
+        "isContained": true,
+        "overflowsWindow": false
+      }
+    ],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1366x768_regras_operacionais.png",
+    "consoleErrorsCount": 27
+  },
+  {
+    "module": "Configurações & Preferências",
+    "route": "/configuracoes",
+    "viewport": "1366x768",
+    "hasHOverflow": false,
+    "overflowDiff": 0,
+    "tableCount": 0,
+    "tableDetails": [],
+    "clippedButtons": 0,
+    "screenshot": "scratch/audit_1366x768_configura__es___prefer_ncias.png",
+    "consoleErrorsCount": 28
+  }
+]

@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { BaseService, cleanUuid, getCurrentTenantId, operationalClient, sanitizePayload, requireAuthenticatedUserId } from '../domain/base.service';
+import { EnvironmentService } from '../environment/EnvironmentService';
+import { EnvironmentQueryFilter } from '../environment/EnvironmentQueryFilter';
 import type { ReceitaOperacional, ReceitaOperacionalItem, ModalidadeReceita } from '@/types/receitas.types';
 
 class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
@@ -8,11 +10,7 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
   }
 
   async getPipelinePainel(tenantId: string, empresaId?: string, competencia?: string) {
-    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
-    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
-    const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
-    const testIds = testEmpresas?.map(e => e.id) || [];
-    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
 
     let query = supabase
       .from('receitas_operacionais')
@@ -22,22 +20,30 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
         receitas_operacionais_itens(
           id,
           valor_item,
+          operacao_id,
+          servico_extra_id,
           operacoes_producao(
             id,
             servicos:tipos_servico_operacional(nome)
+          ),
+          servicos_extras_operacionais:servico_extra_id(
+            id,
+            descricao_servico,
+            tipo_servico
           )
         )
       `)
       .eq('tenant_id', tenantId);
 
+    query = EnvironmentQueryFilter.applyEmpresaScope(query as any, {
+      tenantId,
+      column: 'empresa_id',
+      includeNullInProduction: false,
+      testIds
+    });
+
     if (empresaId && empresaId !== 'all') {
       query = query.eq('empresa_id', empresaId);
-    } else {
-      if (isHomologacao) {
-         query = query.in('empresa_id', safeTestIds);
-      } else {
-         query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
-      }
     }
     
     if (competencia) {
@@ -63,7 +69,10 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
         *,
         empresas(nome),
         receitas_operacionais_itens(
-          id, valor_item,
+          id,
+          valor_item,
+          operacao_id,
+          servico_extra_id,
           operacoes_producao(
             *,
             produtos:produtos_carga (*),
@@ -71,6 +80,11 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
             fornecedores (*),
             transportadoras:transportadoras_clientes (*),
             formas_pagamento_operacional (*)
+          ),
+          servicos_extras_operacionais:servico_extra_id(
+            *,
+            empresas(nome),
+            formas_pagamento_operacional(*)
           )
         )
       `)
@@ -93,11 +107,32 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
   }
 
   async logEvent(tenantId: string, receitaId: string, acao: string, detalhesText: string, detalhesJson?: any, statusAnterior?: string, statusNovo?: string) {
-    // [DEPRECATION NOTICE]: Por conta do Etapa 04 - Auditoria Atômica (Domain Hardening), 
-    // todas as triggers críticas e eventos nascem das próprias funções RPC.
-    // Ignoramos eventlogs arbitrários oriundos do client React.
-    console.warn("[SECURITY] logEvent is deprecated. Financial transitions generate logs entirely on DB via RPCs. Call suppressed: ", acao);
-    return { success: true, bypassed: true };
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData?.user?.id || null;
+    const userEmail = authData?.user?.email || 'Sistema';
+
+    const payload: any = {
+      tenant_id: tenantId,
+      receita_id: receitaId,
+      acao: acao,
+      usuario_id: userId,
+      detalhes: { texto: detalhesText, usuario_email: userEmail, ...detalhesJson }
+    };
+
+    if (statusAnterior) payload.status_anterior = statusAnterior;
+    if (statusNovo) payload.status_novo = statusNovo;
+
+    const { data, error } = await supabase
+      .from('receitas_operacionais_historico')
+      .insert(payload)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      console.error("[ReceitasService] Erro ao gravar evento no historico:", error);
+      throw error;
+    }
+    return data;
   }
 
   async updateStatus(tenantId: string, receitaId: string, newStatus: string) {
@@ -128,6 +163,9 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
           rpcName = 'rpc_receita_confirmar_recebimento';
           // p_data_recebimento omisso usa = CURRENT_DATE interno.
           break;
+        case 'conciliado':
+          rpcName = 'rpc_receita_conciliar';
+          break;
         case 'cancelado':
           rpcName = 'rpc_receita_cancelar_ou_estornar';
           rpcParams['p_motivo'] = 'Cancelamento/Estorno via dor do módulo Dashboard.';
@@ -154,6 +192,38 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
         .single();
 
       return updated;
+  }
+
+  async fecharCompetenciaMensal(tenantId: string, receitaId: string, vencimento?: string) {
+      // Garantia de Escopo: A Receita deve pertencer impreterivelmente a esse Tenant
+      const { data: original, error: fetchErr } = await supabase
+        .from('receitas_operacionais')
+        .select('empresa_id')
+        .eq('id', receitaId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (fetchErr || !original) {
+         throw new Error('NOT_FOUND_OR_UNAUTHORIZED: Receita não encontrada ou sem permissão neste escopo.');
+      }
+
+      const { data: rpcRes, error: errRpc } = await supabase.rpc('rpc_receita_fechar_competencia_mensal', {
+         p_receita_id: receitaId,
+         p_vencimento: vencimento || null
+      });
+
+      if (errRpc) {
+         throw errRpc;
+      }
+
+      // Re-busca o dataset final apenas para devolver no padrão anterior (compatibility mode)
+      const { data: updated } = await supabase
+        .from('receitas_operacionais')
+        .select('*')
+        .eq('id', receitaId)
+        .single();
+
+      return updated || rpcRes;
   }
 
   async updateReceita(tenantId: string, receitaId: string, payload: Partial<ReceitaOperacional>) {
@@ -196,6 +266,14 @@ class ReceitasServiceClass extends BaseService<'receitas_operacionais'> {
     
     return data;
   }
+
+  async conciliar(receitaId: string) {
+    const { data, error } = await supabase.rpc('rpc_receita_conciliar', {
+      p_receita_id: receitaId
+    });
+    if (error) throw error;
+    return data;
+  }
 }
 
 export const ReceitasService = new ReceitasServiceClass();
@@ -207,6 +285,15 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
     let query = operationalClient
       .from('servicos_extras_operacionais')
       .select('data');
+
+    const tenantIdScope = await getCurrentTenantId();
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantIdScope);
+    query = EnvironmentQueryFilter.applyEmpresaScope(query as any, {
+      tenantId: tenantIdScope,
+      column: 'empresa_id',
+      includeNullInProduction: false,
+      testIds
+    });
     
     if (empresaId && empresaId !== 'all') {
       query = query.eq('empresa_id', empresaId);
@@ -224,6 +311,31 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
   }
 
   async update(id: string, payload: Record<string, any>) {
+    const tenantId = await getCurrentTenantId();
+    if (payload.empresa_id) {
+      await EnvironmentService.assertEmpresaAllowed({
+        tenantId,
+        empresaId: payload.empresa_id,
+      });
+    }
+
+    // P2: Governança fail-closed no service antes de persistir
+    const { data: current, error: fetchErr } = await operationalClient
+      .from('servicos_extras_operacionais')
+      .select('pipeline_status')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchErr) throw fetchErr;
+
+    if (current && ['APROVADO_OPERACAO', 'APROVADO_FINANCEIRO', 'FATURADO', 'CONCLUIDO'].includes(String(current.pipeline_status || '').toUpperCase())) {
+      const camposProtegidos = ['total', 'valor_unitario', 'quantidade', 'custo_materiais', 'materiais_snapshot', 'empresa_id', 'tipo_servico_id'];
+      const tentaAlterarProtegido = Object.keys(payload).some(k => camposProtegidos.includes(k));
+      if (tentaAlterarProtegido) {
+        throw new Error(`OPERACAO_BLOQUEADA: Não é permitido alterar dados financeiros de um serviço extra que já se encontra no estágio ${current.pipeline_status}.`);
+      }
+    }
+
     const { data, error } = await operationalClient
       .from('servicos_extras_operacionais')
       .update(payload)
@@ -244,11 +356,8 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
   }
 
   async getWithEmpresas(empresaId?: string, competencia?: string) {
-    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
-    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
-    const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
-    const testIds = testEmpresas?.map(e => e.id) || [];
-    const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
+    const tenantIdScope = await getCurrentTenantId();
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantIdScope);
 
     try {
       let query = operationalClient
@@ -256,18 +365,19 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
         .select(`
           *, 
           empresas(nome),
-          formas_pagamento_operacional(nome),
+          formas_pagamento_operacional(nome, modalidade),
           tipos_servico_operacional(nome)
         `);
+
+      query = EnvironmentQueryFilter.applyEmpresaScope(query as any, {
+        tenantId: tenantIdScope,
+        column: 'empresa_id',
+        includeNullInProduction: false,
+        testIds
+      });
       
       if (empresaId && empresaId !== 'all') {
         query = query.eq('empresa_id', empresaId);
-      } else {
-        if (isHomologacao) {
-           query = query.in('empresa_id', safeTestIds);
-        } else {
-           query = query.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
-        }
       }
       if (competencia) {
         const parts = competencia.split('-');
@@ -287,7 +397,9 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
         }
       }
       
-      const { data, error } = await query.order('data', { ascending: false });
+      const { data, error } = await query
+        .order('criado_em', { ascending: false })
+        .order('id', { ascending: false });
       
       if (error) {
         console.warn('Falha ao buscar serviços extras com empresas, tentando simplificado:', error);
@@ -318,10 +430,15 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
             simpleQuery = simpleQuery.gte('data', `${year}-${String(mo).padStart(2, '0')}-01`).lt('data', nextMonthStr);
           }
         }
-        const { data: simpleData, error: simpleError } = await simpleQuery.order('data', { ascending: false });
+        const { data: simpleData, error: simpleError } = await simpleQuery
+          .order('criado_em', { ascending: false })
+          .order('id', { ascending: false });
         
         if (simpleError) throw simpleError;
-        return simpleData ?? [];
+        return (simpleData ?? []).map((item: any) => ({
+          ...item,
+          created_at: item.created_at ?? item.criado_em
+        }));
       }
         const resultData = data ?? [];
         
@@ -341,6 +458,7 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
 
         return resultData.map((item: any) => ({
           ...item,
+          created_at: item.created_at ?? item.criado_em,
           responsavel_nome: item.criado_por ? (profilesMap[item.criado_por] || null) : null
         }));
     } catch (e) {
@@ -353,6 +471,13 @@ class ServicosExtrasOperacionaisServiceClass extends BaseService<'servicos_extra
     const tenantId = await getCurrentTenantId();
     const userId = await requireAuthenticatedUserId();
     
+    if (payload.empresa_id) {
+      await EnvironmentService.assertEmpresaAllowed({
+        tenantId,
+        empresaId: payload.empresa_id,
+      });
+    }
+
     // Garantir que campos obrigatórios de pipeline e total estejam presentes
     const payloadClean = sanitizePayload({
       ...payload,

@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useNavigate } from "react-router-dom";
+import { useContextualReturn } from "@/hooks/useContextualReturn";
 
 import { OperationalShell } from "@/components/layout/OperationalShell";
 import { Button } from "@/components/ui/button";
@@ -114,6 +115,7 @@ const DiaristasLancamento = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
     const navigate = useNavigate();
+    const { goBackUrl } = useContextualReturn("/producao");
     const { openPipeline } = useOperationalPipeline();
 
     /* Semana selecionada — começa no domingo da semana atual mas exibe de seg–dom */
@@ -531,7 +533,7 @@ const DiaristasLancamento = () => {
     const fecharMutation = useMutation({
         mutationFn: async () => {
             if (!empresaIdSelecionada) throw new Error("Empresa não identificada.");
-            return LoteFechamentoDiaristaService.fecharPeriodo({
+            const res = await LoteFechamentoDiaristaService.fecharPeriodo({
                 empresaId: empresaIdSelecionada,
                 periodoInicio: inicioISO,
                 periodoFim: fimISO,
@@ -540,9 +542,16 @@ const DiaristasLancamento = () => {
                 fechadoPorRole: (perfil as any)?.role || "encarregado",
                 observacoes: `Fechamento semanal: ${labelSemana}`,
             });
+            if ((res as any)?.error) {
+                throw new Error((res as any).error);
+            }
+            if (!res?.id) {
+                throw new Error("Lote não retornado pelo servidor após fechamento.");
+            }
+            return res;
         },
         onSuccess: (lote: any) => {
-            toast.success(`Período fechado. ${lote.total_registros} registro(s). ${formatCurrency(lote.valor_total)}`);
+            toast.success(`Período fechado. ${lote.total_registros ?? 0} registro(s). ${formatCurrency(lote.valor_total ?? 0)}`);
             queryClient.invalidateQueries({ queryKey: ["lancamentos_diaristas_semana", empresaIdSelecionada] });
             queryClient.invalidateQueries({ queryKey: ["historico_recente_diaristas", empresaIdSelecionada] });
             setFechandoPeriodo(false);
@@ -555,7 +564,7 @@ const DiaristasLancamento = () => {
                 empresa: empresaNome,
                 currentStep: "lote_fechado",
             }));
-            navigate("/producao");
+            goBackUrl();
         },
         onError: (err: any) => toast.error("Erro ao fechar período.", { description: err.message }),
     });
@@ -578,8 +587,8 @@ const DiaristasLancamento = () => {
     return (
         <OperationalShell
             title="Lançamento de Diaristas"
-            showBack={false}
-            onBack={() => navigate("/producao")}
+            showBack={true}
+            onBack={() => goBackUrl()}
             hideFab={true}
             pipelineTrigger={diaristasReviewTrigger}
         >
@@ -588,7 +597,7 @@ const DiaristasLancamento = () => {
                 {/* Header: seletor de empresa + unidade + semana */}
                 <section className="esc-card p-5 space-y-4">
                     <div className="flex items-center gap-3">
-                        <button onClick={() => navigate("/producao")} className="text-muted-foreground hover:text-foreground p-1">
+                        <button onClick={() => goBackUrl()} className="text-muted-foreground hover:text-foreground p-1">
                             <ArrowLeft className="w-5 h-5" />
                         </button>
                         <div>

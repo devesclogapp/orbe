@@ -9,13 +9,17 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { ClientProvider } from "@/contexts/ClientContext";
 import { OnboardingProvider } from "@/contexts/OnboardingContext";
-import { AccessControlProvider } from "@/contexts/AccessControlContext";
+import { AccessControlProvider, useAccessControl } from "@/contexts/AccessControlContext";
 import { OperationalPipelineProvider } from "@/contexts/OperationalPipelineContext";
-import { OperationalPipelineModal } from "@/components/layout/OperationalPipelineModal";
+import { OperationalPipelinePresenter } from "@/components/layout/OperationalPipelinePresenter";
 import { AuthGuard } from "@/components/Auth/AuthGuard";
 import { PortalGuard } from "@/components/Auth/PortalGuard";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { getDefaultRouteForRole } from "@/lib/access-control";
 // AI Chat disabled for operational mode
+
+import { ContextualHelpProvider } from "@/contexts/ContextualHelpContext";
+import { ContextualHelpDrawer } from "@/components/help/ContextualHelpDrawer";
 
 // Auth Pages
 import Login from "./pages/Auth/Login";
@@ -39,6 +43,8 @@ import Importacoes from "./pages/Importacoes";
 import Fechamento from "./pages/Fechamento";
 
 // Relatórios e Integração V4
+import CentralRelatoriosOficial from "./pages/Relatorios/CentralRelatoriosOficial";
+import RelatorioVisualizadorOficial from "./pages/Relatorios/RelatorioVisualizadorOficial";
 import RelatoriosHub from "./pages/Relatorios/RelatoriosHub";
 import RelatorioDetalhe from "./pages/Relatorios/RelatorioDetalhe";
 import Agendamentos from "./pages/Relatorios/Agendamentos";
@@ -69,6 +75,9 @@ import ClientApprovals from "./pages/Cliente/ClientApprovals";
 import Configuracoes from "./pages/Configuracoes";
 import Styleguide from "./pages/Styleguide";
 import NotFound from "./pages/NotFound";
+
+// CLT — Ponto & Jornadas CLT Oficial
+import PontoJornadasClt from "./pages/Clt/PontoJornadasClt";
 
 // V4 — Banco de Horas
 import PainelGeralBH from "./pages/BancoHoras/PainelGeral";
@@ -104,11 +113,32 @@ import RhDiaristasGestao from "./pages/Rh/RhDiaristasGestao";
 import ServicosExtrasRecebidos from "./pages/Operacional/ServicosExtrasRecebidos";
 import CustosExtrasRecebidos from "./pages/Operacional/CustosExtrasRecebidos";
 import IntermitentesRecebidos from "./pages/Operacional/IntermitentesRecebidos";
+import IntermitentesLotes from "./pages/Operacional/IntermitentesLotes";
 
 import DiagnosticoTenant from "./pages/DiagnosticoTenant";
 
 // Onboarding
 import Onboarding from "./pages/Onboarding";
+
+// UX LAB (Prototipação Experimental Isolada)
+import UxLabDashboard from "./pages/UxLab/UxLabDashboard";
+import UxLabTorreOperacional from "./pages/UxLab/UxLabTorreOperacional";
+import UxLabDRE from "./pages/UxLab/UxLabDRE";
+import UxLabRelatoriosHub from "./pages/UxLab/UxLabRelatoriosHub";
+import UxLabRelatorioView from "./pages/UxLab/UxLabRelatorioView";
+import UxLabOperacoesVolume from "./pages/UxLab/UxLabOperacoesVolume";
+import UxLabServicosExtras from "./pages/UxLab/UxLabServicosExtras";
+import UxLabCustosExtras from "./pages/UxLab/UxLabCustosExtras";
+import UxLabAprovacoes from "./pages/UxLab/UxLabAprovacoes";
+import UxLabInconsistencias from "./pages/UxLab/UxLabInconsistencias";
+import UxLabFechamentoCiclos from "./pages/UxLab/UxLabFechamentoCiclos";
+import UxLabReceitas from "./pages/UxLab/UxLabReceitas";
+import UxLabDespesas from "./pages/UxLab/UxLabDespesas";
+import UxLabCentralBancaria from "./pages/UxLab/UxLabCentralBancaria";
+import UxLabInadimplencia from "./pages/UxLab/UxLabInadimplencia";
+import UxLabDesignSystemShowcase from "./pages/UxLab/UxLabDesignSystemShowcase";
+import DevDiaristasDrawersPreview from "./pages/Dev/DevDiaristasDrawersPreview";
+import DevIntermitentesDrawersPreview from "./pages/Dev/DevIntermitentesDrawersPreview";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -124,6 +154,12 @@ const queryClient = new QueryClient({
   },
 });
 
+const RootRedirect: React.FC = () => {
+  const { role } = useAccessControl();
+  const destination = getDefaultRouteForRole(role);
+  return <Navigate to={destination} replace />;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
@@ -138,8 +174,10 @@ const App = () => (
                       <Toaster />
                       <Sonner />
                       <BrowserRouter>
-                        <OperationalPipelineModal />
-                        <ErrorBoundary>
+                        <ContextualHelpProvider>
+                          <OperationalPipelinePresenter />
+                          <ContextualHelpDrawer />
+                          <ErrorBoundary>
                           <Routes>
                             {/* Public Auth Routes */}
                             <Route path="/login" element={<Login />} />
@@ -151,10 +189,28 @@ const App = () => (
                             <Route path="/verificar-email" element={<VerificarEmail />} />
 
                             {/* Protected Routes */}
+                            {/* RH-01: ROTA CANÔNICA PONTO & JORNADAS CLT */}
+                            <Route path="/clt/pontos" element={<AuthGuard><PontoJornadasClt /></AuthGuard>} />
+
+                            {/* ALIASES ROTAS CONTEXTUAIS (FASE 1A) */}
+                            <Route path="/diaristas/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="DIARISTA" lockedFlow={true} /></AuthGuard>} />
+                            <Route path="/intermitentes/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="INTERMITENTE" lockedFlow={true} /></AuthGuard>} />
+                            <Route path="/clt/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="PONTO" lockedFlow={true} /></AuthGuard>} />
+                            <Route path="/intermitentes/inconsistencias" element={<AuthGuard><Inconsistencias flowType="INTERMITENTE" lockedFlow={true} /></AuthGuard>} />
+                            <Route path="/clt/banco-horas" element={<AuthGuard><PainelGeralBH /></AuthGuard>} />
+                            <Route path="/operacoes-volume" element={<AuthGuard><Operacoes /></AuthGuard>} />
+                            <Route path="/operacoes-volume/nova" element={<AuthGuard><LancamentoProducao /></AuthGuard>} />
+                            <Route path="/operacoes-volume/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="OPERAÇÃO" lockedFlow={true} /></AuthGuard>} />
+                            <Route path="/servicos-extras/novo" element={<AuthGuard><ServicosExtrasLancamento /></AuthGuard>} />
+                            <Route path="/servicos-extras/lancamentos" element={<AuthGuard><ServicosExtrasRecebidos /></AuthGuard>} />
+                            <Route path="/servicos-extras/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="SERVIÇO EXTRA" lockedFlow={true} /></AuthGuard>} />
+                            <Route path="/custos-extras/novo" element={<AuthGuard><CustosExtrasLancamento /></AuthGuard>} />
+                            <Route path="/custos-extras/lancamentos" element={<AuthGuard><CustosExtrasRecebidos /></AuthGuard>} />
+                            <Route path="/custos-extras/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="CUSTO EXTRA" lockedFlow={true} /></AuthGuard>} />
                             <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
-                            <Route path="/" element={<Navigate to="/operacional/dashboard" replace />} />
+                            <Route path="/" element={<AuthGuard><RootRedirect /></AuthGuard>} />
                             <Route path="/central" element={<AuthGuard><CentralOperacional /></AuthGuard>} />
-                            <Route path="/operacional" element={<Navigate to="/operacional/dashboard" replace />} />
+                            <Route path="/operacional" element={<AuthGuard><RootRedirect /></AuthGuard>} />
                             <Route path="/operacional/dashboard" element={<AuthGuard><Dashboard /></AuthGuard>} />
                             <Route path="/operacional/pontos" element={<AuthGuard><Pontos /></AuthGuard>} />
                             <Route path="/operacional/operacoes" element={<AuthGuard><Operacoes /></AuthGuard>} />
@@ -162,6 +218,8 @@ const App = () => (
                             <Route path="/operacional/servicos-extras" element={<AuthGuard><ServicosExtrasRecebidos /></AuthGuard>} />
                             <Route path="/operacional/custos-extras" element={<AuthGuard><CustosExtrasRecebidos /></AuthGuard>} />
                             <Route path="/operacional/intermitentes" element={<AuthGuard><IntermitentesRecebidos /></AuthGuard>} />
+                            <Route path="/operacional/intermitentes/lotes" element={<AuthGuard><IntermitentesLotes /></AuthGuard>} />
+                            <Route path="/intermitentes/lotes" element={<AuthGuard><IntermitentesLotes /></AuthGuard>} />
                             <Route path="/producao" element={<AuthGuard><LancamentoProducao /></AuthGuard>} />
                             <Route path="/producao/diaristas" element={<AuthGuard><DiaristasLancamento /></AuthGuard>} />
                             <Route path="/producao/custos-extras" element={<AuthGuard><CustosExtrasLancamento /></AuthGuard>} />
@@ -200,7 +258,6 @@ const App = () => (
                             <Route path="/financeiro/remessa/historico" element={<AuthGuard><HistoricoRemessas /></AuthGuard>} />
                             <Route path="/financeiro/retorno" element={<AuthGuard><RetornoBancario /></AuthGuard>} />
                             <Route path="/financeiro/contas-bancarias" element={<AuthGuard><ContasBancarias /></AuthGuard>} />
-                            <Route path="/financeiro/dre" element={<AuthGuard><RelatorioDRE /></AuthGuard>} />
 
                             {/* Portal Cliente V3 */}
                             <Route path="/cliente/dashboard" element={<PortalGuard><ClientDashboard /></PortalGuard>} />
@@ -209,8 +266,8 @@ const App = () => (
 
                             <Route path="/fechamento" element={<AuthGuard><Fechamento /></AuthGuard>} />
 
-                            {/* Relatórios e Integração V4 */}
-                            <Route path="/relatorios" element={<AuthGuard><CentralRelatoriosIntegracoes /></AuthGuard>} />
+                            {/* Relatórios e Integração V4 — Oficial e Legado */}
+                            <Route path="/relatorios" element={<AuthGuard><CentralRelatoriosOficial /></AuthGuard>} />
                             <Route path="/relatorios/legado" element={<AuthGuard><RelatoriosHub /></AuthGuard>} />
                             <Route path="/relatorios/detalhe/:id" element={<AuthGuard><RelatorioDetalhe /></AuthGuard>} />
                             <Route path="/relatorios/agendamentos" element={<AuthGuard><Agendamentos /></AuthGuard>} />
@@ -218,6 +275,8 @@ const App = () => (
                             <Route path="/relatorios/integracao" element={<AuthGuard><IntegracaoContabil /></AuthGuard>} />
                             <Route path="/relatorios/mapeamento" element={<AuthGuard><MapeamentoContabil /></AuthGuard>} />
                             <Route path="/relatorios/integracao/logs" element={<AuthGuard><LogsIntegracao /></AuthGuard>} />
+                            <Route path="/relatorios/integracoes" element={<AuthGuard><CentralRelatoriosIntegracoes /></AuthGuard>} />
+                            <Route path="/relatorios/:reportId" element={<AuthGuard><RelatorioVisualizadorOficial /></AuthGuard>} />
 
                             {/* Banco de Horas V4 */}
                             <Route path="/banco-horas" element={<AuthGuard><PainelGeralBH /></AuthGuard>} />
@@ -239,11 +298,36 @@ const App = () => (
                             {/* Development Tools */}
                             <Route path="/styleguide" element={<Styleguide />} />
                             <Route path="/diag-tenant" element={<DiagnosticoTenant />} />
+                            <Route path="/ux-lab" element={<UxLabDashboard />} />
+                            <Route path="/ux-lab/torre" element={<UxLabTorreOperacional />} />
+                            <Route path="/ux-lab/operacoes-volume" element={<UxLabOperacoesVolume />} />
+                            <Route path="/ux-lab/servicos-extras" element={<UxLabServicosExtras />} />
+                            <Route path="/ux-lab/custos-extras" element={<UxLabCustosExtras />} />
+                            <Route path="/ux-lab/aprovacoes" element={<UxLabAprovacoes />} />
+                            <Route path="/ux-lab/inconsistencias" element={<UxLabInconsistencias />} />
+                            <Route path="/ux-lab/fechamento-ciclos" element={<UxLabFechamentoCiclos />} />
+                            <Route path="/ux-lab/fechamento" element={<Navigate to="/ux-lab/fechamento-ciclos" replace />} />
+                            <Route path="/ux-lab/receitas" element={<UxLabReceitas />} />
+                            <Route path="/ux-lab/despesas" element={<UxLabDespesas />} />
+                            <Route path="/ux-lab/central-bancaria" element={<UxLabCentralBancaria />} />
+                            <Route path="/ux-lab/inadimplencia" element={<UxLabInadimplencia />} />
+                            <Route path="/ux-lab/dre" element={<UxLabDRE />} />
+                            <Route path="/ux-lab/relatorios" element={<UxLabRelatoriosHub />} />
+                            <Route path="/ux-lab/relatorios/:reportId" element={<UxLabRelatorioView />} />
+                            <Route path="/ux-lab/design-system" element={<UxLabDesignSystemShowcase />} />
+                            <Route path="/uxlab" element={<Navigate to="/ux-lab" replace />} />
+                            {import.meta.env.DEV && (
+                              <>
+                                <Route path="/dev/diaristas-drawers" element={<DevDiaristasDrawersPreview />} />
+                                <Route path="/dev/intermitentes-drawers" element={<DevIntermitentesDrawersPreview />} />
+                              </>
+                            )}
 
                             <Route path="*" element={<NotFound />} />
                           </Routes>
                         </ErrorBoundary>
-                      </BrowserRouter>
+                      </ContextualHelpProvider>
+                    </BrowserRouter>
                     </TooltipProvider>
                   </OperationalPipelineProvider>
                 </SelectionProvider>

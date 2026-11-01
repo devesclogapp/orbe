@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
-import { format } from "date-fns";
+import { useMemo, useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Pencil } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Pencil, ChevronLeft, ChevronRight, FileSpreadsheet, AlertTriangle } from "lucide-react";
 import { cn, decimalParaHora } from "@/lib/utils";
+import { OrbeStatusBadge, OrbeSemanticStatus } from "@/components/ux-lab/design-system/OrbeStatusBadge";
 
-type IntermitenteItem = {
+export type IntermitenteItem = {
     id: string;
     data_referencia?: string | null;
     empresa_id?: string | null;
@@ -24,11 +25,15 @@ type IntermitenteItem = {
     total?: number | null;
     status_pipeline?: string | null;
     origem?: string | null;
+    motivo_devolucao?: string | null;
+    observacoes?: string | null;
+    lote_fechamento_id?: string | null;
 };
 
-type IntermitentesTableBlockProps = {
+export type IntermitentesTableBlockProps = {
     data: IntermitenteItem[];
     onEdit?: (item: IntermitenteItem) => void;
+    pageSizeDefault?: number;
 };
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -43,107 +48,211 @@ const formatDate = (value?: string | null) => {
     return date.toLocaleDateString("pt-BR");
 };
 
-export function IntermitentesTableBlock({ data, onEdit }: IntermitentesTableBlockProps) {
+/**
+ * FIX-INT-05 / ETAPA 04A: Padronização Canônica de Status dos Intermitentes
+ * Utiliza o componente oficial OrbeStatusBadge do Design System.
+ * Mapeia todos os estados suportados pelo domínio de forma unívoca, sem agrupamento artificial,
+ * sem animações pulsantes exclusivas e sem inventar equivalências para status desconhecidos.
+ */
+export function getIntermitenteStatusBadge(status?: string | null) {
+    const raw = (status || "").trim().toUpperCase();
+    switch (raw) {
+        case "RECEBIDO":
+            return <OrbeStatusBadge status="info" label="RECEBIDO" />;
+        case "FECHADO":
+            return <OrbeStatusBadge status="warning" label="FECHADO" />;
+        case "EM_LOTE":
+            return <OrbeStatusBadge status="warning" label="EM LOTE" />;
+        case "AGUARDANDO_RH":
+        case "AGUARDANDO_VALIDACAO_RH":
+            return <OrbeStatusBadge status="warning" label="AGUARDANDO RH" />;
+        case "EM_ANALISE_RH":
+            return <OrbeStatusBadge status="warning" label="EM ANÁLISE RH" />;
+        case "VALIDADO_RH":
+            return <OrbeStatusBadge status="success" label="VALIDADO RH" />;
+        case "APROVADO_RH":
+        case "APROVADO":
+            return <OrbeStatusBadge status="success" label="APROVADO RH" />;
+        case "ENVIADO_FINANCEIRO":
+            return <OrbeStatusBadge status="info" label="ENVIADO AO FINANCEIRO" />;
+        case "FECHADO_FINANCEIRO":
+            return <OrbeStatusBadge status="info" label="FECHADO FINANCEIRO" />;
+        case "PAGO":
+            return <OrbeStatusBadge status="success" label="PAGO" />;
+        case "DEVOLVIDO":
+            return <OrbeStatusBadge status="danger" label="DEVOLVIDO" />;
+        case "REJEITADO":
+        case "REJEITADO_RH":
+            return <OrbeStatusBadge status="danger" label="REJEITADO RH" />;
+        case "CANCELADO":
+            return <OrbeStatusBadge status="neutral" label="CANCELADO" />;
+        case "":
+            return <OrbeStatusBadge status="neutral" label="SEM STATUS" showDot={false} />;
+        default:
+            return <OrbeStatusBadge status="neutral" label={raw} showDot={false} />;
+    }
+}
+
+export function IntermitentesTableBlock({ data, onEdit, pageSizeDefault = 25 }: IntermitentesTableBlockProps) {
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(pageSizeDefault);
+
+    // Reseta para a primeira página caso os filtros ou a pesquisa alterem a quantidade de registros
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [data.length]);
+
+    const totalPages = Math.max(1, Math.ceil(data.length / pageSize));
+    const validCurrentPage = Math.min(currentPage, totalPages);
+
+    const paginatedData = useMemo(() => {
+        const start = (validCurrentPage - 1) * pageSize;
+        return data.slice(start, start + pageSize);
+    }, [data, validCurrentPage, pageSize]);
+
     return (
-        <div className="space-y-4 p-5 pt-2 min-w-0 overflow-hidden">
-            <div className="w-full overflow-x-auto pb-2 scrollbar-thin">
-                <div className="max-h-[70vh] overflow-auto rounded-xl border border-border bg-background pb-[1px]">
-                    <table className="w-full text-[11px] min-w-max">
-                        <thead className="bg-muted/95 backdrop-blur-sm sticky top-0 z-20">
-                            <tr className="text-center font-display text-muted-foreground uppercase text-[10px] tracking-wide">
-                                <th className="px-2 py-2 font-semibold text-center">DATA</th>
-                                <th className="px-2 py-2 font-semibold text-center">EMPRESA / DEP.</th>
-                                <th className="px-2 py-2 font-semibold text-center text-left">COLABORADOR</th>
-                                <th className="px-2 py-2 font-semibold text-center">CARGO</th>
-                                <th className="px-2 py-2 font-semibold text-center">CONVOCAÇÃO</th>
-                                <th className="px-2 py-2 font-semibold text-center border-l border-border/40">H. TRAB.</th>
-                                <th className="px-2 py-2 font-semibold text-center">NORMAIS</th>
-                                <th className="px-2 py-2 font-semibold text-center">HE 50%</th>
-                                <th className="px-2 py-2 font-semibold text-center">HE 100%</th>
-                                <th className="px-2 py-2 font-semibold text-center border-r border-border/40">NOTURNA</th>
-                                <th className="px-2 py-2 font-semibold text-center">TOTAL</th>
-                                <th className="px-2 py-2 font-semibold text-center">STATUS RH</th>
-                                <th className="px-2 py-2 font-semibold text-center">ORIGEM</th>
-                                {onEdit && <th className="px-2 py-2 font-semibold text-center">AÇÕES</th>}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {data.map((item) => (
-                                <tr
-                                    key={item.id}
-                                    className="esc-table-row cursor-pointer transition-all border-b border-border last:border-0 hover:bg-muted/50"
-                                >
-                                    <td className="px-2 py-1.5 text-center text-muted-foreground whitespace-nowrap">
-                                        {formatDate(item.data_referencia)}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-center text-muted-foreground whitespace-nowrap max-w-[120px] truncate" title={item.empresas?.nome || item.departamento || ""}>
-                                        {item.empresas?.nome || item.departamento || "—"}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-left font-medium whitespace-nowrap max-w-[180px] truncate" title={item.colaboradores?.nome || item.nome_colaborador || ""}>
-                                        {item.colaboradores?.nome || item.nome_colaborador || "—"}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-center text-muted-foreground whitespace-nowrap max-w-[120px] truncate" title={item.cargo || ""}>
-                                        {item.cargo || "—"}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-center text-muted-foreground whitespace-nowrap max-w-[140px] truncate" title={item.convocacao || ""}>
-                                        {item.convocacao || "—"}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-center text-muted-foreground whitespace-nowrap font-display font-medium border-l border-border/40">
-                                        {decimalParaHora(item.horas_trabalhadas)}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-center text-muted-foreground whitespace-nowrap font-display font-medium">
-                                        {decimalParaHora(item.horas_normais)}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-center text-muted-foreground whitespace-nowrap font-display font-medium">
-                                        {decimalParaHora(item.he_50)}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-center text-muted-foreground whitespace-nowrap font-display font-medium">
-                                        {decimalParaHora(item.he_100)}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-center text-muted-foreground whitespace-nowrap font-display font-medium border-r border-border/40">
-                                        {decimalParaHora(item.hora_noturna)}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-center text-foreground whitespace-nowrap font-display font-semibold">
-                                        {item.total !== null && item.total !== undefined
-                                            ? currencyFormatter.format(Number(item.total))
-                                            : "—"}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-center whitespace-nowrap">
-                                        <Badge variant="outline" className={cn(
-                                            "text-[10px] px-1.5 py-0",
-                                            item.status_pipeline === 'APROVADO_RH' ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
-                                                item.status_pipeline === 'DEVOLVIDO' ? "bg-rose-50 text-rose-600 border-rose-200" :
-                                                    "bg-amber-50 text-amber-600 border-amber-200"
-                                        )}>
-                                            {item.status_pipeline?.toUpperCase().replace(/_/g, ' ') || 'RECEBIDO'}
-                                        </Badge>
-                                    </td>
-                                    <td className="px-2 py-1.5 text-center whitespace-nowrap">
-                                        <Badge variant="secondary" className="text-[9px] uppercase px-1.5 py-0">
-                                            {item.origem || "—"}
-                                        </Badge>
-                                    </td>
-                                    {onEdit && (
-                                        <td className="px-2 py-1.5 text-center whitespace-nowrap">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-7 w-7 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.05)] border border-transparent hover:border-indigo-100"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onEdit(item);
-                                                }}
-                                            >
-                                                <Pencil size={13} strokeWidth={2.5} />
-                                            </Button>
-                                        </td>
-                                    )}
+        <TooltipProvider>
+            <div className="space-y-3 p-4 pt-1 min-w-0 overflow-hidden">
+                <div className="w-full overflow-x-auto pb-2 scrollbar-thin">
+                    <div className="max-h-[68vh] overflow-auto rounded-xl border border-border bg-card">
+                        <table className="w-full text-[11px] min-w-max border-collapse">
+                            <thead className="bg-muted/90 backdrop-blur-sm sticky top-0 z-20 border-b border-border shadow-xs">
+                                <tr className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider">
+                                    <th className="px-3 py-2.5 text-center w-[85px]">DATA</th>
+                                    <th className="px-3 py-2.5 text-left min-w-[130px] max-w-[160px]">EMPRESA / DEP.</th>
+                                    <th className="px-3 py-2.5 text-left min-w-[160px] max-w-[200px]">COLABORADOR</th>
+                                    <th className="px-3 py-2.5 text-left min-w-[110px] max-w-[140px]">CARGO</th>
+                                    <th className="px-3 py-2.5 text-left min-w-[120px] max-w-[150px]">CONVOCAÇÃO</th>
+                                    <th className="px-2.5 py-2.5 text-center border-l border-border/40 w-[75px]">H. TRAB.</th>
+                                    <th className="px-2.5 py-2.5 text-center w-[70px]">NORMAIS</th>
+                                    <th className="px-2.5 py-2.5 text-center w-[70px]">HE 50%</th>
+                                    <th className="px-2.5 py-2.5 text-center w-[70px]">HE 100%</th>
+                                    <th className="px-2.5 py-2.5 text-center border-r border-border/40 w-[75px]">NOTURNA</th>
+                                    <th className="px-3 py-2.5 text-right w-[95px]">TOTAL</th>
+                                    <th className="px-3 py-2.5 text-center w-[125px]">STATUS RH</th>
+                                    <th className="px-2.5 py-2.5 text-center w-[80px]">ORIGEM</th>
+                                    {onEdit && <th className="px-2 py-2.5 text-center w-[60px]">AÇÕES</th>}
                                 </tr>
-                            ))}
+                            </thead>
+                            <tbody className="divide-y divide-border/60">
+                                {paginatedData.map((item) => (
+                                    <tr
+                                        key={item.id}
+                                        className="transition-colors hover:bg-muted/40 cursor-default"
+                                    >
+                                        <td className="px-3 py-2 text-center text-muted-foreground whitespace-nowrap font-mono text-[11px]">
+                                            {formatDate(item.data_referencia)}
+                                        </td>
+                                        <td className="px-3 py-2 text-left text-muted-foreground whitespace-nowrap max-w-[160px] truncate" title={item.empresas?.nome || item.departamento || ""}>
+                                            <span className="font-medium text-foreground">
+                                                {item.empresas?.nome || item.departamento || "—"}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-left font-medium whitespace-nowrap max-w-[200px] truncate" title={item.colaboradores?.nome || item.nome_colaborador || ""}>
+                                            <span className="text-foreground">
+                                                {item.colaboradores?.nome || item.nome_colaborador || "—"}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 py-2 text-left text-muted-foreground whitespace-nowrap max-w-[140px]">
+                                            {item.cargo ? (
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <span className="block truncate cursor-default">
+                                                            {item.cargo}
+                                                        </span>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="top" className="text-xs">
+                                                        {item.cargo}
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            ) : (
+                                                "—"
+                                            )}
+                                        </td>
+                                        <td className="px-3 py-2 text-left text-muted-foreground whitespace-nowrap max-w-[150px] truncate" title={item.convocacao || ""}>
+                                            {item.convocacao || "—"}
+                                        </td>
+                                        <td className="px-2.5 py-2 text-center text-foreground whitespace-nowrap font-mono font-medium border-l border-border/40 bg-muted/10">
+                                            {decimalParaHora(item.horas_trabalhadas)}
+                                        </td>
+                                        <td className="px-2.5 py-2 text-center text-muted-foreground whitespace-nowrap font-mono">
+                                            {decimalParaHora(item.horas_normais)}
+                                        </td>
+                                        <td className="px-2.5 py-2 text-center text-muted-foreground whitespace-nowrap font-mono">
+                                            {decimalParaHora(item.he_50)}
+                                        </td>
+                                        <td className="px-2.5 py-2 text-center text-muted-foreground whitespace-nowrap font-mono">
+                                            {decimalParaHora(item.he_100)}
+                                        </td>
+                                        <td className="px-2.5 py-2 text-center text-muted-foreground whitespace-nowrap font-mono border-r border-border/40">
+                                            {decimalParaHora(item.hora_noturna)}
+                                        </td>
+                                        <td className="px-3 py-2 text-right text-foreground whitespace-nowrap font-mono font-semibold">
+                                            {item.total !== null && item.total !== undefined
+                                                ? currencyFormatter.format(Number(item.total))
+                                                : "—"}
+                                        </td>
+                                        <td className="px-3 py-2 text-center whitespace-nowrap">
+                                            <div className="inline-flex items-center justify-center gap-1.5">
+                                                {getIntermitenteStatusBadge(item.status_pipeline)}
+                                                {(item.motivo_devolucao || (item.status_pipeline === "DEVOLVIDO" && item.observacoes)) && (
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <span className="inline-flex items-center text-rose-600 dark:text-rose-400 cursor-help" aria-label="Motivo da devolução">
+                                                                <AlertTriangle className="h-3.5 w-3.5" />
+                                                            </span>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="top" className="max-w-xs text-xs font-normal">
+                                                            <p className="font-semibold text-rose-500 mb-0.5">Motivo da Devolução:</p>
+                                                            <p>{item.motivo_devolucao || item.observacoes}</p>
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-2.5 py-2 text-center whitespace-nowrap">
+                                            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border/50">
+                                                {item.origem || "TIO DIGITAL"}
+                                            </span>
+                                        </td>
+                                        {onEdit && (
+                                            <td className="px-2 py-2 text-center whitespace-nowrap">
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10 rounded-md transition-colors"
+                                                            aria-label="Corrigir horas ou atribuir empresa a este colaborador"
+                                                            title="Corrigir horas ou atribuir empresa a este colaborador"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                onEdit(item);
+                                                            }}
+                                                        >
+                                                            <Pencil className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="left" className="text-xs">
+                                                        Corrigir horas ou atribuir empresa a este colaborador
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </td>
+                                        )}
+                                    </tr>
+                                ))}
                             {data.length === 0 && (
                                 <tr>
-                                    <td colSpan={onEdit ? 14 : 13} className="px-3 py-10 text-center text-muted-foreground">
-                                        Nenhum registro de intermitentes encontrado para o período.
+                                    <td colSpan={onEdit ? 14 : 13} className="px-4 py-16 text-center text-muted-foreground">
+                                        <div className="flex flex-col items-center justify-center space-y-2">
+                                            <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-muted-foreground">
+                                                <FileSpreadsheet className="h-5 w-5" />
+                                            </div>
+                                            <p className="text-sm font-medium text-foreground">Nenhum registro de intermitente encontrado</p>
+                                            <p className="text-xs text-muted-foreground max-w-sm">
+                                                Não há apontamentos capturados para os filtros aplicados neste período.
+                                            </p>
+                                        </div>
                                     </td>
                                 </tr>
                             )}
@@ -151,6 +260,63 @@ export function IntermitentesTableBlock({ data, onEdit }: IntermitentesTableBloc
                     </table>
                 </div>
             </div>
+
+            {/* Paginação Compacta */}
+            {data.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-1 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                        <span>
+                            Mostrando <strong className="font-medium text-foreground">{Math.min((validCurrentPage - 1) * pageSize + 1, data.length)}</strong> a{" "}
+                            <strong className="font-medium text-foreground">{Math.min(validCurrentPage * pageSize, data.length)}</strong> de{" "}
+                            <strong className="font-medium text-foreground">{data.length}</strong> registros
+                        </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5 mr-2">
+                            <span>Exibir:</span>
+                            <select
+                                className="h-7 rounded border border-border bg-background px-2 text-xs text-foreground focus:outline-hidden"
+                                value={pageSize}
+                                onChange={(e) => {
+                                    setPageSize(Number(e.target.value));
+                                    setCurrentPage(1);
+                                }}
+                            >
+                                <option value={15}>15</option>
+                                <option value={25}>25</option>
+                                <option value={50}>50</option>
+                                <option value={100}>100</option>
+                            </select>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 w-7 p-0"
+                                disabled={validCurrentPage <= 1}
+                                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            >
+                                <ChevronLeft className="h-3.5 w-3.5" />
+                            </Button>
+                            <span className="px-2 font-mono text-[11px]">
+                                {validCurrentPage} / {totalPages}
+                            </span>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 w-7 p-0"
+                                disabled={validCurrentPage >= totalPages}
+                                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                            >
+                                <ChevronRight className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
+    </TooltipProvider>
     );
 }

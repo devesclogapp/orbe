@@ -13,9 +13,13 @@ export class CNABWriterFactory {
       case '341':
         return new CNAB240ItauWriter();
       case '001':
-      default:
-        // Por padrão (legado), retorna o do BB caso não especificado ou se for 001
         return new CNAB240BBWriter();
+      default:
+        throw new Error(`Banco ${codigoBanco} ainda não possui layout CNAB240 homologado no ORBE.`);
     }
+  }
+
+  static createWriter(codigoBanco: string): ICNAB240Writer {
+    return this.create(codigoBanco);
   }
 }

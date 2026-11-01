@@ -49,13 +49,18 @@ serve(async (req) => {
       .insert({
         tenant_id,
         origem: 'tio_digital',
+        workflow: 'importar-intermitentes-tio',
+        nome_arquivo: rootArquivoOrigem || `tio_digital_${Date.now()}.json`,
         quantidade_registros: totalRecebidos,
+        quantidade_recebida: totalRecebidos,
         status: 'VALIDANDO'
       })
       .select('id')
       .single();
 
-    if (histError) console.error("[ERROR] Hitórico falhou:", histError);
+    if (histError) {
+      console.error("[CRITICAL] Falha ao registrar historico_importacoes:", histError);
+    }
     const importacaoId = historico?.id;
 
     // Buscar colaboradores do tenant para mapeamento
@@ -294,6 +299,9 @@ serve(async (req) => {
        await supabase.from('historico_importacoes').update({
             status: finalStatus,
             quantidade_registros: totalRecebidos,
+            quantidade_importada: toInsert.length + toUpdate.length,
+            quantidade_ignorada: ignorados,
+            finalizado_em: new Date().toISOString(),
             logs: logsInconsistentes.length > 0 ? logsInconsistentes : null 
           })
           .eq('id', importacaoId);
@@ -302,6 +310,8 @@ serve(async (req) => {
     return new Response(JSON.stringify({
        success: true,
        message: "Importação de Intermitentes Tio Digital concluída.",
+       importacao_id: importacaoId || null,
+       aviso_rastreabilidade: histError ? `Aviso: Falha ao registrar historico_importacoes (${histError.message})` : null,
        recebidos: totalRecebidos,
        inseridos: toInsert.length,
        atualizados: toUpdate.length,

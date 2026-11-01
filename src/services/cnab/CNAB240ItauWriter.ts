@@ -1,6 +1,7 @@
 import { ICNAB240Writer, CNAB240GenerateOptions, CNAB240Result } from './types';
 import { CNABBase } from './CNABBase';
 import { CnabRemessaArquivoService } from './cnabRemessaArquivo.service';
+import { gerarRelatorioSimulacaoHomologacao } from './simulacaoHomologacao.service';
 
 /**
  * Utilitários puros sem regras de negócio (padding, string manipulation)
@@ -54,14 +55,21 @@ export class CNAB240ItauWriter implements ICNAB240Writer {
       competencia,
       contaBancariaId,
       rhLoteId,
-      modo = 'producao',
+      modo,
       salvarConteudo = true,
     } = options;
 
     const inconsistencias: string[] = [];
     const now = new Date();
 
-    const { conta, faturas, valorEsperadoLote } = await CNABBase.fetchLoteData(loteId, contaBancariaId, rhLoteId);
+    const { conta, faturas, valorEsperadoLote, isTeste } = await CNABBase.fetchLoteData(loteId, contaBancariaId, rhLoteId);
+
+    // Determinação estrita e canônica do modo via empresas.is_teste (Fail-Closed)
+    // A autoridade de empresas.is_teste prevalece absolutamente sobre qualquer parâmetro recebido
+    const modoEfetivo: 'homologacao' | 'producao' =
+      typeof isTeste === 'boolean'
+        ? (isTeste ? 'homologacao' : 'producao')
+        : (modo === 'homologacao' ? 'homologacao' : 'producao');
 
     if (!faturas.length) {
       throw new Error('Lote vazio - nenhuma fatura encontrada para geração CNAB Itaú SISPAG.');
@@ -156,7 +164,7 @@ export class CNAB240ItauWriter implements ICNAB240Writer {
       strRight('', 11) +                // 177-187: Complemento
       strRight(conta.empresas?.cidade ?? 'SAO PAULO', 15) + // 188-202: Cidade
       ' ' +                             // 203-203: Branco
-      strRight(conta.empresas?.estado ?? 'SP', 2) + // 204-205: Estado
+      strRight(conta.empresas?.estado ?? '', 2) + // 204-205: Estado
       strRight('', 8) +                 // 206-213: CEP
       strRight('', 27);                 // 214-240: Brancos complementares
 
@@ -311,49 +319,68 @@ export class CNAB240ItauWriter implements ICNAB240Writer {
 
     linhas.push(garantir240(trailerArquivo, 'Trailer Arquivo'));
 
-    // Montar buffer final TXT
-    const content = linhas.join('\r\n') + '\r\n';
-    
-    // Nomenclatura isolada e aderente ao ITAU
+    let content: string;
+    let fileName: string;
     const seqFormatado = String(sequencialGlobal).padStart(6, '0');
-    // CNAB240_ITAU_YYYYMMDD_SEQ000001.txt
-    const fileName = `CNAB240_ITAU_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_SEQ${seqFormatado}.txt`;
+
+    // Se for HOMOLOGAÇÃO, gerar exclusivamente relatório de simulação canônico ORBE_SIMULACAO_CNAB_V1
+    if (modoEfetivo === 'homologacao') {
+      const modalidadeSimulacao = rhLoteId ? 'CLT' : 'FATURA';
+      const relatorio = gerarRelatorioSimulacaoHomologacao({
+        origem: modalidadeSimulacao,
+        empresaNome: conta.empresas?.nome || 'EMPRESA HOMOLOGACAO',
+        bancoCodigo: '341',
+        bancoNome: 'BANCO ITAÚ (341)',
+        sequencial: sequencialGlobal,
+        totalRegistros: totalQtdRegistrosArquivo,
+        totalValor: totalValorLote,
+        beneficiarios: faturas.map((f: any) => ({
+          nome: f.colaborador?.nome || f.favorecido_nome || 'FAVORECIDO',
+          valor: Number(f.valor ?? 0),
+          cpf: f.colaborador?.cpf || f.favorecido_cpf,
+        })),
+      });
+      fileName = relatorio.fileName;
+      content = relatorio.content;
+    } else {
+      content = linhas.join('\r\n') + '\r\n';
+      fileName = `CNAB240_ITAU_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_SEQ${seqFormatado}.txt`;
+    }
 
     let arquivoRegistrado: any;
 
     const itensParaRpc = faturas.map(fura => {
       const rec = fura as any;
-      const tipo = rhLoteId ? 'RH_FINANCEIRO_ITEM' : 'FATURA';
+      const tipo = rhLoteId ? 'CLT' : 'FATURA';
       return {
         origem_tipo: tipo,
         origem_id: rec.id,
         fatura_id: tipo === 'FATURA' ? rec.id : undefined,
-        lote_item_id: tipo === 'RH_FINANCEIRO_ITEM' ? rec.id : undefined,
+        lote_item_id: tipo === 'CLT' ? rec.id : undefined,
         valor: Number(rec.valor ?? 0)
       };
     });
 
-    try {
-      arquivoRegistrado = await CnabRemessaArquivoService.registrar({
-        loteId,
-        nomeArquivo: fileName,
-        conteudoArquivo: salvarConteudo ? content : '',
-        totalRegistros: totalQtdRegistrosArquivo,
-        totalValor: totalValorLote,
-        bancoCodigo: '341',
-        bancoNome: 'BANCO ITAU SA',
-        contaBancariaId,
-        competencia,
-        modo,
-        sequencialArquivo: sequencialGlobal,
-        itens: itensParaRpc,
-      });
-    } catch (regErr: any) {
-      if (regErr.message.includes('já possui remessa') || regErr.message.includes('idêntico')) {
-        throw regErr;
-      }
-      inconsistencias.push(`Aviso: Não foi possível registrar metadados do arquivo: ${regErr.message}`);
-      arquivoRegistrado = { id: 'nao-registrado' };
+    arquivoRegistrado = await CnabRemessaArquivoService.registrar({
+      loteId,
+      rhLoteId: rhLoteId || undefined,
+      nomeArquivo: fileName,
+      conteudoArquivo: salvarConteudo ? content : '',
+      totalRegistros: totalQtdRegistrosArquivo,
+      quantidadeItensFinanceiros: itensParaRpc.length,
+      quantidadeRegistrosCnab: totalQtdRegistrosArquivo,
+      totalValor: totalValorLote,
+      bancoCodigo: '341',
+      bancoNome: 'BANCO ITAU SA',
+      contaBancariaId,
+      competencia,
+      modo: modoEfetivo,
+      sequencialArquivo: sequencialGlobal,
+      itens: itensParaRpc,
+    });
+
+    if (!arquivoRegistrado?.id || arquivoRegistrado.id === 'nao-registrado') {
+      throw new Error('Falha de persistência CNAB: O arquivo não foi registrado com sucesso no banco de dados.');
     }
 
     const hash = await CnabRemessaArquivoService.generateHash(content);
@@ -366,6 +393,7 @@ export class CNAB240ItauWriter implements ICNAB240Writer {
       sequencial: sequencialGlobal,
       hash,
       arquivoId: arquivoRegistrado.id,
+      modo: (arquivoRegistrado as any).modo,
       inconsistencias,
     };
   }

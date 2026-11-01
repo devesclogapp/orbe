@@ -23,11 +23,13 @@ import { EmpresaService, UnidadeOperacionalService, FornecedorService, Transport
 import { ServicosEspecificosRegrasService, ServicosEspecificosLancamentoService } from '@/services/domain/servicos_especificos.service';
 import { FornecedorValorServicoService } from '@/services/domain/core.service';
 import { formatCurrency } from '@/lib/utils';
+import { useContextualReturn } from '@/hooks/useContextualReturn';
 
 export default function ServicosEspecificosLancamento() {
     const { tenantId } = useTenant();
     const { user } = useAuth();
     const navigate = useNavigate();
+  const { goBackUrl } = useContextualReturn("/producao");
     const queryClient = useQueryClient();
 
     const [empresaId, setEmpresaId] = useState('');
@@ -104,6 +106,7 @@ export default function ServicosEspecificosLancamento() {
         onSuccess: () => {
             toast.success("Lançamento operacional salvo!");
             queryClient.invalidateQueries({ queryKey: ['servicos_especificos_lancamentos'] });
+            queryClient.invalidateQueries({ queryKey: ['lancamentos_hoje_portal'] });
             navigate('/producao');
         },
         onError: (err) => {
@@ -159,7 +162,7 @@ export default function ServicosEspecificosLancamento() {
     };
 
     return (
-        <OperationalShell title="Períodos Operacionais">
+        <OperationalShell title="Períodos Operacionais" showBack={true} onBack={() => goBackUrl()}>
             <div className="container mx-auto p-4 max-w-4xl pt-8 space-y-6">
                 <div className="space-y-1">
                     <h2 className="text-2xl font-bold tracking-tight">Períodos Operacionais</h2>

@@ -158,7 +158,53 @@ interface OnboardingContextType {
   refetchStatus: () => Promise<void>;
 }
 
-const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
+const defaultOnboardingContext: OnboardingContextType = {
+  currentStep: "cadastro_base",
+  completedSteps: [],
+  isActive: false,
+  dataStatus: {
+    hasClient: false,
+    hasSupplier: false,
+    hasCollaborator: false,
+    hasClt: false,
+    hasOperational: false,
+    hasDiarista: false,
+    hasRule: false,
+    hasDiaristaRule: false,
+    hasPagamento: false,
+    hasTaxa: false,
+    hasProduct: false,
+    hasPeriodos: false,
+    hasOperation: false,
+    hasEmpresa: false,
+    hasTransportadora: false,
+    totalClientes: 0,
+    totalFornecedores: 0,
+    totalProdutos: 0,
+    totalColaboradores: 0,
+    totalClt: 0,
+    totalCltPendentes: 0,
+    totalOperational: 0,
+    totalDiaristas: 0,
+    totalPontoImportado: 0,
+    totalRegras: 0,
+    totalPeriodos: 0,
+    totalOperacoes: 0,
+  },
+  canAdvance: false,
+  isSystemReady: true,
+  isOnboardingComplete: true,
+  isDataLoaded: true,
+  progressPercentage: 100,
+  setStep: () => {},
+  completeStep: () => {},
+  startOnboarding: () => {},
+  finishOnboarding: () => {},
+  skipOnboarding: () => {},
+  refetchStatus: async () => {},
+};
+
+const OnboardingContext = createContext<OnboardingContextType>(defaultOnboardingContext);
 
 export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { tenantId, role } = useTenant();
@@ -349,9 +395,10 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         totalPeriodos: periodosRes?.count ?? 0,
         totalOperacoes: operacoesRes.count ?? 0,
       });
-      setIsDataLoaded(true);
     } catch (error) {
       console.error("[OnboardingContext] Erro ao buscar status:", error);
+    } finally {
+      setIsDataLoaded(true);
     }
   }, [tenantId, role]);
 
@@ -359,6 +406,8 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (tenantId && user && role) {
       fetchDataStatus();
       checkOnboardingStatus();
+    } else {
+      setIsDataLoaded(true);
     }
   }, [tenantId, user, role, fetchDataStatus]);
 
@@ -610,8 +659,5 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
 export const useOnboarding = () => {
   const context = useContext(OnboardingContext);
-  if (!context) {
-    throw new Error("useOnboarding must be used within OnboardingProvider");
-  }
-  return context;
+  return context || defaultOnboardingContext;
 };

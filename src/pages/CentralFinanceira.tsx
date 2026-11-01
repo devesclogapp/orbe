@@ -3,16 +3,20 @@ import { supabase } from "@/lib/supabase";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
+  Activity,
   AlertTriangle,
   ArrowRight,
   Building2,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Clock,
   ExternalLink,
   FileCheck,
+  FileText,
   Filter,
   History,
+  Layers,
   Loader2,
   Printer,
   RefreshCw,
@@ -28,6 +32,9 @@ import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { CustosExtrasTableBlock } from "@/components/operacoes/CustosExtrasTableBlock";
 import { MetricCard } from "@/components/painel/MetricCard";
+import { ExecutiveMetricCard } from "@/components/dashboard/ExecutiveMetricCard";
+import { OrbeBadge } from "@/components/ux-lab/design-system/OrbeBadge";
+import { OrbeStatusBadge } from "@/components/ux-lab/design-system/OrbeStatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -49,6 +56,21 @@ import { IntermitentesLoteService } from "@/services/domain/intermitentes.servic
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 import { buildFolhaVariavelPipeline, buildDiaristasPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  DespesasContasPagarOficialService,
+  DespesaFederadaItem,
+  formatCurrency,
+  getSituacaoBadge,
+  getOrigemLabel,
+  getTipoLabel,
+  calcularDiasVencimento,
+  formatDate,
+  formatCompetencia,
+  SituacaoFinanceiraUX,
+  OrigemDespesaFederada,
+  TipoDespesaFederada,
+} from "@/services/despesasOficial.service";
+import { DespesaDrawerOficial } from "./Financeiro/components/DespesaDrawerOficial";
 
 const formatCompetenciaLabel = (competencia: string) => {
   const [year, month] = competencia.split("-").map(Number);
@@ -67,20 +89,81 @@ const CentralFinanceira = () => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [filterMonth, setFilterMonth] = useState(new Date().toISOString().substring(0, 7));
-  const [filterEmpresaId, setFilterEmpresaId] = useState<string | null>(null);
+  const [filterMonth, setFilterMonth] = useState<string>(
+    () => searchParams.get("competencia") || new Date().toISOString().substring(0, 7)
+  );
+  const [filterEmpresaId, setFilterEmpresaId] = useState<string | null>(
+    () => searchParams.get("empresaId") || null
+  );
 
-  const [selectedMonth, setSelectedMonth] = useState(filterMonth);
-  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string>(
+    () => searchParams.get("competencia") || new Date().toISOString().substring(0, 7)
+  );
+  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(
+    () => searchParams.get("empresaId") || null
+  );
   const [searchTerm, setSearchTerm] = useState("");
+  const [custosPipelineFilter, setCustosPipelineFilter] = useState<string>("todos");
 
   // dialogs financeiro
   const [openReabrir, setOpenReabrir] = useState(false);
   const [fechamentoParaReabrir, setFechamentoParaReabrir] = useState<any>(null);
   const [motivoReabrir, setMotivoReabrir] = useState("");
   const [openConfirmAprovacao, setOpenConfirmAprovacao] = useState(false);
-  const [rhLoteSelecionado, setRhLoteSelecionado] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState("visao-geral");
+  const [rhLoteSelecionado, setRhLoteSelecionado] = useState<any>(() => {
+    const deepId = searchParams.get("rhLoteId");
+    if (!deepId) return null;
+    return {
+      id: deepId,
+      tipo: searchParams.get("tipo") || undefined,
+      competencia: searchParams.get("competencia") || undefined,
+      empresa_id: searchParams.get("empresaId") || undefined,
+    };
+  });
+
+  const VALID_FINANCEIRO_TABS = [
+    "visao-geral",
+    "lotes-rh",
+    "faturamento",
+    "custos-extras",
+    "servicos-extras",
+    "fechamento",
+  ] as const;
+
+  type FinanceiroTabValue = (typeof VALID_FINANCEIRO_TABS)[number];
+
+  const tabParam = searchParams.get("tab");
+  const initialTab: FinanceiroTabValue = (tabParam && (VALID_FINANCEIRO_TABS as readonly string[]).includes(tabParam))
+    ? (tabParam as FinanceiroTabValue)
+    : "visao-geral";
+
+  const [activeTab, setActiveTab] = useState<FinanceiroTabValue>(initialTab);
+
+  useEffect(() => {
+    const tabUrl = searchParams.get("tab");
+    if (tabUrl && (VALID_FINANCEIRO_TABS as readonly string[]).includes(tabUrl)) {
+      if (tabUrl !== activeTab) {
+        setActiveTab(tabUrl as FinanceiroTabValue);
+      }
+    } else if (!tabUrl && activeTab !== "visao-geral") {
+      setActiveTab("visao-geral");
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (newTab: string) => {
+    const valid = (VALID_FINANCEIRO_TABS as readonly string[]).includes(newTab)
+      ? (newTab as FinanceiroTabValue)
+      : "visao-geral";
+    setActiveTab(valid);
+
+    const next = new URLSearchParams(searchParams);
+    if (valid === "visao-geral") {
+      next.delete("tab");
+    } else {
+      next.set("tab", valid);
+    }
+    setSearchParams(next, { replace: true });
+  };
   // etapa 2 - análise financeira
   const [openDevolucao, setOpenDevolucao] = useState(false);
   const [motivoDevolucao, setMotivoDevolucao] = useState("");
@@ -89,6 +172,7 @@ const CentralFinanceira = () => {
   const deepLinkLoteId = searchParams.get("rhLoteId");
   const deepLinkCompetencia = searchParams.get("competencia");
   const deepLinkEmpresaId = searchParams.get("empresaId");
+  const deepLinkTipo = searchParams.get("tipo");
   const selectedCompetenciaLabel = useMemo(() => formatCompetenciaLabel(selectedMonth), [selectedMonth]);
 
   const { data: empresas = [], isLoading: loadingEmps } = useQuery<any[]>({
@@ -97,13 +181,13 @@ const CentralFinanceira = () => {
   });
 
   useEffect(() => {
-    if (empresas.length > 0 && !filterEmpresaId) {
+    // Só seleciona empresas[0] se não houver NENHUMA empresa explícita nem no estado nem na URL
+    const explicitEmpresa = filterEmpresaId || selectedEmpresaId || searchParams.get("empresaId");
+    if (empresas.length > 0 && !explicitEmpresa) {
       setFilterEmpresaId(empresas[0].id);
-      if (!selectedEmpresaId) {
-        setSelectedEmpresaId(empresas[0].id);
-      }
+      setSelectedEmpresaId(empresas[0].id);
     }
-  }, [empresas, filterEmpresaId, selectedEmpresaId]);
+  }, [empresas, filterEmpresaId, selectedEmpresaId, searchParams]);
 
   useEffect(() => {
     if (!deepLinkLoteId) return;
@@ -115,13 +199,28 @@ const CentralFinanceira = () => {
       setFilterEmpresaId(deepLinkEmpresaId);
       setSelectedEmpresaId(deepLinkEmpresaId);
     }
-    setRhLoteSelecionado({ id: deepLinkLoteId });
+    const empresaObj = empresas.find((e) => e.id === deepLinkEmpresaId);
+    setRhLoteSelecionado((prev: any) => {
+      if (prev?.id === deepLinkLoteId && prev?.tipo && prev?.empresa?.nome) return prev;
+      return {
+        id: deepLinkLoteId,
+        tipo: deepLinkTipo || prev?.tipo || undefined,
+        competencia: deepLinkCompetencia || prev?.competencia || undefined,
+        empresa_id: deepLinkEmpresaId || prev?.empresa_id || undefined,
+        empresa: empresaObj || prev?.empresa || (deepLinkEmpresaId ? { id: deepLinkEmpresaId, nome: "" } : undefined),
+      };
+    });
+  }, [deepLinkLoteId, deepLinkCompetencia, deepLinkEmpresaId, deepLinkTipo, empresas]);
+
+  const handleFecharModalLote = () => {
+    setRhLoteSelecionado(null);
+    setObservacaoAprovacao("");
+    setShowLogHistorico(false);
     const next = new URLSearchParams(searchParams);
     next.delete("rhLoteId");
-    next.delete("competencia");
-    next.delete("empresaId");
+    next.delete("tipo");
     setSearchParams(next, { replace: true });
-  }, [deepLinkLoteId, deepLinkCompetencia, deepLinkEmpresaId, searchParams, setSearchParams]);
+  };
 
   const { data: competencia, isLoading: loadingComp } = useQuery<any>({
     queryKey: ["competencia", selectedMonth, selectedEmpresaId],
@@ -203,17 +302,121 @@ const CentralFinanceira = () => {
     [empresas, latestFinanceApprovedAt, latestRhSentAt, selectedEmpresaId, selectedMonth],
   );
 
-  const { data: rhLoteDetalhe, isLoading: loadingRhLoteDetalhe } = useQuery({
-    queryKey: ["rh-financeiro-lote-detalhe", rhLoteSelecionado?.id],
+  const resolvedTipoLote = useMemo(() => {
+    if (rhLoteSelecionado?.tipo) return rhLoteSelecionado.tipo;
+    if (rhLoteSelecionado?.id) {
+      if ((lotesDiaristas || []).some((l: any) => l.id === rhLoteSelecionado.id)) return "DIARISTAS";
+      if ((rawLotesRh || []).some((l: any) => l.id === rhLoteSelecionado.id)) return "RH";
+    }
+    return "AUTO";
+  }, [rhLoteSelecionado?.id, rhLoteSelecionado?.tipo, lotesDiaristas, rawLotesRh]);
+
+  const {
+    data: rhLoteDetalhe,
+    isLoading: loadingRhLoteDetalhe,
+    isError: isErrorRhLoteDetalhe,
+    error: errorRhLoteDetalhe,
+    refetch: refetchRhLoteDetalhe,
+  } = useQuery({
+    queryKey: ["rh-financeiro-lote-detalhe", rhLoteSelecionado?.id, resolvedTipoLote],
     queryFn: async () => {
       if (!rhLoteSelecionado?.id) return null;
-      if (rhLoteSelecionado.tipo === "DIARISTAS") {
-        return LoteFechamentoDiaristaService.getLoteDetalhe(rhLoteSelecionado.id);
+      const targetId = rhLoteSelecionado.id;
+
+      // 1. Verificação nas listas carregadas em memória
+      const isDiaristasInList = (lotesDiaristas || []).some((l: any) => l.id === targetId);
+      const isRhInList = (rawLotesRh || []).some((l: any) => l.id === targetId);
+
+      if (isDiaristasInList || rhLoteSelecionado.tipo === "DIARISTAS") {
+        try {
+          return await LoteFechamentoDiaristaService.getLoteDetalhe(targetId);
+        } catch (err) {
+          if (isRhInList) {
+            return await RHFinanceiroService.getLoteDetalhe(targetId);
+          }
+          throw err;
+        }
       }
-      return RHFinanceiroService.getLoteDetalhe(rhLoteSelecionado.id);
+
+      if (isRhInList) {
+        return await RHFinanceiroService.getLoteDetalhe(targetId);
+      }
+
+      // 2. Se desconhecido (ex: deep link direto antes do carregamento das listas),
+      // tenta RHFinanceiroService e se falhar (não for CLT), tenta Diaristas
+      try {
+        const detalheRh = await RHFinanceiroService.getLoteDetalhe(targetId);
+        if (detalheRh && detalheRh.id) return detalheRh;
+      } catch {
+        // Tenta Diaristas propagando qualquer erro legítimo para o modal
+        const detalheDia = await LoteFechamentoDiaristaService.getLoteDetalhe(targetId);
+        if (detalheDia && detalheDia.id) return detalheDia;
+      }
+      return null;
     },
     enabled: !!rhLoteSelecionado?.id,
   });
+
+  // Hidratação automática do lote selecionado a partir das listas de lotes carregadas
+  useEffect(() => {
+    if (!rhLoteSelecionado?.id) return;
+
+    const loteRh = lotesRh.find((l: any) => l.id === rhLoteSelecionado.id);
+    if (loteRh) {
+      setRhLoteSelecionado((prev: any) => {
+        if (!prev) return loteRh;
+        if (prev.tipo === loteRh.tipo && prev.empresa?.nome && prev.competencia) return prev;
+        const emp = loteRh.empresa || empresas.find((e: any) => e.id === loteRh.empresa_id) || prev.empresa;
+        return {
+          ...loteRh,
+          ...prev,
+          tipo: loteRh.tipo || prev.tipo,
+          competencia: loteRh.competencia || prev.competencia,
+          empresa: emp,
+          status: loteRh.status || prev.status,
+          valor_total: loteRh.valor_total ?? prev.valor_total,
+        };
+      });
+      return;
+    }
+
+    const loteDia = lotesDiaristas.find((l: any) => l.id === rhLoteSelecionado.id);
+    if (loteDia) {
+      setRhLoteSelecionado((prev: any) => {
+        if (!prev) return { ...loteDia, tipo: "DIARISTAS" };
+        if (prev.tipo === "DIARISTAS" && prev.empresa?.nome && prev.competencia) return prev;
+        const emp = empresas.find((e: any) => e.id === loteDia.empresa_id) || prev.empresa;
+        return {
+          ...loteDia,
+          ...prev,
+          tipo: "DIARISTAS",
+          origem: "OPERACIONAL",
+          competencia: loteDia.periodo_inicio ? loteDia.periodo_inicio.slice(0, 7) : prev.competencia,
+          empresa: emp,
+          empresa_id: loteDia.empresa_id || prev.empresa_id,
+          status: loteDia.status === "VALIDADO_RH" ? "AGUARDANDO_FINANCEIRO" : loteDia.status,
+        };
+      });
+    }
+  }, [rhLoteSelecionado?.id, lotesRh, lotesDiaristas, empresas]);
+
+  // Hidratação a partir de rhLoteDetalhe oficial retornado pelo serviço
+  useEffect(() => {
+    if (!rhLoteDetalhe || !rhLoteSelecionado?.id || rhLoteDetalhe.id !== rhLoteSelecionado.id) return;
+    setRhLoteSelecionado((prev: any) => {
+      if (!prev) return rhLoteDetalhe;
+      const needsTipo = !prev.tipo && rhLoteDetalhe.tipo;
+      const needsEmpresa = (!prev.empresa || !prev.empresa.nome) && rhLoteDetalhe.empresa;
+      const needsComp = !prev.competencia && rhLoteDetalhe.competencia;
+      if (!needsTipo && !needsEmpresa && !needsComp) return prev;
+      return {
+        ...prev,
+        tipo: prev.tipo || rhLoteDetalhe.tipo,
+        competencia: prev.competencia || rhLoteDetalhe.competencia,
+        empresa: prev.empresa?.nome ? prev.empresa : (rhLoteDetalhe.empresa || prev.empresa),
+      };
+    });
+  }, [rhLoteDetalhe, rhLoteSelecionado?.id]);
 
   const { data: logsDoLote = [], isLoading: loadingLogs } = useQuery({
     queryKey: ["rh-lote-historico", rhLoteSelecionado?.id],
@@ -230,6 +433,46 @@ const CentralFinanceira = () => {
     enabled: !!selectedEmpresaId,
   });
 
+  const isCustosExtrasContext = searchParams.get("origem") === "CUSTOS_EXTRAS";
+
+  const custosExtrasTotals = useMemo(() => {
+    let total = 0;
+    let aguardandoLiberacaoValor = 0;
+    let aguardandoLiberacaoQtd = 0;
+    let aPagarValor = 0;
+    let aPagarQtd = 0;
+    let pagosValor = 0;
+    let pagosQtd = 0;
+
+    for (const item of custosExtras) {
+      const val = Number(item.total ?? 0);
+      total += val;
+      const s = String(item.pipeline_status || "").toUpperCase();
+      const sp = String(item.status_pagamento || "").toUpperCase();
+
+      if (s === "FINALIZADO" || sp === "PAGO") {
+        pagosValor += val;
+        pagosQtd += 1;
+      } else if (s === "ENVIADO_FINANCEIRO") {
+        aPagarValor += val;
+        aPagarQtd += 1;
+      } else if (s === "APROVADO_OPERACAO") {
+        aguardandoLiberacaoValor += val;
+        aguardandoLiberacaoQtd += 1;
+      }
+    }
+
+    return {
+      total,
+      aguardandoLiberacaoValor,
+      aguardandoLiberacaoQtd,
+      aPagarValor,
+      aPagarQtd,
+      pagosValor,
+      pagosQtd,
+    };
+  }, [custosExtras]);
+
   const { data: servicosExtras = [], isLoading: loadingServicosExtras } = useQuery<any[]>({
     queryKey: ["servicos-extras-faturaveis", selectedMonth, selectedEmpresaId],
     queryFn: () => ServicosExtrasOperacionaisService.getWithEmpresas(selectedEmpresaId!, selectedMonth),
@@ -241,6 +484,88 @@ const CentralFinanceira = () => {
       ["APROVADO_OPERACAO", "APROVADO_FINANCEIRO"].includes(String(s.pipeline_status || "").toUpperCase())
     );
   }, [servicosExtras]);
+
+  // --- CONV-10: WORKBENCH OFICIAL FEDERADO UX12 ---
+  const {
+    data: federadoData,
+    isLoading: loadingFederado,
+    isError: isErrorFederado,
+    error: errorFederado,
+    refetch: refetchFederado,
+  } = useQuery({
+    queryKey: ["despesas-federadas-oficial", selectedMonth, selectedEmpresaId],
+    queryFn: async () => {
+      try {
+        return await DespesasContasPagarOficialService.fetchDespesasFederadas({
+          competenciaMes: selectedMonth,
+          empresaId: selectedEmpresaId === "all" ? undefined : selectedEmpresaId || undefined,
+        });
+      } catch (err: any) {
+        console.error("[CentralFinanceira] Erro ao consultar despesas federadas:", err);
+        throw err;
+      }
+    },
+  });
+
+  const despesasFederadas = useMemo(() => federadoData?.itens || [], [federadoData]);
+  const kpiStats = useMemo(
+    () => federadoData?.stats || DespesasContasPagarOficialService.calculateKpiStats([]),
+    [federadoData]
+  );
+
+  const [filtroTexto, setFiltroTexto] = useState("");
+  const [filtroOrigem, setFiltroOrigem] = useState<string>("TODAS");
+  const [filtroTipo, setFiltroTipo] = useState<string>("TODAS");
+  const [filtroPill, setFiltroPill] = useState<string>("TODAS");
+  const [filtroBeneficiario, setFiltroBeneficiario] = useState<string>("TODOS");
+
+  const [drawerItem, setDrawerItem] = useState<DespesaFederadaItem | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const handleOpenDrawer = (item: DespesaFederadaItem) => {
+    setDrawerItem(item);
+    setIsDrawerOpen(true);
+  };
+
+  const handleCloseDrawer = () => {
+    setIsDrawerOpen(false);
+    setDrawerItem(null);
+  };
+
+  const beneficiariosUnicos = useMemo(() => {
+    const set = new Set<string>();
+    despesasFederadas.forEach((d) => {
+      if (d.beneficiarioNome) set.add(d.beneficiarioNome);
+    });
+    return Array.from(set).sort();
+  }, [despesasFederadas]);
+
+  const despesasFiltradas = useMemo(() => {
+    return despesasFederadas.filter((item) => {
+      if (filtroPill !== "TODAS" && item.situacaoVisual !== filtroPill) {
+        return false;
+      }
+      if (filtroOrigem !== "TODAS" && item.origem !== filtroOrigem) {
+        return false;
+      }
+      if (filtroTipo !== "TODAS" && item.tipo !== filtroTipo) {
+        return false;
+      }
+      if (filtroBeneficiario !== "TODOS" && item.beneficiarioNome !== filtroBeneficiario) {
+        return false;
+      }
+      if (filtroTexto.trim()) {
+        const q = filtroTexto.toLowerCase();
+        const matchBeneficiario = item.beneficiarioNome.toLowerCase().includes(q);
+        const matchTitulo = item.titulo.toLowerCase().includes(q);
+        const matchRef = item.referencia?.toLowerCase().includes(q) || false;
+        const matchLote = item.loteIdentificador?.toLowerCase().includes(q) || false;
+        const matchDoc = item.documentoFiscal?.toLowerCase().includes(q) || false;
+        if (!matchBeneficiario && !matchTitulo && !matchRef && !matchLote && !matchDoc) return false;
+      }
+      return true;
+    });
+  }, [despesasFederadas, filtroPill, filtroOrigem, filtroTipo, filtroBeneficiario, filtroTexto]);
 
   const reprocessMutation = useMutation({
     mutationFn: () => AIService.processDay(`${selectedMonth}-01`, selectedEmpresaId!),
@@ -353,10 +678,11 @@ const CentralFinanceira = () => {
 
   const aprovarFinanceiroMutation = useMutation({
     mutationFn: ({ id, obs }: { id: string; obs: string }) => {
-      if (rhLoteSelecionado?.tipo === "DIARISTAS") {
+      const loteTipo = rhLoteSelecionado?.tipo || rhLoteDetalhe?.tipo;
+      if (loteTipo === "DIARISTAS") {
         return LoteFechamentoDiaristaService.aprovarFinanceiro(id, user?.id || "", user?.email || "Financeiro", "financeiro");
       }
-      if (rhLoteSelecionado?.tipo === "INTERMITENTES") {
+      if (loteTipo === "INTERMITENTES") {
         return IntermitentesLoteService.aprovarFinanceiro(id, user?.id || "");
       }
       return RHFinanceiroService.aprovarFinanceiro(id, obs);
@@ -366,16 +692,17 @@ const CentralFinanceira = () => {
       invalidateLotes();
 
       const empresaNome = empresas.find(e => e.id === selectedEmpresaId)?.nome || "Empresa";
+      const loteTipo = rhLoteSelecionado?.tipo || rhLoteDetalhe?.tipo;
 
-      if (rhLoteSelecionado?.tipo === "DIARISTAS") {
+      if (loteTipo === "DIARISTAS") {
         openPipeline(
           buildDiaristasPipeline({
-            competencia: rhLoteSelecionado.competencia,
+            competencia: rhLoteSelecionado?.competencia || rhLoteDetalhe?.competencia,
             empresa: empresaNome,
             currentStep: "central_financeira",
           })
         );
-      } else if (rhLoteSelecionado?.tipo !== "INTERMITENTES") {
+      } else if (loteTipo !== "INTERMITENTES") {
         openPipeline(
           buildFolhaVariavelPipeline({
             competencia: selectedMonth,
@@ -398,10 +725,11 @@ const CentralFinanceira = () => {
 
   const devolverRHMutation = useMutation({
     mutationFn: ({ id, motivo }: { id: string; motivo: string }) => {
-      if (rhLoteSelecionado?.tipo === "DIARISTAS") {
+      const loteTipo = rhLoteSelecionado?.tipo || rhLoteDetalhe?.tipo;
+      if (loteTipo === "DIARISTAS") {
         return LoteFechamentoDiaristaService.reabrirPeriodo(id, user?.id || "", user?.email || "Financeiro", "financeiro", motivo, "administrativa");
       }
-      if (rhLoteSelecionado?.tipo === "INTERMITENTES") {
+      if (loteTipo === "INTERMITENTES") {
         return IntermitentesLoteService.devolverLote(id, motivo || "Devolvido pelo financeiro");
       }
       return RHFinanceiroService.devolverAoRH(id, motivo);
@@ -433,88 +761,96 @@ const CentralFinanceira = () => {
 
   return (
     <AppShell
-      title="Central Financeira"
-      subtitle={`Aprovação de lotes, faturamento e fechamento de competência · ${selectedCompetenciaLabel}`}
-      pipelineTrigger={financePipelineReviewTrigger}
+      title={isCustosExtrasContext ? "Pagamentos — Custos Extras" : "Despesas & Contas a Pagar"}
+      subtitle={isCustosExtrasContext
+        ? `Acompanhamento financeiro, liberação e liquidação de despesas extras · ${selectedCompetenciaLabel}`
+        : "Gestão de obrigações, desembolsos e contas a pagar."}
+      pipelineTrigger={isCustosExtrasContext ? undefined : financePipelineReviewTrigger}
     >
       <div className="space-y-6">
-        <section className="esc-card p-4 md:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative">
-                <input
-                  type="month"
-                  value={filterMonth}
-                  onChange={(e) => setFilterMonth(e.target.value)}
-                  className="h-10 pl-3 pr-8 rounded-md border border-border bg-card text-sm focus:outline-none focus:ring-1 focus:ring-primary font-medium"
-                />
-                <Filter className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        <section className="rounded-lg border border-border/80 dark:border-white/[0.08] bg-card dark:bg-[#15191F] p-3 sm:p-4 shadow-2xs">
+          <div className="flex flex-col gap-3.5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Seletor de Período Financeiro com Rótulo Explícito */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
+                  Período Financeiro:
+                </span>
+                <div className="relative">
+                  <input
+                    type="month"
+                    value={filterMonth}
+                    onChange={(e) => setFilterMonth(e.target.value)}
+                    className="h-9 pl-3 pr-8 rounded-lg border border-border/80 dark:border-white/[0.08] bg-background dark:bg-[#111419] text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-600 shadow-2xs"
+                  />
+                  <Filter className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                </div>
               </div>
 
+              {/* Seletor de Empresa com Rótulo Explícito */}
               {empresas.length > 0 && (
-                <div className="relative">
-                  <select
-                    value={filterEmpresaId || ""}
-                    onChange={(e) => setFilterEmpresaId(e.target.value)}
-                    className="h-10 pl-3 pr-8 rounded-md border border-border bg-card text-sm focus:outline-none focus:ring-1 focus:ring-primary font-medium appearance-none min-w-[220px]"
-                  >
-                    {empresas.map((empresa) => (
-                      <option key={empresa.id} value={empresa.id}>
-                        {empresa.nome}
-                      </option>
-                    ))}
-                  </select>
-                  <Building2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
+                    Empresa:
+                  </span>
+                  <div className="relative">
+                    <select
+                      value={filterEmpresaId || "all"}
+                      onChange={(e) => setFilterEmpresaId(e.target.value === "all" ? null : e.target.value)}
+                      className="h-9 pl-3 pr-8 rounded-lg border border-border/80 dark:border-white/[0.08] bg-background dark:bg-[#111419] text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-600 shadow-2xs appearance-none min-w-[200px] cursor-pointer"
+                    >
+                      <option value="all">Todas as Empresas</option>
+                      {empresas.map((empresa) => (
+                        <option key={empresa.id} value={empresa.id}>
+                          {empresa.nome}
+                        </option>
+                      ))}
+                    </select>
+                    <Building2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  </div>
                 </div>
               )}
 
               <Button
                 variant={filterMonth !== selectedMonth || filterEmpresaId !== selectedEmpresaId ? "default" : "secondary"}
                 size="sm"
-                className="h-10"
+                className={cn(
+                  "h-9 px-3 rounded-lg text-xs font-semibold select-none",
+                  (filterMonth !== selectedMonth || filterEmpresaId !== selectedEmpresaId) && "bg-[#2563EB] hover:bg-[#1D4ED8] text-white"
+                )}
                 onClick={() => {
                   setSelectedMonth(filterMonth);
                   setSelectedEmpresaId(filterEmpresaId);
                 }}
               >
-                {filterMonth !== selectedMonth || filterEmpresaId !== selectedEmpresaId ? "⚡ Aplicar Filtros" : "Aplicar Filtros"}
+                {filterMonth !== selectedMonth || filterEmpresaId !== selectedEmpresaId ? "⚡ Aplicar Filtros" : "Aplicar"}
               </Button>
 
-              <Badge
-                className={cn(
-                  "h-10 px-3 rounded-md font-semibold",
-                  competencia?.status === "aberta"
-                    ? "bg-info-soft text-info-strong"
-                    : "bg-success-soft text-success-strong"
-                )}
-              >
-                Status: {competencia?.status || "Aguardando processamento"}
-              </Badge>
+              <OrbeStatusBadge
+                status={competencia?.status === "aberta" ? "info" : "success"}
+                label={`Status: ${competencia?.status || "Aguardando processamento"}`}
+                className="h-9 px-3 rounded-lg text-xs font-medium"
+              />
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => navigate("/financeiro/regras")}>
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Regras
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => navigate("/bancario")}>
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Bancário (CNAB)
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => reprocessMutation.mutate()}
-                disabled={reprocessMutation.isPending || !selectedEmpresaId}
-                title="Consolida e recalcula os valores financeiros da competência selecionada"
-              >
-                {reprocessMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                )}
-                Consolidar Competência
-              </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {isCustosExtrasContext ? (
+                <Button variant="outline" size="sm" onClick={() => navigate("/financeiro")} className="h-9 rounded-lg gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Ver Central Financeira Global
+                </Button>
+              ) : (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => navigate("/financeiro/regras")} className="h-9 rounded-lg text-xs font-medium">
+                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                    Regras
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => navigate("/bancario")} className="h-9 rounded-lg text-xs font-medium">
+                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                    Bancário (CNAB)
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </section>
@@ -523,251 +859,570 @@ const CentralFinanceira = () => {
           <div className="flex items-center justify-center p-20 esc-card">
             <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
           </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
+        ) : isCustosExtrasContext ? (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
               <MetricCard
-                label="Aguardando aprovação"
-                value={`R$ ${Number(lotesRhValorTotal).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                label="Total Despesas Extras"
+                value={`R$ ${Number(custosExtrasTotals.total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                sublabel={`${custosExtras.length} registro(s) no período`}
                 icon={Wallet}
-                accent
+                onClick={() => setCustosPipelineFilter("todos")}
+                className={cn(
+                  "cursor-pointer transition-all duration-200 hover:border-primary/40 select-none",
+                  custosPipelineFilter === "todos" && "ring-2 ring-primary/30 border-primary/50 bg-primary/[0.02] shadow-sm"
+                )}
               />
               <MetricCard
-                label="Prontos para CNAB"
-                value={`R$ ${Number(lotesRhValorBancario).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                label="Aguardando liberação para pagamento"
+                value={`R$ ${Number(custosExtrasTotals.aguardandoLiberacaoValor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                sublabel={
+                  custosExtrasTotals.aguardandoLiberacaoQtd > 0 ? (
+                    <span className="inline-flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400">
+                      {custosExtrasTotals.aguardandoLiberacaoQtd} despesa{custosExtrasTotals.aguardandoLiberacaoQtd > 1 ? "s" : ""} requer{custosExtrasTotals.aguardandoLiberacaoQtd > 1 ? "m" : ""} ação
+                      <ArrowRight className="h-3 w-3" />
+                    </span>
+                  ) : (
+                    "0 despesas pendentes"
+                  )
+                }
+                icon={AlertTriangle}
+                onClick={() => setCustosPipelineFilter("aguardando_liberacao")}
+                className={cn(
+                  "cursor-pointer transition-all duration-200 hover:border-amber-400/50 select-none",
+                  custosPipelineFilter === "aguardando_liberacao" && "ring-2 ring-amber-500/35 border-amber-500/50 bg-amber-500/[0.02] shadow-sm"
+                )}
+              />
+              <MetricCard
+                label="A pagar"
+                value={`R$ ${Number(custosExtrasTotals.aPagarValor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                sublabel={
+                  custosExtrasTotals.aPagarQtd > 0 ? (
+                    <span className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400">
+                      {custosExtrasTotals.aPagarQtd} pagamento{custosExtrasTotals.aPagarQtd > 1 ? "s" : ""} pendente{custosExtrasTotals.aPagarQtd > 1 ? "s" : ""}
+                      <ArrowRight className="h-3 w-3" />
+                    </span>
+                  ) : (
+                    "0 pagamentos pendentes"
+                  )
+                }
                 icon={FileCheck}
+                onClick={() => setCustosPipelineFilter("a_pagar")}
+                className={cn(
+                  "cursor-pointer transition-all duration-200 hover:border-indigo-400/50 select-none",
+                  custosPipelineFilter === "a_pagar" && "ring-2 ring-indigo-500/35 border-indigo-500/50 bg-indigo-500/[0.02] shadow-sm"
+                )}
               />
               <MetricCard
-                label="Lotes aguardando"
-                value={lotesRhPendentes.length.toString()}
-                icon={AlertTriangle}
+                label="Pago"
+                value={`R$ ${Number(custosExtrasTotals.pagosValor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                sublabel={`${custosExtrasTotals.pagosQtd} liquidada(s)`}
+                icon={CheckCircle2}
+                onClick={() => setCustosPipelineFilter("pagos")}
+                className={cn(
+                  "cursor-pointer transition-all duration-200 hover:border-emerald-400/50 select-none",
+                  custosPipelineFilter === "pagos" && "ring-2 ring-emerald-500/35 border-emerald-500/50 bg-emerald-500/[0.02] shadow-sm"
+                )}
               />
-              <MetricCard
-                label="Inconsistências"
-                value={competencia?.contagem_inconsistencias?.toString() || "0"}
-                icon={AlertTriangle}
-              />
-              <MetricCard label="Total consolidado" value={`R$ ${Number(totalFaturavel).toLocaleString("pt-BR")}`} icon={Wallet} />
-              <MetricCard label="Clientes" value={clientes.length.toString()} icon={Building2} />
             </div>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-              <TabsList className="bg-muted/50 p-1 rounded-xl border border-border/50 flex flex-wrap h-auto">
-                <TabsTrigger value="visao-geral">Visão geral</TabsTrigger>
-                <TabsTrigger value="lotes-rh" className="relative">
-                  Lotes do RH
-                  {(lotesRhPendentes.length > 0 || lotesRhProntosBancario.length > 0) && (
-                    <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-info text-white text-[10px] font-bold px-1">
-                      {lotesRhPendentes.length + lotesRhProntosBancario.length}
-                    </span>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="faturamento" className="esc-tab-trigger text-xs sm:text-sm">Faturamento (Clientes)</TabsTrigger>
-                <TabsTrigger value="custos-extras">Custos Extras</TabsTrigger>
-                <TabsTrigger value="servicos-extras">Serviços Extras</TabsTrigger>
-                <TabsTrigger value="fechamento">Fechamento</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="visao-geral" className="space-y-5">
-                {/* Pipeline financeiro */}
-                <section className="esc-card p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <FileCheck className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-semibold text-foreground">Pipeline da competência</span>
-                    </div>
-                    <span className="text-[11px] text-muted-foreground">
-                      {selectedMonth} · {new Date().toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+            {/* Orientação Contextual Discreta: visível apenas quando houver pendências e o usuário ainda NÃO filtrou por elas */}
+            {custosExtrasTotals.aguardandoLiberacaoQtd > 0 && custosPipelineFilter !== "aguardando_liberacao" && (
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 rounded-xl border border-amber-200/80 bg-amber-50/60 dark:bg-amber-950/20 dark:border-amber-900/40 text-xs shadow-xs transition-all animate-in fade-in">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="text-amber-900 dark:text-amber-200 leading-relaxed">
+                    <span className="font-semibold">
+                      {custosExtrasTotals.aguardandoLiberacaoQtd === 1
+                        ? "1 despesa aguarda sua liberação para pagamento."
+                        : `${custosExtrasTotals.aguardandoLiberacaoQtd} despesas aguardam sua liberação para pagamento.`}
+                    </span>{" "}
+                    <span className="text-amber-800/80 dark:text-amber-300/80">
+                      Revise o lançamento aprovado e libere-o para o Financeiro.
                     </span>
                   </div>
-                  <div className="flex flex-wrap items-stretch gap-0">
-                    {[
-                      {
-                        step: "1",
-                        label: "RH → Financeiro",
-                        detail: (lotesRhPendentes.length + lotesRhProntosBancario.length) > 0 ? `${lotesRhPendentes.length + lotesRhProntosBancario.length} lote(s) recebidos` : "Fila vazia",
-                        tone: (lotesRhPendentes.length + lotesRhProntosBancario.length) > 0 ? "ok" : "idle",
-                      },
-                      {
-                        step: "2",
-                        label: "Aprovação Financeira",
-                        detail: lotesRhProntosBancario.length > 0 ? `${lotesRhProntosBancario.length} lote(s) aprovado(s)` : "Aguardando aprovação",
-                        tone: lotesRhProntosBancario.length > 0 ? "ok" : "idle",
-                      },
-                      {
-                        step: "3",
-                        label: "Bancário / CNAB",
-                        detail: lotesRhProntosBancario.length > 0 ? `R$ ${Number(lotesRhValorBancario).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} prontos` : "Aguardando lotes aprovados",
-                        tone: lotesRhProntosBancario.length > 0 ? "info" : "idle",
-                      },
-                      {
-                        step: "4",
-                        label: "Fechamento",
-                        detail: competencia?.status === "fechada" ? "Competência fechada" : "Competência aberta",
-                        tone: competencia?.status === "fechada" ? "ok" : "idle",
-                      },
-                    ].map((s, i, arr) => (
-                      <div key={s.step} className="flex items-stretch">
-                        <div className={cn(
-                          "flex flex-col justify-center px-4 py-2.5 rounded-lg border text-xs min-w-[140px]",
-                          s.tone === "warning" && "bg-warning-soft/50 border-warning/30 text-warning-strong",
-                          s.tone === "ok" && "bg-success-soft/50 border-success/30 text-success-strong",
-                          s.tone === "info" && "bg-info-soft/50 border-info/30 text-info-strong",
-                          s.tone === "idle" && "bg-muted/30 border-border text-muted-foreground",
-                        )}>
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            <span className={cn(
-                              "inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold",
-                              s.tone === "warning" && "bg-warning/20 text-warning-strong",
-                              s.tone === "ok" && "bg-success/20 text-success-strong",
-                              s.tone === "info" && "bg-info/20 text-info-strong",
-                              s.tone === "idle" && "bg-muted text-muted-foreground",
-                            )}>{s.step}</span>
-                            <span className="font-semibold text-[11px]">{s.label}</span>
-                          </div>
-                          <span className="text-[11px] opacity-80 pl-5">{s.detail}</span>
-                        </div>
-                        {i < arr.length - 1 && (
-                          <div className="flex items-center px-1">
-                            <ArrowRight className="h-3 w-3 text-muted-foreground/40" />
-                          </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCustosPipelineFilter("aguardando_liberacao")}
+                  className="shrink-0 h-7 text-xs font-semibold bg-white hover:bg-amber-100/60 text-amber-900 border-amber-300 shadow-xs"
+                >
+                  Ver despesa{custosExtrasTotals.aguardandoLiberacaoQtd > 1 ? "s" : ""} pendente{custosExtrasTotals.aguardandoLiberacaoQtd > 1 ? "s" : ""} →
+                </Button>
+              </div>
+            )}
+
+            <section className="esc-card">
+              <header className="px-5 py-4 border-b border-border flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-display font-semibold text-foreground">Pagamentos — Custos Extras</h2>
+                    <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-xs">
+                      Visão Contextual
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Acompanhamento de liberação, liquidação e pagamento de despesas operacionais da competência.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
+                    {custosExtras.length} registros
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    onClick={() => queryClient.invalidateQueries({ queryKey: ["custos-extras"] })}
+                  >
+                    <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", loadingCustos && "animate-spin")} />
+                    Atualizar
+                  </Button>
+                </div>
+              </header>
+              <div className="p-1">
+                {loadingCustos ? (
+                  <div className="flex items-center justify-center p-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <CustosExtrasTableBlock
+                    data={custosExtras}
+                    contextualOrigem="CUSTOS_EXTRAS"
+                    controlledPipelineFilter={custosPipelineFilter}
+                    onPipelineFilterChange={setCustosPipelineFilter}
+                  />
+                )}
+              </div>
+            </section>
+          </div>
+        ) : (
+          <>
+            {/* 4 KPIs OFICIAIS FEDERADOS (ALINHADOS AO DASHBOARD EXECUTIVO) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+              <ExecutiveMetricCard
+                label="Despesas no Período"
+                value={formatCurrency(kpiStats.totalDespesas ?? kpiStats.despesasNoPeriodo)}
+                subtitle={`${kpiStats.quantidadeDespesas ?? kpiStats.qtdReconhecidas} despesa(s) reconhecida(s)`}
+                icon={Wallet}
+              />
+              <ExecutiveMetricCard
+                label="A Pagar"
+                value={formatCurrency(kpiStats.totalAPagar ?? kpiStats.aPagar)}
+                subtitle={`${(kpiStats.quantidadeAPagar ?? kpiStats.qtdAPagar)} obrigação(ões) pendente(s)`}
+                icon={AlertTriangle}
+              />
+              <ExecutiveMetricCard
+                label="Prontas para Execução"
+                value={formatCurrency(kpiStats.totalProntasExecucao ?? kpiStats.prontasExecucao)}
+                subtitle={`Mão de Obra: ${formatCurrency(kpiStats.maoDeObraProntaBanco)} · Custos: ${formatCurrency(kpiStats.custosExtrasProntos ?? kpiStats.prontasLiquidacaoDireta)}`}
+                icon={FileCheck}
+              />
+              <ExecutiveMetricCard
+                label="Pagas / Liquidadas"
+                value={formatCurrency(kpiStats.totalPagas ?? kpiStats.pagasLiquidadas)}
+                subtitle={`${kpiStats.quantidadePagas ?? kpiStats.qtdPagasLiquidadas} liquidada(s)`}
+                icon={CheckCircle2}
+              />
+            </div>
+
+            {/* INDICADOR SECUNDÁRIO BANCÁRIO (MÃO DE OBRA PRONTA P/ BANCO) */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-lg border border-border/80 dark:border-white/[0.08] bg-card dark:bg-[#15191F] shadow-2xs">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="h-7 w-7 rounded-md bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                  <Building2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-foreground">
+                      Mão de Obra Pronta p/ Banco: {formatCurrency(kpiStats.maoDeObraProntaBanco)}
+                    </span>
+                    <OrbeBadge variant="institutional">CNAB / Bancário</OrbeBadge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Lotes de Mão de Obra (CLT, Diaristas e Intermitentes) prontos para remessa bancária. Custos Extras são executados fora do CNAB.
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate("/bancario")}
+                className="shrink-0 h-8 px-3 rounded-lg text-xs font-semibold bg-background hover:bg-muted text-foreground border-border/80"
+              >
+                Abrir Central Bancária
+                <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+              </Button>
+            </div>
+
+            {/* FAIL-CLOSED CRITICAL ERROR STATE */}
+            {isErrorFederado && (
+              <div className="flex flex-col gap-2 p-3.5 rounded-lg border border-destructive/40 bg-destructive/10 text-destructive text-xs">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span className="font-semibold">Falha crítica ao consultar fontes federadas de despesas.</span>
+                </div>
+                <div className="text-[11px] leading-relaxed text-destructive/90 pl-6">
+                  {errorFederado instanceof Error ? errorFederado.message : String(errorFederado || "Dados financeiros bloqueados para evitar exibição de saldo parcial incompleto.")}
+                </div>
+                <div className="flex items-center gap-2 pt-1 pl-6">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs border-destructive/30 hover:bg-destructive/10"
+                    onClick={() => refetchFederado()}
+                  >
+                    <RefreshCw className="h-3 w-3 mr-1" /> Tentar Novamente
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
+              {activeTab !== "visao-geral" && (
+                <TabsList className="bg-muted/50 p-1 rounded-lg border border-border/60 flex flex-wrap h-auto">
+                  <TabsTrigger value="visao-geral">Visão Geral (Despesas)</TabsTrigger>
+                  <TabsTrigger value="lotes-rh" className="relative">
+                    Lotes do RH
+                    {(lotesRhPendentes.length > 0 || lotesRhProntosBancario.length > 0) && (
+                      <span className="ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-info text-white text-[10px] font-bold px-1">
+                        {lotesRhPendentes.length + lotesRhProntosBancario.length}
+                      </span>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="faturamento" className="esc-tab-trigger text-xs sm:text-sm">Faturamento (Clientes)</TabsTrigger>
+                  <TabsTrigger value="custos-extras">Custos Extras</TabsTrigger>
+                  <TabsTrigger value="servicos-extras">Serviços Extras</TabsTrigger>
+                  <TabsTrigger value="fechamento">Fechamento</TabsTrigger>
+                </TabsList>
+              )}
+
+              <TabsContent value="visao-geral" className="space-y-4">
+                {/* FILTROS DE ESTÁGIO / SEGMENTED FILTER BUTTONS (PADRÃO CENTRAL DE APROVAÇÕES) */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                  {[
+                    { id: "TODAS", label: "Todas as Despesas", icon: Layers, count: despesasFederadas.length },
+                    {
+                      id: "AGUARDANDO_LIBERACAO",
+                      label: "Aguardando Liberação",
+                      icon: Clock,
+                      count: despesasFederadas.filter((i) => i.situacaoVisual === "AGUARDANDO_LIBERACAO").length,
+                    },
+                    {
+                      id: "A_PAGAR",
+                      label: "A Pagar",
+                      icon: AlertTriangle,
+                      count: despesasFederadas.filter((i) => i.situacaoVisual === "A_PAGAR").length,
+                    },
+                    {
+                      id: "PRONTA_BANCO",
+                      label: "Prontas p/ Banco",
+                      icon: Building2,
+                      count: despesasFederadas.filter((i) => i.situacaoVisual === "PRONTA_BANCO").length,
+                    },
+                    {
+                      id: "PAGA",
+                      label: "Pagas / Liquidadas",
+                      icon: CheckCircle2,
+                      count: despesasFederadas.filter((i) => i.situacaoVisual === "PAGA").length,
+                    },
+                  ].map((tab) => {
+                    const Icon = tab.icon;
+                    const isSelected = filtroPill === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setFiltroPill(tab.id)}
+                        className={cn(
+                          "h-9 px-3.5 rounded-lg flex items-center gap-2 border text-xs font-semibold whitespace-nowrap transition-all duration-200 select-none cursor-pointer",
+                          isSelected
+                            ? "bg-[#2563EB] text-white border-[#2563EB] shadow-xs dark:bg-blue-600 dark:border-blue-600"
+                            : "bg-card dark:bg-[#15191F] text-muted-foreground border-border/80 dark:border-white/[0.08] hover:bg-muted/60 hover:text-foreground"
                         )}
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <section className="esc-card">
-                    <header className="px-5 py-4 border-b border-border flex items-center justify-between">
-                      <div>
-                        <h2 className="font-display font-semibold text-foreground">Faturamento por cliente</h2>
-                        <p className="text-sm text-muted-foreground">
-                          Situação consolidada da competência em um só lugar.
-                        </p>
-                      </div>
-                      <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => navigate("/financeiro/faturamento")}>
-                        Ver histórico <ArrowRight className="h-3 w-3 ml-1" />
-                      </Button>
-                    </header>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="esc-table-header">
-                          <tr className="text-left text-muted-foreground">
-                            <th className="px-5 h-10 font-medium">Cliente</th>
-                            <th className="px-3 h-10 font-medium text-right">Valor</th>
-                            <th className="px-5 h-10 font-medium text-center">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {clientes.map((cliente: any) => (
-                            <tr key={cliente.id} className="border-t border-muted hover:bg-background transition-colors">
-                              <td className="px-5 h-12 font-medium text-foreground">{cliente.clientes?.nome}</td>
-                              <td className="px-3 text-right font-display font-semibold">
-                                R$ {Number(cliente.valor_total).toLocaleString("pt-BR")}
-                              </td>
-                              <td className="px-5 text-center">
-                                <span
-                                  className={cn(
-                                    "esc-chip",
-                                    cliente.status === "aprovado"
-                                      ? "bg-success-soft text-success-strong"
-                                      : "bg-warning-soft text-warning-strong"
-                                  )}
-                                >
-                                  {cliente.status}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                          {clientes.length === 0 && (
-                            <tr>
-                              <td colSpan={3} className="p-8 text-center text-muted-foreground italic">
-                                Nenhum cliente consolidado nesta competência.
-                              </td>
-                            </tr>
+                      >
+                        <Icon className={cn("w-3.5 h-3.5 shrink-0", isSelected ? "text-white" : "text-muted-foreground")} />
+                        <span>{tab.label}</span>
+                        <span
+                          className={cn(
+                            "ml-1 text-[10px] font-bold font-mono px-1.5 py-0.2 rounded-full",
+                            isSelected ? "bg-white/20 text-white" : "bg-muted text-muted-foreground dark:bg-white/[0.06]"
                           )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </section>
+                        >
+                          {tab.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
 
-                  <section className="esc-card">
-                    <header className="px-5 py-4 border-b border-border flex items-center justify-between">
-                      <div>
-                        <h2 className="font-display font-semibold text-foreground">Últimos lotes recebidos</h2>
-                        <p className="text-sm text-muted-foreground">
-                          Registro dos lotes enviados pelo RH para esta competência.
-                        </p>
-                      </div>
-                      <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setActiveTab("lotes-rh")}>
-                        Lotes do RH <ArrowRight className="h-3 w-3 ml-1" />
+                {/* FILTERBAR DENSA (ORBE DESIGN SYSTEM) */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 bg-card dark:bg-[#15191F] p-2.5 sm:p-3 rounded-lg border border-border/80 dark:border-white/[0.08] shadow-2xs">
+                  <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                    {/* Busca Textual */}
+                    <div className="relative min-w-[200px] flex-1 max-w-sm">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Filtrar por beneficiário, código ou descrição..."
+                        value={filtroTexto}
+                        onChange={(e) => setFiltroTexto(e.target.value)}
+                        className="h-8 pl-8 pr-2.5 w-full rounded-lg border border-border/80 dark:border-white/[0.08] bg-background dark:bg-[#111419] text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-600 shadow-2xs"
+                      />
+                    </div>
+
+                    {/* Select Origem */}
+                    <select
+                      value={filtroOrigem}
+                      onChange={(e) => setFiltroOrigem(e.target.value)}
+                      className="h-8 px-2.5 rounded-lg border border-border/80 dark:border-white/[0.08] bg-background dark:bg-[#111419] text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-600 shadow-2xs cursor-pointer min-w-[130px]"
+                    >
+                      <option value="TODAS">Todas as Origens</option>
+                      <option value="CUSTOS_EXTRAS">Custos Extras</option>
+                      <option value="CLT">CLT / Folha</option>
+                      <option value="DIARISTAS">Diaristas</option>
+                      <option value="INTERMITENTES">Intermitentes</option>
+                    </select>
+
+                    {/* Select Tipo */}
+                    <select
+                      value={filtroTipo}
+                      onChange={(e) => setFiltroTipo(e.target.value)}
+                      className="h-8 px-2.5 rounded-lg border border-border/80 dark:border-white/[0.08] bg-background dark:bg-[#111419] text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-600 shadow-2xs cursor-pointer min-w-[140px]"
+                    >
+                      <option value="TODAS">Todos os Tipos</option>
+                      <option value="PAGO_EMPRESA">Pago pela Empresa</option>
+                      <option value="REEMBOLSO_COLABORADOR">Reembolso Colaborador</option>
+                      <option value="PAGAMENTO_PENDENTE">Fornecedor / Boleto</option>
+                      <option value="MAO_DE_OBRA">Mão de Obra</option>
+                    </select>
+
+                    {/* Select Beneficiário */}
+                    {beneficiariosUnicos.length > 0 && (
+                      <select
+                        value={filtroBeneficiario}
+                        onChange={(e) => setFiltroBeneficiario(e.target.value)}
+                        className="h-8 px-2.5 rounded-lg border border-border/80 dark:border-white/[0.08] bg-background dark:bg-[#111419] text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-600 shadow-2xs cursor-pointer max-w-[180px]"
+                      >
+                        <option value="TODOS">Todos os Beneficiários</option>
+                        {beneficiariosUnicos.map((b) => (
+                          <option key={b} value={b}>
+                            {b}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    {/* Limpar Filtros */}
+                    {(filtroTexto || filtroOrigem !== "TODAS" || filtroTipo !== "TODAS" || filtroBeneficiario !== "TODOS" || filtroPill !== "TODAS") && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setFiltroTexto("");
+                          setFiltroOrigem("TODAS");
+                          setFiltroTipo("TODAS");
+                          setFiltroBeneficiario("TODOS");
+                          setFiltroPill("TODAS");
+                        }}
+                        className="h-8 px-2 text-[11px] text-muted-foreground hover:text-rose-600 dark:hover:text-rose-400 gap-1 rounded-lg"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        Limpar
                       </Button>
-                    </header>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="esc-table-header">
-                          <tr className="text-left text-muted-foreground">
-                            <th className="px-5 h-10 font-medium">Tipo / Empresa</th>
-                            <th className="px-3 h-10 font-medium text-right">Valor</th>
-                            <th className="px-3 h-10 font-medium text-center">Colaboradores</th>
-                            <th className="px-5 h-10 font-medium text-center">Status</th>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2.5 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-border/40">
+                    <span className="text-[11px] text-muted-foreground font-mono">
+                      {despesasFiltradas.length} de {despesasFederadas.length} item(ns)
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => refetchFederado()}
+                      className="h-8 px-2.5 rounded-lg text-xs font-medium border-border/80 dark:border-white/[0.08]"
+                    >
+                      <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", loadingFederado && "animate-spin")} />
+                      Atualizar
+                    </Button>
+                  </div>
+                </div>
+
+                {/* TABELA FEDERADA DENSA (ORBE DESIGN SYSTEM) */}
+                <section className="rounded-lg border border-border/80 dark:border-white/[0.08] bg-card dark:bg-[#15191F] shadow-2xs overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead className="h-9 bg-muted/40 dark:bg-white/[0.02] border-b border-border/70 text-muted-foreground uppercase text-[10px] tracking-wider font-semibold">
+                        <tr>
+                          <th className="px-4 py-2.5 font-semibold">Beneficiário / Referência</th>
+                          <th className="px-3 py-2.5 font-semibold">Origem</th>
+                          <th className="px-3 py-2.5 font-semibold">Tipo</th>
+                          <th className="px-3 py-2.5 font-semibold">Competência</th>
+                          <th className="px-3 py-2.5 font-semibold">Vencimento</th>
+                          <th className="px-3 py-2.5 font-semibold text-right">Valor</th>
+                          <th className="px-3 py-2.5 font-semibold text-center">Situação</th>
+                          <th className="px-4 py-2.5 font-semibold text-right">Ação</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/40">
+                        {loadingFederado ? (
+                          <tr>
+                            <td colSpan={8} className="p-12 text-center text-muted-foreground">
+                              <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-primary" />
+                              <span>Carregando despesas federadas...</span>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {lotesRh.slice(0, 6).map((lote: any) => {
-                            const isAguardando = lote.status === "AGUARDANDO_FINANCEIRO";
-                            const isEmAnalise = lote.status === "EM_ANALISE_FINANCEIRA";
-                            const isAprovado = lote.status === "AGUARDANDO_PAGAMENTO";
-                            const isDevolvido = lote.status === "DEVOLVIDO_RH";
+                        ) : despesasFiltradas.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="p-12 text-center text-muted-foreground">
+                              <p className="font-medium text-foreground">Nenhuma despesa ou obrigação encontrada para o contexto selecionado.</p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Ajuste os filtros de pesquisa ou selecione outra competência.
+                              </p>
+                            </td>
+                          </tr>
+                        ) : (
+                          despesasFiltradas.map((item) => {
+                            const badgeSituacao = getSituacaoBadge(item.situacaoVisual, item.dataVencimento);
+                            const diasVenc = calcularDiasVencimento(item.dataVencimento, item.situacaoVisual);
+
+                            const statusSemantico =
+                              diasVenc.isVencido && item.situacaoVisual !== "PAGA"
+                                ? "danger"
+                                : item.situacaoVisual === "PAGA"
+                                ? "success"
+                                : item.situacaoVisual === "AGUARDANDO_LIBERACAO"
+                                ? "warning"
+                                : item.situacaoVisual === "PRONTA_BANCO"
+                                ? "info"
+                                : "neutral";
+
                             return (
-                              <tr key={lote.id} className="border-t border-muted hover:bg-background transition-colors">
-                                <td className="px-5 h-12">
-                                  <div className="font-medium text-foreground">
-                                    {lote.tipo === "BANCO_HORAS" ? "Banco de Horas" : lote.tipo === "DIARISTAS" ? "Diaristas" : "Folha Variável"}
+                              <tr
+                                key={item.id}
+                                className="h-10 hover:bg-muted/30 dark:hover:bg-white/[0.02] transition-colors group cursor-pointer border-b border-border/30"
+                                onClick={() => handleOpenDrawer(item)}
+                              >
+                                {/* Beneficiário / Referência */}
+                                <td className="px-4 py-2">
+                                  <div className="font-medium text-foreground flex items-center gap-1.5">
+                                    <span className="truncate max-w-[200px]" title={item.beneficiarioNome}>
+                                      {item.beneficiarioNome}
+                                    </span>
+                                    {item.origem === "CUSTOS_EXTRAS" && (
+                                      <OrbeBadge variant="neutral" className="text-[9px] px-1 py-0 h-4 border-amber-300 text-amber-700 bg-amber-50/50">
+                                        Fora CNAB
+                                      </OrbeBadge>
+                                    )}
                                   </div>
-                                  <div className="text-[11px] text-muted-foreground">{lote.empresa?.nome || "-"}</div>
+                                  <div className="text-[11px] text-muted-foreground truncate max-w-[240px]" title={item.titulo || item.referencia}>
+                                    {item.titulo || item.referencia}
+                                  </div>
                                 </td>
-                                <td className="px-3 text-right font-display font-semibold">
-                                  R$ {Number(lote.valor_total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+
+                                {/* Origem */}
+                                <td className="px-3 py-2">
+                                  <OrbeBadge
+                                    variant={item.origem === "CLT" ? "institutional" : "neutral"}
+                                    className={cn(
+                                      "text-[10px] font-medium",
+                                      item.origem === "CUSTOS_EXTRAS" && "text-amber-800 border-amber-200 bg-amber-50/50 dark:text-amber-400 dark:border-amber-900/40 dark:bg-amber-950/20",
+                                      item.origem === "DIARISTAS" && "text-emerald-800 border-emerald-200 bg-emerald-50/50 dark:text-emerald-400 dark:border-emerald-900/40 dark:bg-emerald-950/20",
+                                      item.origem === "INTERMITENTES" && "text-purple-800 border-purple-200 bg-purple-50/50 dark:text-purple-400 dark:border-purple-900/40 dark:bg-purple-950/20"
+                                    )}
+                                  >
+                                    {getOrigemLabel(item.origem)}
+                                  </OrbeBadge>
                                 </td>
-                                <td className="px-3 text-center text-muted-foreground">{lote.total_colaboradores}</td>
-                                <td className="px-5 text-center">
-                                  <span className={cn(
-                                    "esc-chip text-[10px]",
-                                    isAguardando && "bg-warning-soft text-warning-strong",
-                                    isEmAnalise && "bg-info-soft text-info-strong",
-                                    isAprovado && "bg-success-soft text-success-strong",
-                                    isDevolvido && "bg-destructive/10 text-destructive",
-                                    !isAguardando && !isEmAnalise && !isAprovado && !isDevolvido && "bg-muted text-muted-foreground",
-                                  )}>
-                                    {isAguardando ? "Aguardando" : isEmAnalise ? "Em análise" : isAprovado ? "Aprovado" : isDevolvido ? "Devolvido" : lote.status}
+
+                                {/* Tipo */}
+                                <td className="px-3 py-2 text-muted-foreground">
+                                  <span className="truncate block max-w-[130px]" title={getTipoLabel(item.tipo)}>
+                                    {getTipoLabel(item.tipo)}
                                   </span>
+                                </td>
+
+                                {/* Competência */}
+                                <td className="px-3 py-2 text-muted-foreground whitespace-nowrap font-mono text-[11px]">
+                                  {item.competenciaFormatada || item.competencia || "—"}
+                                </td>
+
+                                {/* Vencimento */}
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  {item.dataVencimento ? (
+                                    <div>
+                                      <span className={cn("font-mono text-[11px]", diasVenc.isVencido && "font-semibold text-rose-600 dark:text-rose-400")}>
+                                        {formatDate(item.dataVencimento)}
+                                      </span>
+                                      {diasVenc.isVencido && (
+                                        <span className="block text-[10px] text-rose-500 font-medium">
+                                          ({diasVenc.diasAtraso}d atrás)
+                                        </span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                  )}
+                                </td>
+
+                                {/* Valor */}
+                                <td className="px-3 py-2 text-right font-display font-semibold font-mono text-foreground whitespace-nowrap">
+                                  {formatCurrency(item.valorTotal)}
+                                </td>
+
+                                {/* Situação */}
+                                <td className="px-3 py-2 text-center whitespace-nowrap">
+                                  <OrbeStatusBadge
+                                    status={statusSemantico}
+                                    label={badgeSituacao.label}
+                                  />
+                                </td>
+
+                                {/* Ação */}
+                                <td className="px-4 py-2 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleOpenDrawer(item)}
+                                    className="h-7 px-2 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-md"
+                                  >
+                                    Detalhes →
+                                  </Button>
                                 </td>
                               </tr>
                             );
-                          })}
-                          {lotesRh.length === 0 && (
-                            <tr>
-                              <td colSpan={4} className="p-8 text-center text-muted-foreground italic">
-                                Nenhum lote recebido do RH nesta competência.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                    {lotesRh.length > 0 && (
-                      <div className="border-t border-border px-5 py-2.5 flex items-center justify-between text-[11px] text-muted-foreground">
-                        <span>Total de lotes: <strong className="text-foreground">{lotesRh.length}</strong></span>
-                        <span>Valor total: <strong className="text-foreground">R$ {lotesRh.reduce((acc: number, l: any) => acc + Number(l.valor_total || 0), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong></span>
-                      </div>
-                    )}
-                  </section>
-                </div>
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
               </TabsContent>
 
               <TabsContent value="lotes-rh" className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <MetricCard
+                    label="Aguardando aprovação"
+                    value={`R$ ${Number(lotesRhValorTotal).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                    icon={Wallet}
+                    accent
+                  />
+                  <MetricCard
+                    label="Prontos para CNAB"
+                    value={`R$ ${Number(lotesRhValorBancario).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                    icon={FileCheck}
+                  />
+                  <MetricCard
+                    label="Lotes aguardando"
+                    value={lotesRhPendentes.length.toString()}
+                    icon={AlertTriangle}
+                  />
+                </div>
+
                 <section className="esc-card overflow-hidden">
                   <header className="px-5 py-4 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
@@ -781,6 +1436,7 @@ const CentralFinanceira = () => {
                         <button onClick={() => setSubTabRh("todos")} className={cn("px-3 py-1 flex-1 text-xs font-medium rounded-sm transition-colors", subTabRh === "todos" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}>Todos</button>
                         <button onClick={() => setSubTabRh("folha")} className={cn("px-3 py-1 flex-1 text-xs font-medium rounded-sm transition-colors", subTabRh === "folha" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}>Folha Oficial</button>
                         <button onClick={() => setSubTabRh("diaristas")} className={cn("px-3 py-1 flex-1 text-xs font-medium rounded-sm transition-colors", subTabRh === "diaristas" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}>Diaristas</button>
+                        <button onClick={() => setSubTabRh("intermitentes")} className={cn("px-3 py-1 flex-1 text-xs font-medium rounded-sm transition-colors", subTabRh === "intermitentes" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}>Intermitentes</button>
                       </div>
                       <div className="flex items-center gap-2">
                         {(lotesRhPendentes.length > 0 || lotesRhProntosBancario.length > 0) && (
@@ -840,12 +1496,13 @@ const CentralFinanceira = () => {
                             const isEmAnalise = lote.status === "EM_ANALISE_FINANCEIRA";
                             const isAguardandoPagamento = lote.status === "AGUARDANDO_PAGAMENTO";
                             const isDevolvido = lote.status === "DEVOLVIDO_RH";
+                            const isPago = lote.status === "PAGO";
                             return (
                               <tr key={lote.id} className="border-t border-muted hover:bg-background transition-colors">
                                 <td className="px-5 h-12 font-medium text-foreground">{lote.competencia}</td>
                                 <td className="px-3 text-muted-foreground text-xs">{lote.empresa?.nome || "-"}</td>
                                 <td className="px-3 text-muted-foreground">
-                                  {lote.tipo === "BANCO_HORAS" ? "Banco de Horas" : lote.tipo === "DIARISTAS" ? "Diaristas" : "Folha Variável"}
+                                  {lote.tipo === "BANCO_HORAS" ? "Banco de Horas" : lote.tipo === "DIARISTAS" ? "Diaristas" : lote.tipo === "INTERMITENTES" ? "Intermitentes" : "Folha Variável"}
                                 </td>
                                 <td className="px-3 text-center text-muted-foreground">{lote.total_colaboradores}</td>
                                 <td className="px-3 text-right font-display font-semibold">
@@ -857,18 +1514,20 @@ const CentralFinanceira = () => {
                                     isEmAnalise && "bg-info-soft text-info-strong",
                                     isAguardandoPagamento && "bg-success-soft text-success-strong",
                                     isDevolvido && "bg-destructive/10 text-destructive",
-                                    !isAguardando && !isEmAnalise && !isAguardandoPagamento && !isDevolvido && "bg-muted text-muted-foreground",
+                                    isPago && "bg-success-soft text-success-strong",
+                                    !isAguardando && !isEmAnalise && !isAguardandoPagamento && !isDevolvido && !isPago && "bg-muted text-muted-foreground",
                                   )}>
                                     {lote.status === "AGUARDANDO_FINANCEIRO" ? "Aguardando Financeiro" :
                                       lote.status === "EM_ANALISE_FINANCEIRA" ? "Em Análise Financeira" :
                                         lote.status === "AGUARDANDO_PAGAMENTO" ? "Aguardando Pagamento" :
                                           lote.status === "DEVOLVIDO_RH" ? "Devolvido ao RH" :
-                                            lote.status}
+                                            lote.status === "PAGO" ? "Pago" :
+                                              lote.status}
                                   </Badge>
                                 </td>
                                 <td className="px-5 text-right">
                                   <Button variant="ghost" size="sm" onClick={() => setRhLoteSelecionado(lote)}>
-                                    Analisar
+                                    {isPago ? "Ver Detalhes" : "Analisar"}
                                   </Button>
                                 </td>
                               </tr>
@@ -1289,26 +1948,96 @@ const CentralFinanceira = () => {
       <Dialog
         open={Boolean(rhLoteSelecionado)}
         onOpenChange={(open) => {
-          if (!open) { setRhLoteSelecionado(null); setObservacaoAprovacao(""); setShowLogHistorico(false); }
+          if (!open) handleFecharModalLote();
         }}
       >
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileCheck className="h-5 w-5 text-primary" />
-              Análise do Lote - Financeiro
+              {rhLoteSelecionado?.tipo === "INTERMITENTES"
+                ? "Detalhamento do Lote - Intermitentes"
+                : (rhLoteSelecionado?.tipo === "DIARISTAS" || rhLoteDetalhe?.tipo === "DIARISTAS")
+                ? "Análise do Lote - Diaristas"
+                : "Análise do Lote - Financeiro"}
             </DialogTitle>
             <DialogDescription>
-              {rhLoteSelecionado
-                ? `${rhLoteSelecionado.competencia} · ${rhLoteSelecionado.empresa?.nome || ""} · ${rhLoteSelecionado.tipo === "BANCO_HORAS" ? "Banco de Horas" : (rhLoteSelecionado.tipo === "DIARISTAS" ? "Diaristas" : "Folha Variável")}`
-                : "Carregando lote..."}
+              {(() => {
+                const comp = rhLoteSelecionado?.competencia || rhLoteDetalhe?.competencia || "";
+                const empNome = rhLoteSelecionado?.empresa?.nome || rhLoteDetalhe?.empresa?.nome || empresas.find((e: any) => e.id === (rhLoteSelecionado?.empresa_id || rhLoteDetalhe?.empresa_id))?.nome || "";
+                const tipoResolvido = rhLoteSelecionado?.tipo || rhLoteDetalhe?.tipo;
+                const tipoLabel = tipoResolvido === "BANCO_HORAS"
+                  ? "Banco de Horas"
+                  : tipoResolvido === "DIARISTAS"
+                  ? "Diaristas"
+                  : tipoResolvido === "INTERMITENTES"
+                  ? "Intermitentes"
+                  : "Folha Variável";
+
+                const partes = [comp, empNome, tipoLabel].filter(Boolean);
+                return partes.length > 0 ? partes.join(" · ") : "Carregando lote...";
+              })()}
             </DialogDescription>
           </DialogHeader>
 
           {loadingRhLoteDetalhe ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <span className="text-sm text-muted-foreground font-medium">Carregando detalhes do lote...</span>
             </div>
+          ) : isErrorRhLoteDetalhe ? (
+            (() => {
+              const errMessage = (errorRhLoteDetalhe as any)?.message || "Falha ao consultar detalhes do lote.";
+              const isAccessDenied = (errorRhLoteDetalhe as any)?.reason === "ENVIRONMENT_MISMATCH" ||
+                                     errMessage.includes("Acesso negado") ||
+                                     errMessage.includes("Produção") ||
+                                     errMessage.includes("Homologação") ||
+                                     errMessage.includes("Producao") ||
+                                     errMessage.includes("Homologacao");
+
+              return (
+                <div className="p-6 rounded-xl border border-destructive/30 bg-destructive/5 space-y-4 my-4">
+                  <div className="flex items-start gap-3 text-destructive">
+                    <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <h4 className="font-semibold text-sm">
+                        {isAccessDenied ? "Acesso Não Permitido no Ambiente Atual" : "Falha na Consulta dos Detalhes"}
+                      </h4>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        {errMessage}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-destructive/20">
+                    {isAccessDenied ? (
+                      <Button
+                        size="sm"
+                        className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs"
+                        onClick={() => {
+                          const targetEnv = errMessage.includes("Homologação") || errMessage.includes("Homologacao") ? "HOMOLOGACAO" : "PRODUCAO";
+                          localStorage.setItem("esc-log-environment", targetEnv);
+                          window.location.reload();
+                        }}
+                      >
+                        <Activity className="h-3.5 w-3.5 mr-1.5" />
+                        Alternar para Base de {errMessage.includes("Homologação") || errMessage.includes("Homologacao") ? "Homologação" : "Produção"}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs font-semibold"
+                        onClick={() => refetchRhLoteDetalhe()}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                        Tentar Novamente
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()
           ) : rhLoteDetalhe ? (
             <div className="space-y-5">
               {/* Status atual + motivo devolução */}
@@ -1322,6 +2051,8 @@ const CentralFinanceira = () => {
                   FECHADO_FINANCEIRO: { label: "Aprovado pelo Financeiro", cls: "bg-success-soft text-success-strong" },
                   AGUARDANDO_PAGAMENTO: { label: "Aguardando Pagamento/CNAB", cls: "bg-success-soft text-success-strong" },
                   DEVOLVIDO_RH: { label: "Devolvido ao RH", cls: "bg-destructive/10 text-destructive" },
+                  CNAB_GERADO: { label: "CNAB Gerado", cls: "bg-info-soft text-info-strong" },
+                  PAGO: { label: "Pago", cls: "bg-success-soft text-success-strong" },
                 };
                 const c = cfg[st] || { label: st, cls: "bg-muted text-muted-foreground" };
                 return (
@@ -1339,9 +2070,9 @@ const CentralFinanceira = () => {
               {/* Metadados */}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
-                  { label: "Competência", value: rhLoteDetalhe.competencia },
-                  { label: "Empresa", value: rhLoteDetalhe.empresa?.nome || "-" },
-                  { label: "Colaboradores", value: String(rhLoteDetalhe.total_colaboradores) },
+                  { label: "Competência", value: rhLoteDetalhe.competencia || "-" },
+                  { label: "Empresa", value: rhLoteDetalhe.empresa?.nome || empresas.find((e: any) => e.id === rhLoteDetalhe.empresa_id)?.nome || "-" },
+                  { label: "Colaboradores", value: String(rhLoteDetalhe.total_colaboradores || (rhLoteDetalhe.itens || []).length) },
                   { label: "Valor total", value: `R$ ${Number(rhLoteDetalhe.valor_total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` },
                 ].map((item) => (
                   <div key={item.label} className="rounded-xl border border-border bg-muted/30 p-4">
@@ -1358,13 +2089,36 @@ const CentralFinanceira = () => {
                 const rejeit = itens.filter((i: any) => i.status === "REJEITADO").length;
                 const pend = itens.filter((i: any) => i.status === "PENDENTE").length;
                 const valT = itens.reduce((a: number, i: any) => a + Number(i.valor_calculado || 0), 0);
+                const isIntermitentes = rhLoteDetalhe.tipo === "INTERMITENTES" || rhLoteSelecionado?.tipo === "INTERMITENTES";
+                const isDiaristasOuRh = rhLoteDetalhe.tipo === "DIARISTAS" || rhLoteDetalhe.tipo === "DIARISTA" || String(rhLoteDetalhe.origem_tipo || "").toUpperCase().includes("DIARISTA");
+
+                if (isIntermitentes) {
+                  const horasTotais = itens.reduce((a: number, i: any) => a + Number(i.horas ?? Number(i.minutos || 0) / 60), 0);
+                  const isPago = rhLoteDetalhe.status === "PAGO";
+                  return (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      {[
+                        { label: "Colaboradores", value: String(rhLoteDetalhe.total_colaboradores || total), cls: "" },
+                        { label: "Horas Apuradas", value: `${horasTotais.toFixed(2)}h`, cls: "text-foreground font-mono" },
+                        { label: "Valor Total", value: `R$ ${Number(rhLoteDetalhe.valor_total || valT).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, cls: "text-primary" },
+                        { label: "Situação", value: isPago ? "Pago" : (rhLoteDetalhe.status || "Pendente"), cls: isPago ? "text-success" : "text-warning" },
+                      ].map((s) => (
+                        <div key={s.label} className="rounded-xl border border-border bg-muted/20 p-3 text-center">
+                          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{s.label}</div>
+                          <div className={cn("mt-1.5 font-display text-lg font-bold", s.cls)}>{s.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+
                 return (
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     {[
-                      { label: "Total itens", value: String(total), cls: "" },
-                      { label: "Faturáveis", value: String(total - rejeit), cls: "text-success" },
+                      { label: isDiaristasOuRh ? "Total registros" : "Total itens", value: String(total), cls: "" },
+                      { label: isDiaristasOuRh ? "Diárias Aprovadas" : "Aptos para Pagamento", value: String(total - rejeit), cls: "text-success" },
                       { label: "Pendentes", value: String(pend), cls: "text-warning" },
-                      { label: "Valor faturável", value: `R$ ${valT.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, cls: "text-primary" },
+                      { label: isDiaristasOuRh ? "Valor a pagar" : "Valor do lote", value: `R$ ${valT.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`, cls: "text-primary" },
                     ].map((s) => (
                       <div key={s.label} className="rounded-xl border border-border bg-muted/20 p-3 text-center">
                         <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{s.label}</div>
@@ -1384,7 +2138,13 @@ const CentralFinanceira = () => {
               {/* Tabela de itens */}
               <div className="rounded-xl border border-border overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-border bg-muted/20 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-foreground">Itens do lote</span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {rhLoteDetalhe.tipo === "INTERMITENTES"
+                      ? "Composição de Colaboradores"
+                      : (rhLoteDetalhe.tipo === "DIARISTAS" || rhLoteSelecionado?.tipo === "DIARISTAS")
+                      ? "Lançamentos de Diárias"
+                      : "Itens do lote"}
+                  </span>
                   <span className="text-xs text-muted-foreground">{(rhLoteDetalhe.itens || []).length} registros</span>
                 </div>
                 <div className="overflow-x-auto max-h-56 overflow-y-auto">
@@ -1392,9 +2152,23 @@ const CentralFinanceira = () => {
                     <thead className="esc-table-header sticky top-0">
                       <tr className="text-left text-muted-foreground">
                         <th className="px-4 h-9 font-medium">Colaborador</th>
-                        <th className="px-3 h-9 font-medium">Evento</th>
-                        <th className="px-3 h-9 font-medium text-center">Horas</th>
-                        <th className="px-3 h-9 font-medium text-right">Valor</th>
+                        <th className="px-3 h-9 font-medium">
+                          {rhLoteDetalhe.tipo === "INTERMITENTES"
+                            ? "Evento / Origem"
+                            : (rhLoteDetalhe.tipo === "DIARISTAS" || rhLoteSelecionado?.tipo === "DIARISTAS")
+                            ? "Data / Código"
+                            : "Evento"}
+                        </th>
+                        <th className="px-3 h-9 font-medium text-center">
+                          {rhLoteDetalhe.tipo === "INTERMITENTES"
+                            ? "Horas Apuradas"
+                            : (rhLoteDetalhe.tipo === "DIARISTAS" || rhLoteSelecionado?.tipo === "DIARISTAS")
+                            ? "Diárias"
+                            : "Horas"}
+                        </th>
+                        <th className="px-3 h-9 font-medium text-right">
+                          {rhLoteDetalhe.tipo === "INTERMITENTES" ? "Valor Calculado" : "Valor"}
+                        </th>
                         <th className="px-4 h-9 font-medium text-center">Status</th>
                       </tr>
                     </thead>
@@ -1402,26 +2176,49 @@ const CentralFinanceira = () => {
                       {(rhLoteDetalhe.itens || []).length === 0 ? (
                         <tr><td colSpan={5} className="p-8 text-center text-muted-foreground italic">Nenhum item neste lote.</td></tr>
                       ) : (
-                        (rhLoteDetalhe.itens || []).map((item: any) => (
-                          <tr key={item.id} className="border-t border-muted hover:bg-background transition-colors">
-                            <td className="px-4 py-2.5 font-medium text-foreground">{item.nome_colaborador}</td>
-                            <td className="px-3 py-2.5 text-muted-foreground text-xs capitalize">{String(item.tipo_evento || "").split("_").join(" ")}</td>
-                            <td className="px-3 py-2.5 text-center text-muted-foreground font-mono">
-                              {Number(item.horas ?? Number(item.minutos || 0) / 60).toFixed(2)}h
-                            </td>
-                            <td className="px-3 py-2.5 text-right font-display font-semibold">
-                              R$ {Number(item.valor_calculado || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </td>
-                            <td className="px-4 py-2.5 text-center">
-                              <Badge className={cn("text-[10px]",
-                                item.status === "APROVADO" && "bg-success-soft text-success-strong",
-                                item.status === "PENDENTE" && "bg-warning-soft text-warning-strong",
-                                item.status === "REJEITADO" && "bg-destructive/10 text-destructive",
-                                item.status === "EM_ANALISE" && "bg-info-soft text-info-strong",
-                              )}>{item.status}</Badge>
-                            </td>
-                          </tr>
-                        ))
+                        (rhLoteDetalhe.itens || []).map((item: any) => {
+                          const isIntermitente = rhLoteDetalhe.tipo === "INTERMITENTES";
+                          const isDiarista = rhLoteDetalhe.tipo === "DIARISTAS" || rhLoteSelecionado?.tipo === "DIARISTAS";
+                          const loteIsPago = rhLoteDetalhe.status === "PAGO";
+
+                          let eventoLabel = String(item.tipo_evento || "").split("_").join(" ");
+                          if (isIntermitente) {
+                            eventoLabel = item.tipo_evento === "LANCAMENTO_INTERMITENTE" ? "Intermitente" : String(item.tipo_evento || "Intermitente").split("_").join(" ");
+                          } else if (isDiarista) {
+                            const dataFmt = item.data_lancamento
+                              ? `${item.data_lancamento.slice(8, 10)}/${item.data_lancamento.slice(5, 7)}`
+                              : "";
+                            const cod = item.codigo_marcacao || item.tipo_evento || "Diária";
+                            eventoLabel = dataFmt ? `${dataFmt} — ${cod}` : cod;
+                          }
+
+                          const statusLabel = (isIntermitente && loteIsPago) ? "PAGO" : item.status;
+                          const isItemPago = statusLabel === "PAGO" || statusLabel === "APROVADO";
+
+                          return (
+                            <tr key={item.id} className="border-t border-muted hover:bg-background transition-colors">
+                              <td className="px-4 py-2.5 font-medium text-foreground">{item.nome_colaborador}</td>
+                              <td className="px-3 py-2.5 text-muted-foreground text-xs">{eventoLabel}</td>
+                              <td className="px-3 py-2.5 text-center text-muted-foreground font-mono">
+                                {isDiarista
+                                  ? `${Number(item.quantidade_diaria ?? item.horas ?? 1)}d`
+                                  : `${Number(item.horas ?? Number(item.minutos || 0) / 60).toFixed(2)}h`}
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-display font-semibold">
+                                R$ {Number(item.valor_calculado || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="px-4 py-2.5 text-center">
+                                <Badge className={cn("text-[10px]",
+                                  isItemPago && "bg-success-soft text-success-strong",
+                                  statusLabel === "PENDENTE" && "bg-warning-soft text-warning-strong",
+                                  statusLabel === "REJEITADO" && "bg-destructive/10 text-destructive",
+                                  statusLabel === "EM_ANALISE" && "bg-info-soft text-info-strong",
+                                  statusLabel === "VALIDADO_RH" && "bg-warning-soft text-warning-strong",
+                                )}>{statusLabel === "PAGO" ? "Pago" : statusLabel === "VALIDADO_RH" ? "Validado RH" : statusLabel}</Badge>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -1506,7 +2303,7 @@ const CentralFinanceira = () => {
             </div>
             {/* Direita: Fechar / Iniciar / Aprovar */}
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setRhLoteSelecionado(null)}>Fechar</Button>
+              <Button variant="outline" onClick={handleFecharModalLote}>Fechar</Button>
               {rhLoteDetalhe && rhLoteSelecionado?.tipo !== "DIARISTAS" && rhLoteSelecionado?.tipo !== "INTERMITENTES" && ["VALIDADO_RH", "AGUARDANDO_FINANCEIRO", "DEVOLVIDO_RH"].includes(rhLoteDetalhe.status) && (
                 <Button variant="outline" onClick={() => iniciarAnaliseMutation.mutate(rhLoteDetalhe.id)} disabled={iniciarAnaliseMutation.isPending}>
                   {iniciarAnaliseMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
@@ -1533,6 +2330,11 @@ const CentralFinanceira = () => {
                     Ir para Bancário/CNAB
                   </Button>
                 </>
+              )}
+              {rhLoteDetalhe?.status === "PAGO" && (
+                <div className="flex items-center gap-2 rounded-lg bg-success-soft px-3 py-2 text-sm font-semibold text-success-strong">
+                  <CheckCircle2 className="h-4 w-4" /> Lote Pago / Concluído
+                </div>
               )}
             </div>
           </DialogFooter>
@@ -1580,6 +2382,13 @@ const CentralFinanceira = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Drawer Contextual Oficial UX12 */}
+      <DespesaDrawerOficial
+        item={drawerItem}
+        open={isDrawerOpen}
+        onClose={handleCloseDrawer}
+      />
     </AppShell>
   );
 };

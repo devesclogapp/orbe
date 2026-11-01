@@ -1,0 +1,82 @@
+{
+  "1440x900": {
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "name": "1440x900"
+    },
+    "geometry": {
+      "windowWidth": 1440,
+      "windowHeight": 900,
+      "documentScrollWidth": 1430,
+      "documentScrollHeight": 900,
+      "horizontalOverflow": false,
+      "horizontalDiff": -10,
+      "overflowingCount": 0,
+      "overflowingSamples": [],
+      "list": {
+        "top": 343.125,
+        "bottom": 872,
+        "clientHeight": 529,
+        "scrollHeight": 809,
+        "hasScroll": true
+      },
+      "diag": {
+        "top": 343.125,
+        "bottom": 872,
+        "clientHeight": 527,
+        "scrollHeight": 527,
+        "hasScroll": false
+      },
+      "kpiCount": 0
+    },
+    "drawer": {
+      "windowWidth": 1440,
+      "documentScrollWidth": 1430,
+      "hasHorizontalOverflow": false,
+      "sheetWidth": 620,
+      "sheetRight": 1430
+    },
+    "screenshotInitial": "scratch/conv22_fechamento_1440x900_initial.png"
+  },
+  "1366x768": {
+    "viewport": {
+      "width": 1366,
+      "height": 768,
+      "name": "1366x768"
+    },
+    "geometry": {
+      "windowWidth": 1366,
+      "windowHeight": 768,
+      "documentScrollWidth": 1356,
+      "documentScrollHeight": 768,
+      "horizontalOverflow": false,
+      "horizontalDiff": -10,
+      "overflowingCount": 0,
+      "overflowingSamples": [],
+      "list": {
+        "top": 343.125,
+        "bottom": 740,
+        "clientHeight": 397,
+        "scrollHeight": 809,
+        "hasScroll": true
+      },
+      "diag": {
+        "top": 343.125,
+        "bottom": 740,
+        "clientHeight": 395,
+        "scrollHeight": 467,
+        "hasScroll": true
+      },
+      "kpiCount": 0
+    },
+    "drawer": {
+      "windowWidth": 1366,
+      "documentScrollWidth": 1356,
+      "hasHorizontalOverflow": false,
+      "sheetWidth": 620,
+      "sheetRight": 1356
+    },
+    "screenshotInitial": "scratch/conv22_fechamento_1366x768_initial.png"
+  }
+}

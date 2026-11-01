@@ -1,4 +1,4 @@
-import { addDays, endOfMonth, isAfter, startOfDay } from "date-fns";
+import { addDays, endOfMonth, format, isAfter, startOfDay } from "date-fns";
 import { RegrasFinanceirasService } from "@/services/base.service";
 
 export type ModalidadeFinanceira =
@@ -19,6 +19,35 @@ export function getModalidadeLabel(mod: ModalidadeFinanceira | string) {
   }
 }
 
+/**
+ * Formata strings semânticas de PostgreSQL DATE ('YYYY-MM-DD') para 'DD/MM/YYYY'.
+ * NÃO instancia o objeto Date para evitar conversão de fuso horário / timezone drift.
+ */
+export function formatDateOnly(dateStr?: string | null): string {
+  if (!dateStr || typeof dateStr !== "string") return "-";
+  const clean = dateStr.trim().slice(0, 10);
+  const match = clean.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) {
+    const [, year, month, day] = match;
+    return `${day}/${month}/${year}`;
+  }
+  return dateStr;
+}
+
+/**
+ * Formata timestamps ISO com data e hora no fuso operacional brasileiro ('DD/MM/YYYY às HH:mm').
+ */
+export function formatDateTime(value?: string | null): string {
+  if (!value) return "-";
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return value;
+    return format(d, "dd/MM/yyyy 'às' HH:mm");
+  } catch {
+    return value;
+  }
+}
+
 const normalizeFinanceText = (value: unknown) =>
   String(value ?? "")
     .normalize("NFD")
@@ -29,15 +58,72 @@ const normalizeFinanceText = (value: unknown) =>
 const getContextoImportacao = (operacao: any) =>
   (operacao?.avaliacao_json?.contexto_importacao as Record<string, unknown> | undefined) ?? {};
 
-const getVencimentoPadrao = (modalidade: ModalidadeFinanceira, dataOp: Date): Date => {
-  switch (modalidade) {
-    case "DUPLICATA_FORNECEDOR": return addDays(dataOp, 7);
-    case "FECHAMENTO_MENSAL_EMPRESA": return endOfMonth(dataOp);
-    default: return dataOp;
-  }
-};
+let _cachedRegrasFinanceiras: any[] = [];
 
-export function classificarFinanceiroSync(operacao: any, empresa: any = {}): { modalidade: ModalidadeFinanceira; vencimento: Date } {
+export function setCachedRegrasFinanceiras(rules: any[]) {
+  if (Array.isArray(rules) && rules.length > 0) {
+    _cachedRegrasFinanceiras = rules;
+  }
+}
+
+export function getCachedRegrasFinanceiras(): any[] {
+  return _cachedRegrasFinanceiras;
+}
+
+export function resolverPrazoDias({
+  modalidade,
+  empresaId,
+  regrasFinanceiras,
+}: {
+  modalidade: string;
+  empresaId?: string | null;
+  regrasFinanceiras?: any[];
+}): number | null {
+  const activeRules = Array.isArray(regrasFinanceiras)
+    ? regrasFinanceiras
+    : _cachedRegrasFinanceiras;
+
+  const isModalidadeDuplicata = modalidade === "DUPLICATA" || modalidade === "DUPLICATA_FORNECEDOR";
+
+  // 1. Regra específica da empresa
+  if (empresaId) {
+    const regraEmpresa = activeRules.find(
+      (r) =>
+        r.ativo !== false &&
+        (r.modalidade_financeira === modalidade || (isModalidadeDuplicata && r.modalidade_financeira === "DUPLICATA")) &&
+        r.empresa_id === empresaId &&
+        r.prazo_dias != null
+    );
+    if (regraEmpresa) {
+      return Number(regraEmpresa.prazo_dias);
+    }
+  }
+
+  // 2. Regra padrão global (empresa_id IS NULL)
+  const regraGlobal = activeRules.find(
+    (r) =>
+      r.ativo !== false &&
+      (r.modalidade_financeira === modalidade || (isModalidadeDuplicata && r.modalidade_financeira === "DUPLICATA")) &&
+      !r.empresa_id &&
+      r.prazo_dias != null
+  );
+  if (regraGlobal) {
+    return Number(regraGlobal.prazo_dias);
+  }
+
+  // 3. Ausência de configuração: tratada explicitamente sem fallback numérico arbitrário
+  return null;
+}
+
+export function classificarFinanceiroSync(
+  operacao: any,
+  empresa: any = {},
+  regrasFinanceiras?: any[]
+): { modalidade: ModalidadeFinanceira; vencimento: Date | null } {
+  if (Array.isArray(regrasFinanceiras) && regrasFinanceiras.length > 0) {
+    setCachedRegrasFinanceiras(regrasFinanceiras);
+  }
+
   const contextoImportacao = getContextoImportacao(operacao);
   const modalidadeManual = normalizeFinanceText(contextoImportacao.modalidade_financeira_override);
   const vencimentoManualRaw = String(contextoImportacao.data_vencimento_override ?? "").trim();
@@ -46,7 +132,7 @@ export function classificarFinanceiroSync(operacao: any, empresa: any = {}): { m
 
   let modalidade: ModalidadeFinanceira;
 
-  // Prioridade de classificação conforme regra crítica:
+  // Prioridade de classificação:
   // 1. BOLETO
   // 2. EMPRESA COM FECHAMENTO
   // 3. CAIXA IMEDIATO
@@ -74,15 +160,62 @@ export function classificarFinanceiroSync(operacao: any, empresa: any = {}): { m
     modalidade = "CAIXA_IMEDIATO";
   }
 
-  const vencimento = vencimentoManual && !Number.isNaN(vencimentoManual.getTime())
-    ? vencimentoManual
-    : getVencimentoPadrao(modalidade, dataOp);
+  // 1. SOURCE OF TRUTH: Se a operação já possui data_vencimento física definida
+  const dataVencimentoFisicaRaw = operacao.data_vencimento ? String(operacao.data_vencimento).trim() : "";
+  if (dataVencimentoFisicaRaw) {
+    const dataFisica = new Date(
+      dataVencimentoFisicaRaw.includes("T")
+        ? dataVencimentoFisicaRaw
+        : `${dataVencimentoFisicaRaw}T12:00:00Z`
+    );
+    if (!Number.isNaN(dataFisica.getTime())) {
+      return { modalidade, vencimento: dataFisica };
+    }
+  }
 
-  return { modalidade, vencimento };
+  // 2. Data manual explicitamente definida no contexto/override
+  if (vencimentoManual && !Number.isNaN(vencimentoManual.getTime())) {
+    return { modalidade, vencimento: vencimentoManual };
+  }
+
+  // 3. Resolução por modalidade e regras financeiras da empresa / global
+  if (modalidade === "CAIXA_IMEDIATO") {
+    return { modalidade, vencimento: dataOp };
+  }
+
+  if (modalidade === "FECHAMENTO_MENSAL_EMPRESA") {
+    const eom = endOfMonth(dataOp);
+    eom.setHours(12, 0, 0, 0);
+    return { modalidade, vencimento: eom };
+  }
+
+  if (modalidade === "DUPLICATA_FORNECEDOR") {
+    const empresaId = operacao.empresa_id || empresa.id || null;
+    const prazo = resolverPrazoDias({
+      modalidade: "DUPLICATA",
+      empresaId,
+      regrasFinanceiras: Array.isArray(regrasFinanceiras) ? regrasFinanceiras : _cachedRegrasFinanceiras,
+    });
+
+    if (prazo !== null) {
+      return { modalidade, vencimento: addDays(dataOp, prazo) };
+    }
+
+    // Ausência de regra cadastrada: retorna null explicitamente (sem D+7 hardcoded oculto)
+    return { modalidade, vencimento: null };
+  }
+
+  return { modalidade, vencimento: null };
 }
 
-export async function classificarFinanceiro(operacao: any, empresa: any = {}): Promise<{ modalidade: ModalidadeFinanceira; vencimento: Date; regra: any }> {
-  // Mantemos a versão async para chamadas que precisam do banco, mas seguindo a nova lógica de labels
+export async function classificarFinanceiro(operacao: any, empresa: any = {}): Promise<{ modalidade: ModalidadeFinanceira; vencimento: Date | null; regra: any }> {
+  try {
+    const rules = await RegrasFinanceirasService.getAllActive();
+    setCachedRegrasFinanceiras(rules);
+  } catch (e) {
+    console.warn('Erro ao atualizar cache de regras financeiras:', e);
+  }
+
   const sync = classificarFinanceiroSync(operacao, empresa);
   let modalidade = sync.modalidade;
   let vencimento = sync.vencimento;
@@ -92,15 +225,17 @@ export async function classificarFinanceiro(operacao: any, empresa: any = {}): P
     const dataOp = operacao.data_operacao ? new Date(`${operacao.data_operacao}T12:00:00Z`) : new Date();
     const resultado = await RegrasFinanceirasService.classificarFinanceiro(
       dataOp.toISOString().split('T')[0],
-      modalidade,
+      modalidade === 'DUPLICATA_FORNECEDOR' ? 'DUPLICATA' : modalidade,
       empresa.id
     );
     if (resultado && resultado.regra_encontrada) {
       regra = resultado;
-      vencimento = resultado.data_vencimento ? new Date(resultado.data_vencimento + 'T12:00:00Z') : vencimento;
+      if (!operacao.data_vencimento && resultado.data_vencimento) {
+        vencimento = new Date(resultado.data_vencimento + 'T12:00:00Z');
+      }
     }
   } catch (e) {
-    console.warn('Erro ao buscar regras financeiras do banco, usando fallback:', e);
+    console.warn('Erro ao buscar regras financeiras do banco:', e);
   }
 
   return { modalidade, vencimento, regra };
@@ -132,34 +267,41 @@ export function calcularValoresOperacao({
   nfRaw?: string | null;
   valorTotalMateriais?: number;
 }) {
-  const valorDescargaCalculado = Math.max(quantidade, 0) * Math.max(valorUnitario, 0);
+  const valorDescargaCalculado = Number((Math.max(quantidade, 0) * Math.max(valorUnitario, 0)).toFixed(2));
   const nfInformada = String(nfRaw ?? "")
     .trim()
     .toUpperCase();
-  const aplicaIss = nfInformada !== "" && nfInformada !== "NAO" && nfInformada !== "NÃO";
+  const aplicaIss = nfInformada !== "" && 
+    nfInformada !== "NAO" && 
+    nfInformada !== "NÃO" && 
+    nfInformada !== "FALSE" && 
+    nfInformada !== "0";
   
   // Regra crítica: se aplica ISS, o percentual mínimo é 5% (0.05)
   let percentualCalculado = 0;
   if (aplicaIss) {
-    percentualCalculado = percentualIss > 0 ? percentualIss : 0.05;
+    const rawPct = percentualIss > 1 ? percentualIss / 100 : percentualIss;
+    percentualCalculado = rawPct > 0 ? rawPct : 0.05;
   }
 
-  const custoIssCalculado = valorDescargaCalculado * percentualCalculado;
-  const totalFilmeCalculado = Math.max(quantidadeFilme, 0) * Math.max(valorUnitarioFilme, 0);
-  // Fórmula ajustada: O ISS aumenta o valor total do dia
-  const totalFinalCalculado = valorDescargaCalculado + custoIssCalculado + totalFilmeCalculado + (valorTotalMateriais || 0);
+  const custoIssCalculado = Number((valorDescargaCalculado * percentualCalculado).toFixed(2));
+  const totalFilmeCalculado = Number((Math.max(quantidadeFilme, 0) * Math.max(valorUnitarioFilme, 0)).toFixed(2));
+  // Regra canônica: valor_total = valor_descarga + custo_com_iss + total_filme + materiais
+  const totalFinalCalculado = Number(
+    (valorDescargaCalculado + custoIssCalculado + totalFilmeCalculado + (valorTotalMateriais || 0)).toFixed(2)
+  );
 
   return {
     percentualCalculado,
     valorDescargaCalculado,
     custoIssCalculado,
     totalFilmeCalculado,
-    valorTotalMateriais: valorTotalMateriais || 0,
+    valorTotalMateriais: Number((valorTotalMateriais || 0).toFixed(2)),
     totalFinalCalculado,
   };
 }
 
-export function processarOperacao(operacao: any, empresas: any[] = []) {
+export function processarOperacao(operacao: any, empresas: any[] = [], regrasFinanceiras: any[] = []) {
   const quantidade = Number(operacao.quantidade || 0);
   const valorUnitario = Number(operacao.valor_unitario_snapshot || operacao.valor_unitario_label || 0);
   const percentualIss = Number(operacao.percentual_iss || 0);
@@ -183,7 +325,7 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
 
   const empresa = empresas.find?.((e: any) => e.id === operacao.empresa_id) || {};
 
-  const financeiro = classificarFinanceiroSync(operacao, empresa);
+  const financeiro = classificarFinanceiroSync(operacao, empresa, regrasFinanceiras);
   
   const statusPagamentoRaw = String(operacao.status_pagamento ?? "").toUpperCase().trim();
   const dataVencimento = financeiro.vencimento;
@@ -191,7 +333,7 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
   let status_pagamento: StatusPagamento = "PENDENTE";
   if (["RECEBIDO", "PAGO", "CONCLUIDO", "FINALIZADO"].some(s => statusPagamentoRaw === s)) {
     status_pagamento = "RECEBIDO";
-  } else if (isAfter(startOfDay(new Date()), startOfDay(dataVencimento))) {
+  } else if (dataVencimento && isAfter(startOfDay(new Date()), startOfDay(dataVencimento))) {
     status_pagamento = "ATRASADO";
   }
 
@@ -233,7 +375,7 @@ export function processarOperacao(operacao: any, empresas: any[] = []) {
     valorDescargaCalculado: valor_descarga,
     totalFinalCalculado: total_final,
     modalidadeFinanceira: financeiro.modalidade,
-    dataVencimento: dataVencimento.toISOString().split("T")[0],
+    dataVencimento: dataVencimento ? format(dataVencimento, "yyyy-MM-dd") : null,
     statusPagamento: status_pagamento,
     formaPagamento: formaPagamentoValue,
     observacao: observacaoValue,

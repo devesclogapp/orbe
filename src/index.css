@@ -24,10 +24,10 @@
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 9%;
 
-    --primary: 18 100% 50%;
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
-    --primary-soft: 18 100% 96%;
-    --primary-hover: 18 100% 45%;
+    --primary-soft: 214 95% 93%;
+    --primary-hover: 221 83% 45%;
 
     --secondary: 0 0% 94%;
     --secondary-foreground: 0 0% 9%;
@@ -76,7 +76,7 @@
 
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 0 0% 30%;
-    --sidebar-primary: 18 100% 50%;
+    --sidebar-primary: 221 83% 53%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 0 0% 94%;
     --sidebar-accent-foreground: 0 0% 9%;
@@ -92,6 +92,19 @@
     --gray-600: 0 0% 30%;
     --gray-900: 0 0% 9%;
 
+    /* ORBE DS — Layout Tokens */
+    --orbe-workspace-max: 1560px;
+    --orbe-page-padding-x: 1.5rem;
+    --orbe-page-padding-y: 1.5rem;
+    --orbe-section-gap: 1.5rem;
+
+    /* ORBE DS — Radius Scale */
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+
     /* Spacing Scale (4px) */
     --space-1: 4px;
     --space-2: 8px;
@@ -100,6 +113,8 @@
     --space-5: 20px;
     --space-6: 24px;
     --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
 
     /* Aliases for Design System Compatibility */
     --color-brand: var(--primary);
@@ -116,77 +131,113 @@
   }
 
   .dark {
-    --background: 0 0% 7%;
-    --foreground: 0 0% 96%;
+    /* ─── DARK V4: RECONSTRUÇÃO DE PROFUNDIDADE POR LUMINÂNCIA ─── */
+    /* Canvas / Fundo Geral: #0B0D10 (Base neutra quase preta, livre de grafite azulado) */
+    --background: 216 19% 5.3%;
+    /* Texto Primário: #F1F3F5 (Off-white de alto contraste sereno) */
+    --foreground: 210 14% 95.3%;
 
-    --card: 0 0% 11%;
-    --card-foreground: 0 0% 96%;
+    /* Superfície de Nível 2 / Cards: #15191F */
+    --card: 216 19% 10.2%;
+    --card-foreground: 210 14% 95.3%;
 
-    --popover: 0 0% 11%;
-    --popover-foreground: 0 0% 96%;
+    /* Superfície Elevada / Modais / Drawers / Popovers: #1A1F27 */
+    --popover: 217 20% 12.7%;
+    --popover-foreground: 210 14% 95.3%;
 
-    --primary: 18 100% 55%;
+    /* Azul Royal ORBE (#2563EB) como Luz Funcional (foco, CTA, seleção, identidade) */
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
-    --primary-soft: 18 60% 16%;
-    --primary-hover: 18 100% 50%;
+    --primary-soft: 221 60% 14%;
+    --primary-hover: 221 83% 48%;
 
-    --secondary: 0 0% 16%;
-    --secondary-foreground: 0 0% 96%;
+    /* Superfície Principal / Nível 1 (Trilhas, Radar, containers principais): #111419 */
+    --secondary: 218 19% 8.2%;
+    --secondary-foreground: 210 14% 95.3%;
 
-    --muted: 0 0% 18%;
-    --muted-foreground: 0 0% 63%;
+    /* Superfície Elevada / Hover / Muted: #1A1F27 */
+    --muted: 217 20% 12.7%;
+    /* Texto Secundário: #A0A7B2 */
+    --muted-foreground: 217 10% 66.3%;
 
-    --accent: 0 0% 16%;
-    --accent-foreground: 0 0% 96%;
+    --accent: 217 20% 12.7%;
+    --accent-foreground: 210 14% 95.3%;
 
+    /* Semânticos Reservados para Informação/Status */
     --info: 217 91% 60%;
     --info-foreground: 0 0% 100%;
-    --info-soft: 217 60% 18%;
+    --info-soft: 217 60% 16%;
 
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
-    --success-soft: 142 50% 15%;
+    --success-soft: 142 50% 14%;
     --success-strong: 142 70% 70%;
 
     --warning: 38 92% 55%;
     --warning-foreground: 0 0% 9%;
-    --warning-soft: 38 60% 16%;
+    --warning-soft: 38 60% 14%;
     --warning-strong: 38 90% 70%;
 
     --destructive: 0 75% 55%;
     --destructive-foreground: 0 0% 100%;
-    --destructive-soft: 0 60% 18%;
+    --destructive-soft: 0 60% 16%;
     --destructive-strong: 0 80% 75%;
 
-    --border: 0 0% 20%;
-    --input: 0 0% 25%;
-    --ring: 217 91% 60%;
+    /* Bordas Estruturais Sutis: rgba(255,255,255,.06) ~ 216 10% 12% */
+    --border: 216 10% 12%;
+    --input: 216 10% 12%;
+    --ring: 221 83% 53%;
 
-    --row-alert: 12 60% 14%;
+    --row-alert: 218 19% 7.5%;
 
-    --sidebar-background: 0 0% 9%;
-    --sidebar-foreground: 0 0% 75%;
-    --sidebar-primary: 18 100% 55%;
+    /* Sidebar/Topbar: #0D1014 (Aproximado do fundo quase preto) */
+    --sidebar-background: 214 21% 6.5%;
+    --sidebar-foreground: 217 10% 66.3%;
+    --sidebar-primary: 221 83% 53%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 16%;
-    --sidebar-accent-foreground: 0 0% 96%;
-    --sidebar-border: 0 0% 18%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-accent: 217 20% 12.7%;
+    --sidebar-accent-foreground: 210 14% 95.3%;
+    --sidebar-border: 216 10% 9.5%;
+    --sidebar-ring: 221 83% 53%;
 
-    /* Specific Grays Dark */
-    --gray-100: 0 0% 15%;
-    --gray-200: 0 0% 20%;
-    --gray-300: 0 0% 30%;
-    --gray-400: 0 0% 45%;
-    --gray-500: 0 0% 63%;
-    --gray-600: 0 0% 75%;
-    --gray-900: 0 0% 96%;
+    /* Specific Grays Dark Refinados (Luminância Pura) */
+    --gray-100: 214 21% 6.5%;   /* #0D1014 */
+    --gray-200: 218 19% 8.2%;   /* #111419 */
+    --gray-300: 216 19% 10.2%;  /* #15191F */
+    --gray-400: 216 9% 45.1%;   /* #69717D Texto terciário */
+    --gray-500: 217 10% 66.3%;  /* #A0A7B2 Texto secundário */
+    --gray-600: 210 14% 80%;
+    --gray-900: 210 14% 95.3%;  /* #F1F3F5 Texto primário */
   }
 }
 
 @layer base {
   * {
     @apply border-border;
+  }
+
+  html {
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
+  }
+
+  html,
+  body,
+  main {
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+
+  body,
+  body[data-scroll-locked],
+  body[style*="overflow: hidden"],
+  html[data-scroll-locked] {
+    overflow: visible !important;
+    padding-right: 0px !important;
+    margin-right: 0px !important;
   }
 
   html,
@@ -274,17 +325,48 @@
     scrollbar-width: thin;
     scrollbar-color: hsl(var(--muted-foreground) / 0.3) transparent;
   }
+
+  /* Scrollbar dedicada e visível para as seções do DRE */
+  .custom-scrollbar-dre {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.4) transparent;
+  }
+  .custom-scrollbar-dre::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar-dre::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar-dre::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.4);
+    border-radius: 9999px;
+  }
+  .custom-scrollbar-dre::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.7);
+  }
 }
 
 /* Otimização de Impressão */
+.print-only {
+  display: none !important;
+}
+
 @media print {
   aside,
   header,
   nav,
   button,
   .no-print,
-  [role="button"] {
+  .dre-no-print,
+  [role="button"],
+  [data-sonner-toaster],
+  [data-sonner-toast] {
     display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
   }
 
   main,
@@ -296,6 +378,47 @@
     width: 100% !important;
     height: auto !important;
     overflow: visible !important;
+  }
+
+  /* ── IMPRESSÃO EXCLUSIVA DO DRAWER (DEMONSTRATIVO DETALHADO) ── */
+  body.printing-dre-drawer #root,
+  body.printing-dre-drawer main,
+  body.printing-dre-drawer .flex-1 {
+    display: none !important;
+  }
+
+  body.printing-dre-drawer [data-radix-dialog-overlay],
+  body.printing-dre-drawer [data-state][class*="inset-0"] {
+    display: none !important;
+  }
+
+  body.printing-dre-drawer .dre-drawer-sheet {
+    position: static !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    height: auto !important;
+    transform: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  body.printing-dre-drawer .dre-drawer-sheet * {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  body.printing-dre-drawer .dre-drawer-actions,
+  body.printing-dre-drawer button {
+    display: none !important;
   }
 
   .esc-card {

@@ -1,5 +1,8 @@
 import { supabase } from "@/lib/supabase";
 import { EnvironmentQueryFilter } from "./environment/EnvironmentQueryFilter";
+import { EnvironmentService } from "./environment/EnvironmentService";
+import { RemuneracaoResolver } from "./operationalEngine/RemuneracaoResolver";
+import { getMultiplicadorHoraExtra } from "./rhProcessing.service";
 
 type BloqueioItem = {
   id: string;
@@ -104,8 +107,49 @@ const isOperationalWarning = (tipo?: string | null, descricao?: string | null) =
   );
 };
 
-const getSignedValue = (ponto: any, tipoEvento: string) => {
-  if (tipoEvento === "hora_extra") return safeNumber(ponto.valor_hora_extra);
+const getSignedValue = (
+  ponto: any,
+  tipoEvento: string,
+  colaborador?: any,
+  regrasMap?: Map<string, any>
+) => {
+  if (tipoEvento === "hora_extra") {
+    const minutosExtra = safeNumber(ponto.minutos_extra);
+    if (minutosExtra <= 0) return 0;
+
+    // 1. Tentar valor direto persistido no ponto se positivo
+    const valorPonto = safeNumber(ponto.valor_hora_extra);
+    if (valorPonto > 0) return valorPonto;
+
+    // 2. Tentar valor persistido em horas_extras_detalhadas se positivo
+    const detalhado = ponto.horas_extras_detalhadas;
+    const valorDetalhado =
+      typeof detalhado === "object" && detalhado !== null
+        ? safeNumber(detalhado.valor)
+        : 0;
+    if (valorDetalhado > 0) return valorDetalhado;
+
+    // 3. Resolução canônica de remuneração CLT
+    const valorHoraBase = colaborador ? resolveValorHora(colaborador) : 0;
+
+    let multiplicadorExtra = 1.0;
+    if (
+      detalhado &&
+      typeof detalhado === "object" &&
+      typeof detalhado.multiplicador === "number" &&
+      detalhado.multiplicador > 0
+    ) {
+      multiplicadorExtra = Number(detalhado.multiplicador);
+    } else {
+      const regraId = colaborador?.regra_banco_horas_id;
+      const regra = regraId && regrasMap ? regrasMap.get(regraId) : null;
+      multiplicadorExtra = getMultiplicadorHoraExtra(regra);
+    }
+
+    const valorCalculado = (minutosExtra / 60) * valorHoraBase * multiplicadorExtra;
+    return Number(valorCalculado.toFixed(2));
+  }
+
   if (tipoEvento === "atraso") return -Math.abs(safeNumber(ponto.valor_atraso));
   if (tipoEvento === "falta") return -Math.abs(safeNumber(ponto.valor_falta));
   return 0;
@@ -122,16 +166,7 @@ const getMinutesForEvent = (ponto: any, tipoEvento: string) => {
 };
 
 const resolveValorHora = (colaborador: any) => {
-  const valorHora = safeNumber(colaborador?.valor_hora);
-  if (valorHora > 0) return valorHora;
-
-  const salarioBase = safeNumber(colaborador?.salario_base);
-  if (salarioBase > 0) return salarioBase / 220;
-
-  const valorBase = safeNumber(colaborador?.valor_base);
-  if (valorBase > 0) return valorBase / 220;
-
-  return 0;
+  return RemuneracaoResolver.resolve({ colaborador }).valorHora;
 };
 
 const getCurrentSessionContext = async () => {
@@ -168,19 +203,20 @@ const loadCompetenciaContext = async (tenantId: string, empresaId: string, compe
     { data: colaboradores, error: colaboradoresError },
     { data: inconsistencias, error: inconsistenciasError },
     { data: logs, error: logsError },
+    { data: regras, error: regrasError },
   ] =
     await Promise.all([
       supabase.from("empresas").select("id, nome").eq("tenant_id", tenantId).eq("id", empresaId).maybeSingle(),
       supabase
         .from("registros_ponto")
-        .select("id, tenant_id, empresa_id, colaborador_id, nome_colaborador, data, status_processamento, jornada_calculada, valor_hora_extra, valor_atraso, valor_falta, minutos_extra, minutos_atraso")
+        .select("id, tenant_id, empresa_id, colaborador_id, nome_colaborador, data, status_processamento, jornada_calculada, valor_hora_extra, valor_atraso, valor_falta, minutos_extra, minutos_atraso, horas_extras_detalhadas")
         .eq("tenant_id", tenantId)
         .eq("empresa_id", empresaId)
         .gte("data", startDate)
         .lte("data", endDate),
       supabase
         .from("colaboradores")
-        .select("id, nome, status, status_cadastro, cadastro_provisorio, tipo_colaborador, empresa_id, valor_hora, salario_base, valor_base, valor_diaria, modelo_calculo, tipo_contrato, gera_faturamento")
+        .select("id, nome, status, status_cadastro, cadastro_provisorio, tipo_colaborador, empresa_id, valor_hora, salario_base, valor_base, valor_diaria, modelo_calculo, tipo_contrato, gera_faturamento, jornada_id")
         .eq("tenant_id", tenantId)
         .eq("empresa_id", empresaId),
       (supabase as any)
@@ -198,17 +234,28 @@ const loadCompetenciaContext = async (tenantId: string, empresaId: string, compe
         .eq("periodo_ano", periodoAno)
         .eq("periodo_mes", periodoMes)
         .order("executado_em", { ascending: false }),
+      (supabase as any)
+        .from("banco_horas_regras")
+        .select("id, nome, adicional_hora_extra_percentual, bh_ativo, status, empresa_id, tenant_id")
+        .eq("tenant_id", tenantId),
     ]);
 
   if (pontosError) throw pontosError;
   if (colaboradoresError) throw colaboradoresError;
   if (inconsistenciasError) throw inconsistenciasError;
   if (logsError) throw logsError;
+  if (regrasError) throw regrasError;
+
+  const regrasMapeadas = ((regras || []) as any[]).map((r) => ({
+    ...r,
+    ativo: Boolean(r.bh_ativo ?? (String(r.status || "").toLowerCase() === "ativo")),
+  }));
 
   return {
     empresa: empresa ?? null,
     pontos: pontos ?? [],
     colaboradores: colaboradores ?? [],
+    regras: regrasMapeadas,
     inconsistencias: inconsistencias ?? [],
     logs: logs ?? [],
     startDate,
@@ -225,7 +272,7 @@ const loadFinancialFlowPendencias = async (tenantId: string, empresaId: string, 
   ] = await Promise.all([
     supabase
       .from("custos_extras_operacionais")
-      .select("id, data, status_pagamento")
+      .select("id, data, status_pagamento, pipeline_status")
       .eq("tenant_id", tenantId)
       .eq("empresa_id", empresaId)
       .gte("data", startDate)
@@ -245,11 +292,14 @@ const loadFinancialFlowPendencias = async (tenantId: string, empresaId: string, 
   }
 
   const custosExtrasPendentes = (custosExtras || [])
-    .filter((item: any) => String(item.status_pagamento || "").toUpperCase() !== "RECEBIDO")
+    .filter((item: any) =>
+      ["RECEBIDO", "EM_VALIDACAO"].includes(String(item.pipeline_status || "").toUpperCase()) &&
+      String(item.status_pagamento || "").toUpperCase() !== "CANCELADO",
+    )
     .map((item: any) => ({
       id: item.id,
       nome: "Custo extra operacional",
-      motivo: `status ${String(item.status_pagamento || "PENDENTE").toUpperCase().toLowerCase()}`,
+      motivo: `pipeline ${String(item.pipeline_status || "PENDENTE").toLowerCase()}`,
     }));
 
   const servicosExtrasPendentes = (servicosExtras || [])
@@ -270,21 +320,35 @@ const loadFinancialFlowPendencias = async (tenantId: string, empresaId: string, 
   };
 };
 
-const buildFolhaVariavelItems = (pontos: any[]) => {
+export const buildFolhaVariavelItems = (
+  pontos: any[],
+  colaboradores: any[] = [],
+  regras: any[] = []
+) => {
   const items: any[] = [];
+  const colaboradoresMap = new Map((colaboradores || []).map((c: any) => [c.id, c]));
+  const regrasMap = new Map((regras || []).map((r: any) => [r.id, r]));
 
   for (const ponto of pontos) {
-    if (ponto.status_processamento !== "PROCESSADO") continue;
+    if (String(ponto.status_processamento || "").toUpperCase() !== "PROCESSADO") continue;
 
+    const colaborador = colaboradoresMap.get(ponto.colaborador_id);
     const eventos = ["hora_extra", "atraso", "falta"] as const;
-    for (const tipoEvento of eventos) {
-      const valorCalculado = getSignedValue(ponto, tipoEvento);
-      if (Math.abs(valorCalculado) <= 0) continue;
 
+    for (const tipoEvento of eventos) {
       const minutos = getMinutesForEvent(ponto, tipoEvento);
+      const valorCalculado = getSignedValue(ponto, tipoEvento, colaborador, regrasMap);
+
+      // Evento de hora extra com minutos > 0 é preservado fisicamente
+      if (tipoEvento === "hora_extra") {
+        if (minutos <= 0) continue;
+      } else {
+        if (Math.abs(valorCalculado) <= 0) continue;
+      }
+
       items.push({
         colaborador_id: ponto.colaborador_id ?? null,
-        nome_colaborador: ponto.nome_colaborador || "Colaborador sem nome",
+        nome_colaborador: ponto.nome_colaborador || colaborador?.nome || "Colaborador sem nome",
         tipo_evento: tipoEvento,
         minutos,
         horas: Number((Math.abs(minutos) / 60).toFixed(2)),
@@ -431,7 +495,7 @@ class RHFinanceiroServiceClass {
 
     const { tenantId } = await getCurrentSessionContext();
     const [
-      { empresa, pontos, colaboradores, inconsistencias, logs },
+      { empresa, pontos, colaboradores, inconsistencias, logs, regras },
       { custosExtrasPendentes, servicosExtrasPendentes },
     ] = await Promise.all([
       loadCompetenciaContext(tenantId, empresaId, competencia),
@@ -527,7 +591,7 @@ class RHFinanceiroServiceClass {
       }
     }
 
-    for (const ponto of pontosDoMes.filter((item: any) => item.status_processamento === "INCONSISTENTE")) {
+    for (const ponto of pontosDoMes.filter((item: any) => String(item.status_processamento || "").toUpperCase() === "INCONSISTENTE")) {
       if (registroPontoComBloqueio.has(ponto.id)) continue;
 
       const pontoColabId = ponto.colaborador_id;
@@ -656,7 +720,7 @@ class RHFinanceiroServiceClass {
         servicosExtrasPendentes: servicosExtrasPendentes.length,
         financeiroPrevisto: {
           folhaBase: buildFolhaBaseItems(colaboradores, competencia).length,
-          variaveis: buildFolhaVariavelItems(pontosDoMes).length,
+          variaveis: buildFolhaVariavelItems(pontosDoMes, colaboradores, regras).length,
           bancoHoras: await buildBancoHorasItems(tenantId, empresaId, competencia, colaboradores).then(items => items.length).catch(() => 0),
         }
       },
@@ -670,11 +734,11 @@ class RHFinanceiroServiceClass {
     }
 
     const { tenantId, userId, userName } = await getCurrentSessionContext();
-    const { pontos, colaboradores } = await loadCompetenciaContext(tenantId, empresaId, competencia);
+    const { pontos, colaboradores, regras } = await loadCompetenciaContext(tenantId, empresaId, competencia);
 
     const tiposParaCriar = [
       { tipo: "FOLHA_BASE", items: buildFolhaBaseItems(colaboradores, competencia) },
-      { tipo: "FOLHA_VARIAVEL", items: buildFolhaVariavelItems(pontos) },
+      { tipo: "FOLHA_VARIAVEL", items: buildFolhaVariavelItems(pontos, colaboradores, regras) },
       { tipo: "BANCO_HORAS", items: await buildBancoHorasItems(tenantId, empresaId, competencia, colaboradores) },
     ];
 
@@ -885,12 +949,13 @@ class RHFinanceiroServiceClass {
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
-    // PILOTO: Uso do EnvironmentQueryFilter com a regra de null = true 
-    // já que o baseline considerava `or(empresa_id.not.in...,empresa_id.is.null)`
-    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+
+    query = EnvironmentQueryFilter.applyEmpresaScope(query, {
       tenantId,
       column: "empresa_id",
       includeNullInProduction: true,
+      testIds,
     });
 
     if (competencia) {
@@ -1125,11 +1190,13 @@ class RHFinanceiroServiceClass {
       .eq("status", RH_LOTE_STATUS)
       .order("created_at", { ascending: false });
 
-    // PILOTO: Uso do EnvironmentQueryFilter
-    query = await EnvironmentQueryFilter.applyEmpresaScope(query, {
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+
+    query = EnvironmentQueryFilter.applyEmpresaScope(query, {
       tenantId,
       column: "empresa_id",
       includeNullInProduction: true,
+      testIds,
     });
 
     const { data: lotes, error } = await query.limit(6);

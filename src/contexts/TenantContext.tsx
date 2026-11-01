@@ -27,12 +27,30 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const fetchTenant = async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? hasResolvedInitialLoad.current;
 
+    // Timeout de segurança para a busca de tenant (4s)
+    const timeoutPromise = new Promise<{ isTimeout: true }>((resolve) =>
+      setTimeout(() => resolve({ isTimeout: true }), 4000)
+    );
+
     try {
       if (!silent) {
         setLoading(true);
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const userPromise = supabase.auth.getUser();
+      const raceResult = await Promise.race([userPromise, timeoutPromise]);
+
+      if ("isTimeout" in raceResult) {
+        console.warn("[TenantContext] Timeout ao validar usuário no Supabase (4s).");
+        if (!silent) {
+          setTenant(null);
+          setRole(null);
+        }
+        hasResolvedInitialLoad.current = true;
+        return;
+      }
+
+      const { data: { user } } = raceResult;
       if (!user) {
         setTenant(null);
         setRole(null);
@@ -42,12 +60,25 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       console.log("[TenantContext] Buscando profile para:", user.id);
 
-      const { data: profile, error: profileError } = await supabase
+      const profilePromise = supabase
         .from("profiles")
         .select("tenant_id, role")
         .eq("user_id", user.id)
         .single();
 
+      const profileResult = await Promise.race([profilePromise, timeoutPromise]);
+
+      if ("isTimeout" in profileResult) {
+        console.warn("[TenantContext] Timeout ao buscar perfil no Supabase.");
+        if (!silent) {
+          setTenant(null);
+          setRole(null);
+        }
+        hasResolvedInitialLoad.current = true;
+        return;
+      }
+
+      const { data: profile, error: profileError } = profileResult;
       console.log("[TenantContext] Resultado profile:", { profile, profileError });
 
       if (profileError || !profile?.tenant_id) {

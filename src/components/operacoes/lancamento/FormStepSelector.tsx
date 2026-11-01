@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 interface FormStepSelectorProps {
     form: UseFormReturn<ProductionFormValues>;
     onNext: (preset: typeof PRESETS[0]) => void;
+    mode?: "admin" | "encarregado";
 }
 
 const PRESETS = [
@@ -72,16 +73,23 @@ const PRESETS = [
     },
 ];
 
-export function FormStepSelector({ form, onNext }: FormStepSelectorProps) {
+export function FormStepSelector({ form, onNext, mode = "encarregado" }: FormStepSelectorProps) {
     const handleSelect = (preset: typeof PRESETS[0]) => {
         form.setValue("tipo_lancamento", preset.tipo as any);
         form.setValue("modalidade_financeira", preset.modalidade as any);
         onNext(preset);
     };
 
+    const visiblePresets = PRESETS.filter(preset => {
+        if (mode === "admin") {
+            return preset.id !== "diaristas" && preset.id !== "servicos_especificos";
+        }
+        return true;
+    });
+
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {PRESETS.map((preset) => (
+            {visiblePresets.map((preset) => (
                 <button
                     key={preset.id}
                     type="button"

@@ -6,6 +6,7 @@ import { TrailerLote } from './segmentos/TrailerLote';
 import { TrailerArquivo } from './segmentos/TrailerArquivo';
 import { SegmentoB } from './segmentos/SegmentoB';
 import { CnabRemessaArquivoService } from './cnabRemessaArquivo.service';
+import { gerarRelatorioSimulacaoHomologacao } from './simulacaoHomologacao.service';
 
 import { ICNAB240Writer, CNAB240GenerateOptions, CNAB240Result } from './types';
 import { CNABBase } from './CNABBase';
@@ -33,13 +34,20 @@ export class CNAB240BBWriter implements ICNAB240Writer {
       competencia,
       contaBancariaId,
       rhLoteId,
-      modo = 'producao',
+      modo,
       salvarConteudo = true,
     } = opts;
 
     const now = new Date();
     const inconsistencias: string[] = [];
-    const { conta, faturas, valorEsperadoLote } = await fetchLoteData(loteId, contaBancariaId, rhLoteId);
+    const { conta, faturas, valorEsperadoLote, isTeste } = await fetchLoteData(loteId, contaBancariaId, rhLoteId);
+
+    // Determinação estrita e canônica do modo via empresas.is_teste (Fail-Closed)
+    // A autoridade de empresas.is_teste prevalece absolutamente sobre qualquer parâmetro recebido
+    const modoEfetivo: 'homologacao' | 'producao' =
+      typeof isTeste === 'boolean'
+        ? (isTeste ? 'homologacao' : 'producao')
+        : (modo === 'homologacao' ? 'homologacao' : 'producao');
 
     if (!faturas.length) {
       throw new Error('Lote vazio - nenhuma fatura encontrada para geração CNAB.');
@@ -227,10 +235,34 @@ export class CNAB240BBWriter implements ICNAB240Writer {
       inconsistencias.push(`Erro no Trailer Arquivo: ${(e as Error).message}`);
     }
 
-    const content = linhas.join('\r\n') + '\r\n';
+    let content: string;
+    let fileName: string;
     const padZero = (n: number) => n.toString().padStart(2, '0');
     const seqFormatado = String(sequencialGlobal).padStart(6, '0');
-    const fileName = `CNAB240_BB_${now.getFullYear()}${padZero(now.getMonth() + 1)}${padZero(now.getDate())}_SEQ${seqFormatado}.txt`;
+
+    // Se for HOMOLOGAÇÃO, gerar exclusivamente relatório de simulação canônico ORBE_SIMULACAO_CNAB_V1
+    if (modoEfetivo === 'homologacao') {
+      const modalidadeSimulacao = rhLoteId ? 'CLT' : 'FATURA';
+      const relatorio = gerarRelatorioSimulacaoHomologacao({
+        origem: modalidadeSimulacao,
+        empresaNome: conta.empresas?.nome || 'EMPRESA HOMOLOGACAO',
+        bancoCodigo: '001',
+        bancoNome: 'BANCO DO BRASIL (001)',
+        sequencial: sequencialGlobal,
+        totalRegistros: totalTitulosValidos,
+        totalValor: totalValorLote,
+        beneficiarios: faturas.map((f: any) => ({
+          nome: f.colaborador?.nome || f.favorecido_nome || 'FAVORECIDO',
+          valor: Number(f.valor ?? 0),
+          cpf: f.colaborador?.cpf || f.favorecido_cpf,
+        })),
+      });
+      fileName = relatorio.fileName;
+      content = relatorio.content;
+    } else {
+      content = linhas.join('\r\n') + '\r\n';
+      fileName = `CNAB240_BB_${now.getFullYear()}${padZero(now.getMonth() + 1)}${padZero(now.getDate())}_SEQ${seqFormatado}.txt`;
+    }
 
     const itensParaRpc = faturas.map(fura => {
       const rec = fura as any;
@@ -246,29 +278,26 @@ export class CNAB240BBWriter implements ICNAB240Writer {
 
     let arquivoRegistrado: Awaited<ReturnType<typeof CnabRemessaArquivoService.registrar>>;
 
-    try {
-      arquivoRegistrado = await CnabRemessaArquivoService.registrar({
-        loteId,
-        nomeArquivo: fileName,
-        conteudoArquivo: salvarConteudo ? content : '',
-        totalRegistros: linhas.length,
-        totalValor: totalValorLote,
-        bancoCodigo: conta.banco_codigo ?? '001',
-        bancoNome: conta.banco_nome ?? 'BANCO DO BRASIL',
-        contaBancariaId,
-        competencia,
-        modo,
-        sequencialArquivo: sequencialGlobal,
-        itens: itensParaRpc,
-      });
-    } catch (regErr: unknown) {
-      const msg = (regErr as Error).message;
-      if (msg.includes('já possui remessa') || msg.includes('idêntico')) {
-        throw regErr;
-      }
+    arquivoRegistrado = await CnabRemessaArquivoService.registrar({
+      loteId,
+      rhLoteId: rhLoteId || undefined,
+      nomeArquivo: fileName,
+      conteudoArquivo: salvarConteudo ? content : '',
+      totalRegistros: linhas.length,
+      quantidadeItensFinanceiros: itensParaRpc.length,
+      quantidadeRegistrosCnab: linhas.length,
+      totalValor: totalValorLote,
+      bancoCodigo: conta.banco_codigo ?? '001',
+      bancoNome: conta.banco_nome ?? 'BANCO DO BRASIL',
+      contaBancariaId,
+      competencia,
+      modo: modoEfetivo,
+      sequencialArquivo: sequencialGlobal,
+      itens: itensParaRpc,
+    });
 
-      inconsistencias.push(`Aviso: Não foi possível registrar metadados do arquivo: ${msg}`);
-      arquivoRegistrado = { id: 'nao-registrado' } as Awaited<ReturnType<typeof CnabRemessaArquivoService.registrar>>;
+    if (!arquivoRegistrado?.id || arquivoRegistrado.id === 'nao-registrado') {
+      throw new Error('Falha de persistência CNAB: O arquivo não foi registrado com sucesso no banco de dados.');
     }
 
     const hash = await CnabRemessaArquivoService.generateHash(content);
@@ -285,13 +314,19 @@ export class CNAB240BBWriter implements ICNAB240Writer {
       sequencial: sequencialGlobal,
       hash,
       arquivoId: arquivoRegistrado.id,
+      modo: arquivoRegistrado.modo,
       inconsistencias,
     };
   }
 
   static async redownload(arquivoId: string): Promise<{ content: string; fileName: string } | null> {
     const arquivo = await CnabRemessaArquivoService.buscarPorId(arquivoId);
-    if (!arquivo || !arquivo.conteudo_arquivo) return null;
+    if (!arquivo) return null;
+
+    // FIX-CNAB-05: Validação positiva de segurança antes do download
+    await CnabRemessaArquivoService.validarDownloadArquivo(arquivo);
+
+    if (!arquivo.conteudo_arquivo) return null;
 
     await CnabRemessaArquivoService.marcarComoBaixado(arquivoId);
 

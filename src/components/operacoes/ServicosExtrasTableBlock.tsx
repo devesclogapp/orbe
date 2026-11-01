@@ -57,6 +57,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { ServicosExtrasOperacionaisService } from "@/services/base.service";
+import { ServicoExtraDetalhesDrawer } from "./ServicoExtraDetalhesDrawer";
+import { ServicosExtrasContinuityDrawer } from "./ServicosExtrasContinuityDrawer";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -95,6 +97,8 @@ type ServicoExtraItem = {
     observacao?: string | null;
     operacao_id?: string | null;
     origem_dado?: string | null;
+    created_at?: string | null;
+    criado_em?: string | null;
 };
 
 type ServicosExtrasTableBlockProps = {
@@ -195,25 +199,26 @@ const getPipelineStatusConfig = (status?: string | null) => {
     switch (s) {
         case "PENDENTE":
         case "EM_ANALISE":
-            return { label: "🟡 Em análise RH", className: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-100" };
+            return { label: "Recebido", className: "bg-amber-50 text-amber-700 border-amber-200", opacity: "opacity-100" };
         case "EM_VALIDACAO":
-            return { label: "🟢 Validado RH", className: "bg-cyan-50 text-cyan-600 border-cyan-100", opacity: "opacity-[0.95]" };
+            return { label: "Em validação", className: "bg-cyan-50 text-cyan-700 border-cyan-200", opacity: "opacity-[0.95]" };
         case "APROVADO_OPERACAO":
-            return { label: "🔵 Financeiro", className: "bg-blue-50 text-blue-600 border-blue-100", opacity: "opacity-[0.90]" };
+            return { label: "Aprovado", className: "bg-blue-50 text-blue-700 border-blue-200", opacity: "opacity-[0.90]" };
         case "APROVADO_FINANCEIRO":
+            return { label: "A receber", className: "bg-emerald-50 text-emerald-700 border-emerald-200", opacity: "opacity-[0.85]" };
         case "FATURADO":
-            return { label: "🔵 Financeiro", className: "bg-emerald-50 text-emerald-600 border-emerald-100", opacity: "opacity-[0.85]" };
+            return { label: "Faturado", className: "bg-indigo-50 text-indigo-700 border-indigo-200", opacity: "opacity-[0.85]" };
         case "CNAB_GERADO":
-            return { label: "🟣 CNAB Gerado", className: "bg-indigo-50 text-indigo-600 border-indigo-100", opacity: "opacity-[0.80]" };
+            return { label: "CNAB Gerado", className: "bg-indigo-50 text-indigo-700 border-indigo-200", opacity: "opacity-[0.80]" };
         case "PAGO":
-            return { label: "💰 Pago", className: "bg-emerald-100 text-emerald-700", opacity: "opacity-[0.70]" };
+            return { label: "Pago", className: "bg-emerald-100 text-emerald-800 border-emerald-300", opacity: "opacity-[0.70]" };
         case "CONCLUIDO":
         case "FINALIZADO":
         case "FECHADO":
-            return { label: "⚫ Concluído", className: "bg-zinc-100 text-zinc-500 border-zinc-200", opacity: "opacity-[0.60]" };
+            return { label: "Recebido", className: "bg-zinc-100 text-zinc-600 border-zinc-200", opacity: "opacity-[0.60]" };
         case "DEVOLVIDO":
         case "RECUSADO":
-            return { label: "Devolvido", className: "bg-rose-50 text-rose-600 border-rose-100", opacity: "opacity-100" };
+            return { label: "Devolvido", className: "bg-rose-50 text-rose-700 border-rose-200", opacity: "opacity-100" };
         default:
             return { label: status || "Pendente", className: "bg-muted text-muted-foreground", opacity: "opacity-100" };
     }
@@ -241,6 +246,9 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
         open: boolean;
         itemId: string | null;
     }>({ open: false, itemId: null });
+
+    const [selectedItem, setSelectedItem] = useState<ServicoExtraItem | null>(null);
+    const [isFlowDrawerOpen, setIsFlowDrawerOpen] = useState(false);
 
     const scrollBy = useCallback((dir: "left" | "right") => {
         tableScrollRef.current?.scrollBy({ left: dir === "right" ? 220 : -220, behavior: "smooth" });
@@ -277,12 +285,15 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                 pipeline_status: status as any,
                 ...(justification ? { justificativa_devolucao: justification } : {}),
             }),
-        onSuccess: () => {
+        onSuccess: (_data, variables) => {
             queryClient.invalidateQueries({ queryKey: ["servicos-extras"] });
             queryClient.invalidateQueries({ queryKey: ["servicos_extras_historico"] });
             queryClient.invalidateQueries({ queryKey: ["servicos_extras_hoje"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
             queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+            if (selectedItem && variables.id === selectedItem.id) {
+                setSelectedItem((prev) => prev ? { ...prev, pipeline_status: variables.status as any } : null);
+            }
             toast.success("Pipeline atualizado com sucesso.");
         },
         onError: () => toast.error("Erro ao atualizar pipeline."),
@@ -330,6 +341,19 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
 
     // ─── Pipeline Handlers ────────────────────────────────────────────────────────
 
+    const handleRowClick = (item: ServicoExtraItem) => {
+        setSelectedItem(item);
+        setIsFlowDrawerOpen(false);
+        // Contrato Canônico de Navegação (Padronização Definitiva UX — Custos Extras & Serviços Extras):
+        // Clique na linha abre exclusivamente o Drawer Primário: Detalhes do Serviço Extra.
+        // O Drawer Secundário com a Linha do Tempo é disparado pelo link "Ver fluxo completo →".
+        // openPipeline(buildServicosExtrasPipeline({ modalidade_financeira: item.modalidade_financeira, registroId: item.id, descricao: item.descricao_servico, valor: item.total !== null && item.total !== undefined ? Number(item.total) : undefined }));
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Pipeline Advance & Devolve Handlers (Isolamento Arquitetural de Mutação)
+    // ─────────────────────────────────────────────────────────────────────────────
+
     const handleAdvance = (item: ServicoExtraItem) => {
         const next = getNextStatus(item.pipeline_status);
         if (!next) return;
@@ -344,6 +368,12 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                 competencia,
                 empresa: item.empresas?.nome ?? item.empresa_nome ?? "Empresa",
                 currentStep: nextStepId,
+                pipelineStatus: next,
+                modalidade_financeira: item.modalidade_financeira,
+                registroId: item.id,
+                descricao: item.descricao_servico,
+                valor: item.total !== null && item.total !== undefined ? Number(item.total) : undefined,
+                data: item.data || undefined,
             })
         );
     };
@@ -405,7 +435,12 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                 return searchMatch && tipoMatch && pipelineStatusMatch && pipelineMatch;
             })
             .sort((a, b) => {
-                if (!sortConfig) return 0;
+                if (!sortConfig) {
+                    const timeA = new Date(a.created_at || a.criado_em || (a.data ? `${a.data}T12:00:00` : 0)).getTime();
+                    const timeB = new Date(b.created_at || b.criado_em || (b.data ? `${b.data}T12:00:00` : 0)).getTime();
+                    if (timeA !== timeB) return timeB - timeA;
+                    return String(b.id ?? "").localeCompare(String(a.id ?? ""));
+                }
                 const key = sortConfig.key as keyof ServicoExtraItem;
                 const valA = a[key] ?? "";
                 const valB = b[key] ?? "";
@@ -549,8 +584,9 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                 return (
                                     <tr
                                         key={item.id}
+                                        onClick={() => handleRowClick(item)}
                                         className={cn(
-                                            "border-b border-border last:border-0 hover:bg-muted/50 transition-colors",
+                                            "esc-table-row cursor-pointer border-b border-border last:border-0 hover:bg-muted/50 transition-colors",
                                             statusCfg.opacity
                                         )}
                                     >
@@ -602,7 +638,10 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                                 {item.pipeline_status !== "CONCLUIDO" && canAdvance(item) && (
                                                     <button
                                                         className="h-7 w-7 rounded-md hover:bg-emerald-50 flex items-center justify-center text-emerald-600 hover:text-emerald-700"
-                                                        onClick={() => handleAdvance(item)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleAdvance(item);
+                                                        }}
                                                         title="Avançar Pipeline"
                                                         disabled={updatePipelineMutation.isPending}
                                                     >
@@ -612,28 +651,37 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                                                 {item.pipeline_status && item.pipeline_status !== "PENDENTE" && item.pipeline_status !== "CONCLUIDO" && canDevolve(item) && (
                                                     <button
                                                         className="h-7 w-7 rounded-md hover:bg-orange-50 flex items-center justify-center text-orange-600 hover:text-orange-700"
-                                                        onClick={() => handleDevolve(item)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDevolve(item);
+                                                        }}
                                                         title="Devolver etapa"
                                                         disabled={updatePipelineMutation.isPending}
                                                     >
                                                         <RotateCcw className="h-4 w-4" />
                                                     </button>
                                                 )}
-                                                <button
-                                                    className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
-                                                    onClick={() => {
-                                                        // Dispatch custom event passing the item, so NovoServicoExtraDialog can intercept and open in edit mode
-                                                        const event = new CustomEvent('open-edit-servico-extra', { detail: item });
-                                                        window.dispatchEvent(event);
-                                                    }}
-                                                    title="Editar"
-                                                >
-                                                    <Pencil className="h-4 w-4" />
-                                                </button>
+                                                {["PENDENTE", "EM_VALIDACAO", "DEVOLVIDO"].includes(String(item.pipeline_status || "").toUpperCase()) && (
+                                                    <button
+                                                        className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            // Dispatch custom event passing the item, so NovoServicoExtraDialog can intercept and open in edit mode
+                                                            const event = new CustomEvent('open-edit-servico-extra', { detail: item });
+                                                            window.dispatchEvent(event);
+                                                        }}
+                                                        title="Editar"
+                                                    >
+                                                        <Pencil className="h-4 w-4" />
+                                                    </button>
+                                                )}
                                                 {(isAdmin || item.pipeline_status === "PENDENTE") && (
                                                     <button
                                                         className="h-7 w-7 rounded-md hover:bg-red-50 flex items-center justify-center text-muted-foreground hover:text-destructive"
-                                                        onClick={() => deleteMutation.mutate(item.id)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            deleteMutation.mutate(item.id);
+                                                        }}
                                                         title="Remover"
                                                         disabled={deleteMutation.isPending}
                                                     >
@@ -657,7 +705,38 @@ export function ServicosExtrasTableBlock({ data }: ServicosExtrasTableBlockProps
                 </div>
             </div>
 
-            {/* Edit Sheet removido, substituído por edição completa no Dialog principal */}
+            {/* Drawer Primário — Detalhes do Serviço Extra */}
+            <ServicoExtraDetalhesDrawer
+                item={selectedItem}
+                isOpen={Boolean(selectedItem)}
+                onClose={() => {
+                    setSelectedItem(null);
+                    setIsFlowDrawerOpen(false);
+                }}
+                onVerFluxoCompleto={() => setIsFlowDrawerOpen(true)}
+                onAdvance={selectedItem && canAdvance(selectedItem) ? () => handleAdvance(selectedItem) : undefined}
+                onDevolve={selectedItem && canDevolve(selectedItem) ? () => handleDevolve(selectedItem) : undefined}
+                onEdit={selectedItem && ["PENDENTE", "EM_VALIDACAO", "DEVOLVIDO"].includes(String(selectedItem.pipeline_status || "").toUpperCase()) ? () => {
+                    const event = new CustomEvent('open-edit-servico-extra', { detail: selectedItem });
+                    window.dispatchEvent(event);
+                    setSelectedItem(null);
+                } : undefined}
+                canAdvance={selectedItem ? canAdvance(selectedItem) : false}
+                canDevolve={selectedItem ? canDevolve(selectedItem) : false}
+                isPendingAdvance={updatePipelineMutation.isPending}
+            />
+
+            {/* Drawer Secundário — Linha do Tempo e Status Completo */}
+            <ServicosExtrasContinuityDrawer
+                isOpen={isFlowDrawerOpen}
+                item={selectedItem}
+                zIndexClass="z-[60]"
+                onBack={() => setIsFlowDrawerOpen(false)}
+                onClose={() => {
+                    setIsFlowDrawerOpen(false);
+                    setSelectedItem(null);
+                }}
+            />
 
             {/* Justification Modal */}
             <JustificationModal

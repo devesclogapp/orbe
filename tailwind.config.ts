@@ -14,6 +14,7 @@ export default {
       fontFamily: {
         display: ['Manrope', 'system-ui', 'sans-serif'],
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['Inter', 'system-ui', 'sans-serif'],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -114,6 +115,12 @@ export default {
         green: {
           100: "#DCFCE7",
           700: "#15803D",
+        },
+        "royal-blue": {
+          DEFAULT: "#2563eb",
+          hover: "#1d4ed8",
+          light: "#60a5fa",
+          dark: "#1e40af",
         },
       },
       spacing: {

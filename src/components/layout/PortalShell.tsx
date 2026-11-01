@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Logo } from "@/components/ui/Logo";
 import { useAuth } from "@/contexts/AuthContext";
 import { useClient } from "@/contexts/ClientContext";
+import { ContextualHelpButton } from "@/components/help/ContextualHelpButton";
 
 interface PortalShellProps {
     children: ReactNode;
@@ -112,6 +113,7 @@ const PortalShell = ({ children, title }: PortalShellProps) => {
                     <h1 className="text-lg font-bold text-foreground">{title}</h1>
 
                     <div className="flex items-center gap-4">
+                        <ContextualHelpButton showLabel variant="outline" className="h-8 border-primary/25 bg-primary/5 text-primary hover:bg-primary/10 transition-all font-semibold text-xs shadow-xs" />
                         <button className="p-2 text-muted-foreground hover:bg-muted/30 rounded-full relative">
                             <Bell className="w-5 h-5" />
                         </button>

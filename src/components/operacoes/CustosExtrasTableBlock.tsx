@@ -1,14 +1,21 @@
-import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import React, { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
+  AlertTriangle,
   ArrowDownAZ,
+  ArrowLeft,
+  ArrowRight,
   ArrowUpZA,
   BadgeDollarSign,
   CalendarDays,
+  Check,
+  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Circle,
+  Eye,
   FileText,
   Lock,
   Loader2,
@@ -24,11 +31,20 @@ import { toast } from "sonner";
 import { useOperationalPipeline, buildCustosExtrasPipeline, type CustoExtraStepId } from "@/contexts/OperationalPipelineContext";
 import { JustificationModal } from "@/components/modals/JustificationModal";
 import { useAccessControl } from "@/contexts/AccessControlContext";
+import { useSearchParams } from "react-router-dom";
 
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -51,12 +67,14 @@ import {
   Sheet,
   SheetContent,
   SheetDescription,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { CustoExtraOperacionalService } from "@/services/base.service";
+import { getOrigemRecursoBadge } from "@/types/custosExtrasForm";
 
 type CustoExtraItem = {
   id: string;
@@ -78,15 +96,25 @@ type CustoExtraItem = {
   operacao_id?: string | null;
   tipo_lancamento?: string | null;
   origem_dado?: string | null;
+  origem_recurso?: "PAGO_EMPRESA" | "REEMBOLSO_COLABORADOR" | "PAGAMENTO_PENDENTE" | "LEGACY" | null;
+  favorecido_colaborador_id?: string | null;
+  favorecido_fornecedor_id?: string | null;
+  favorecido_colaborador?: { nome?: string | null } | null;
+  favorecido_fornecedor?: { nome?: string | null } | null;
   pipeline_status?: "RECEBIDO" | "EM_VALIDACAO" | "APROVADO_OPERACAO" | "REPROVADO" | "ENVIADO_FINANCEIRO" | "FINALIZADO" | null;
   justificativa_devolucao?: string | null;
   responsavel?: { full_name?: string | null } | null;
   responsavel_nome?: string | null;
   observacao?: string | null;
+  atualizado_em?: string | null;
 };
 
 type CustosExtrasTableBlockProps = {
   data: CustoExtraItem[];
+  defaultPipelineFilter?: "todos" | "pendentes" | "validacao" | "aprovacoes" | "financeiro" | "concluidos";
+  contextualOrigem?: "CUSTOS_EXTRAS" | string;
+  controlledPipelineFilter?: string;
+  onPipelineFilterChange?: (filter: string) => void;
 };
 
 type EditableCostForm = {
@@ -188,25 +216,131 @@ const getPipelineStatusConfig = (status?: string | null) => {
     case "RECEBIDO":
     case "PENDENTE":
     case "EM_ANALISE":
-      return { label: "🟡 Em análise RH", className: "bg-amber-50 text-amber-600 border-amber-100", opacity: "opacity-100" };
+      return { label: "Recebido", className: "bg-amber-50 text-amber-700 border-amber-200", opacity: "opacity-100" };
     case "EM_VALIDACAO":
-      return { label: "🟢 Validado RH", className: "bg-cyan-50 text-cyan-600 border-cyan-100", opacity: "opacity-[0.95]" };
+      return { label: "Em validação operacional", className: "bg-cyan-50 text-cyan-700 border-cyan-200", opacity: "opacity-[0.95]" };
     case "APROVADO_OPERACAO":
-      return { label: "🔵 Financeiro", className: "bg-blue-50 text-blue-600 border-blue-100", opacity: "opacity-[0.90]" };
+      return { label: "Aprovado Operação", className: "bg-blue-50 text-blue-700 border-blue-200", opacity: "opacity-[0.90]" };
     case "ENVIADO_FINANCEIRO":
-      return { label: "🟣 CNAB Gerado", className: "bg-indigo-50 text-indigo-600 border-indigo-100", opacity: "opacity-[0.80]" };
+      return { label: "Enviado ao Financeiro", className: "bg-indigo-50 text-indigo-700 border-indigo-200", opacity: "opacity-[0.80]" };
     case "PAGO":
-      return { label: "💰 Pago", className: "bg-zinc-100 text-zinc-500 border-zinc-200", opacity: "opacity-[0.70]" };
+      return { label: "Pago", className: "bg-emerald-50 text-emerald-700 border-emerald-200", opacity: "opacity-[0.70]" };
     case "FINALIZADO":
     case "CONCLUIDO":
     case "FECHADO":
-      return { label: "⚫ Concluído", className: "bg-zinc-100 text-zinc-500 border-zinc-200", opacity: "opacity-[0.60]" };
+      return { label: "Finalizado", className: "bg-zinc-100 text-zinc-600 border-zinc-200", opacity: "opacity-[0.60]" };
     case "REPROVADO":
     case "CANCELADO":
     case "DEVOLVIDO":
-      return { label: "Devolvido", className: "bg-rose-50 text-rose-600 border-rose-100", opacity: "opacity-100" };
+      return { label: "Devolvido / Reprovado", className: "bg-rose-50 text-rose-700 border-rose-200", opacity: "opacity-100" };
     default:
       return { label: status || "Pendente", className: "bg-muted text-muted-foreground", opacity: "opacity-100" };
+  }
+};
+
+const getDisplayPipelineStatus = (item: CustoExtraItem, isContextual: boolean) => {
+  if (isContextual) {
+    const s = String(item.pipeline_status || "").toUpperCase();
+    const sp = String(item.status_pagamento || "").toUpperCase();
+
+    if (s === "FINALIZADO" || sp === "PAGO") {
+      return { label: "Pago", className: "bg-emerald-50 text-emerald-700 border-emerald-200", opacity: "opacity-[0.75]" };
+    }
+    if (s === "ENVIADO_FINANCEIRO") {
+      return { label: "A pagar", className: "bg-indigo-50 text-indigo-700 border-indigo-200", opacity: "opacity-100" };
+    }
+    if (s === "APROVADO_OPERACAO") {
+      return { label: "Aguardando liberação para pagamento", className: "bg-amber-50 text-amber-700 border-amber-200", opacity: "opacity-100" };
+    }
+  }
+  return getPipelineStatusConfig(item.pipeline_status);
+};
+
+const MINI_FLOW_STAGES = [
+  { id: 0, label: "Recebido" },
+  { id: 1, label: "Validação" },
+  { id: 2, label: "Aprovado" },
+  { id: 3, label: "A pagar" },
+  { id: 4, label: "Pago" },
+] as const;
+
+const FULL_FLOW_STAGES = [
+  {
+    id: 0,
+    label: "Recebido",
+    responsible: "Encarregado",
+    description: "Custo extra registrado e capturado pelo sistema.",
+  },
+  {
+    id: 1,
+    label: "Em validação",
+    responsible: "Operação / ADM",
+    description: "Análise técnica operacional e conferência de dados.",
+  },
+  {
+    id: 2,
+    label: "Aprovado",
+    responsible: "Gestor Operacional",
+    description: "Despesa aprovada operacionalmente para pagamento.",
+  },
+  {
+    id: 3,
+    label: "A pagar",
+    responsible: "Financeiro",
+    description: "Disponível na Central de Pagamentos para liquidação.",
+  },
+  {
+    id: 4,
+    label: "Pago",
+    responsible: "Financeiro",
+    description: "Despesa liquidada e fluxo operacional concluído.",
+  },
+] as const;
+
+const getCustoExtraStageIndex = (item: CustoExtraItem) => {
+  const s = String(item.pipeline_status || "RECEBIDO").toUpperCase();
+  const sp = String(item.status_pagamento || "").toUpperCase();
+  if (s === "FINALIZADO" || sp === "PAGO") return 4;
+  if (s === "ENVIADO_FINANCEIRO") return 3;
+  if (s === "APROVADO_OPERACAO") return 2;
+  if (s === "EM_VALIDACAO") return 1;
+  return 0;
+};
+
+const getContextualFooterBanner = (currentStatus: string, isFinalizado: boolean) => {
+  if (isFinalizado) {
+    return {
+      text: "Despesa liquidada e finalizada no pipeline financeiro.",
+      className: "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
+      icon: CheckCircle2,
+    };
+  }
+  switch (currentStatus) {
+    case "ENVIADO_FINANCEIRO":
+      return {
+        text: "Despesa liberada. Pagamento pendente.",
+        className: "bg-indigo-50 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800",
+        icon: BadgeDollarSign,
+      };
+    case "APROVADO_OPERACAO":
+      return {
+        text: "Despesa aprovada. Aguardando liberação para pagamento.",
+        className: "bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200 dark:border-blue-800",
+        icon: CheckCircle2,
+      };
+    case "EM_VALIDACAO":
+      return {
+        text: "Despesa em validação operacional.",
+        className: "bg-cyan-50 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800",
+        icon: ArrowRight,
+      };
+    case "RECEBIDO":
+    default:
+      return {
+        text: "Lançamento recebido. Aguardando encaminhamento para validação.",
+        className: "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-800",
+        icon: Check,
+      };
   }
 };
 
@@ -223,13 +357,26 @@ const buildEditForm = (item: CustoExtraItem): EditableCostForm => ({
   operacao_id: toInputValue(item.operacao_id),
 });
 
-export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
+export function CustosExtrasTableBlock({
+  data,
+  defaultPipelineFilter = "todos",
+  contextualOrigem,
+  controlledPipelineFilter,
+  onPipelineFilterChange,
+}: CustosExtrasTableBlockProps) {
+  const [searchParams] = useSearchParams();
+  const isContextualCustosExtras = contextualOrigem === "CUSTOS_EXTRAS" || searchParams.get("origem") === "CUSTOS_EXTRAS";
   const queryClient = useQueryClient();
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const [filterText, setFilterText] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [pipelineStatusFilter, setPipelineStatusFilter] = useState("all");
-  const [pipelineFilter, setPipelineFilter] = useState<"todos" | "pendentes" | "rh" | "financeiro" | "concluidos">("todos");
+  const [internalPipelineFilter, setInternalPipelineFilter] = useState<string>(defaultPipelineFilter);
+  const pipelineFilter = controlledPipelineFilter !== undefined ? controlledPipelineFilter : internalPipelineFilter;
+  const setPipelineFilter = (newFilter: string) => {
+    setInternalPipelineFilter(newFilter);
+    onPipelineFilterChange?.(newFilter);
+  };
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [lockedCols, setLockedCols] = useState<Record<string, boolean>>(() => {
@@ -265,22 +412,50 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
     open: boolean;
     itemId: string | null;
     targetStatus: CustoExtraItem['pipeline_status'] | null;
+    title?: string;
+    description?: string;
   }>({
     open: false,
     itemId: null,
     targetStatus: null,
   });
 
+  const [confirmPaymentOpen, setConfirmPaymentOpen] = useState(false);
+  const [itemToPay, setItemToPay] = useState<CustoExtraItem | null>(null);
+  const [detailsViewMode, setDetailsViewMode] = useState<"details" | "flow">("details");
+
+  useEffect(() => {
+    const handleContinuarPagamento = (e: Event) => {
+      const customEvent = e as CustomEvent<{ registroId?: string }>;
+      const targetId = customEvent.detail?.registroId;
+      if (!targetId) return;
+
+      const item = data.find((d) => d.id === targetId);
+      if (item) {
+        setPipelineFilter("a_pagar");
+        setSelectedItem(item);
+        setDetailsViewMode("details");
+      }
+    };
+
+    window.addEventListener("orbe:continuar-pagamento-custo-extra", handleContinuarPagamento);
+    return () => window.removeEventListener("orbe:continuar-pagamento-custo-extra", handleContinuarPagamento);
+  }, [data]);
+
   const updatePipelineMutation = useMutation({
     mutationFn: async ({ id, acao, updatedAt, justification }: { id: string; acao: string; updatedAt: string; justification?: string }) => {
       return CustoExtraOperacionalService.transicionar(id, acao, updatedAt, justification);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["custos-extras"], refetchType: "all" });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
-      toast.success("Status do pipeline atualizado");
+      queryClient.invalidateQueries({ queryKey: ["aprovacoes-rh"] });
+      queryClient.invalidateQueries({ queryKey: ["aprovacoes-kpis"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["financeiro-despesas"] });
+      toast.success("Status do pipeline atualizado", { id: "pipeline-status" });
     },
     onError: (error: any) => {
       console.error("Erro ao atualizar pipeline:", error);
@@ -303,32 +478,84 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
       acao = 'enviar_financeiro';
       stepId = 'centro_custo';
     } else if (current === 'ENVIADO_FINANCEIRO') {
-      acao = 'finalizar_pagamento';
-      stepId = 'concluido';
+      // Abre confirmação explícita antes de executar finalizar_pagamento
+      setItemToPay(item);
+      setConfirmPaymentOpen(true);
+      return;
     }
 
     if (acao !== '') {
+      const currentItem = item;
       updatePipelineMutation.mutate({
-        id: item.id,
+        id: currentItem.id,
         acao,
         // @ts-ignore (atualizado_em comes from the backend payload even if not fully typed in CustoExtraItem frontend schema)
-        updatedAt: item.atualizado_em || new Date().toISOString()
+        updatedAt: currentItem.atualizado_em || new Date().toISOString()
+      }, {
+        onSuccess: (result: any) => {
+          setSelectedItem(null);
+          // Dismiss específico apenas para o toast de atualização de status do pipeline, preservando outros feedbacks
+          toast.dismiss("pipeline-status");
+          const competencia = currentItem.data ? format(new Date(currentItem.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
+
+          if (current === 'APROVADO_OPERACAO') {
+            setPipelineFilter("a_pagar");
+          }
+
+          openPipeline(buildCustosExtrasPipeline({
+            competencia,
+            empresa: currentItem.empresas?.nome || currentItem.empresa_nome || "Empresa",
+            currentStep: stepId,
+            pipelineStatus: result?.pipeline_status,
+            statusPagamento: result?.status_pagamento,
+            userRole: role,
+            isAdmin,
+            registroId: currentItem.id,
+          }));
+        }
       });
-
-      const competencia = item.data ? format(new Date(item.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
-
-      openPipeline(buildCustosExtrasPipeline({
-        competencia,
-        empresa: item.empresas?.nome || item.empresa_nome || "Empresa",
-        currentStep: stepId,
-      }));
     }
   };
 
+  const handleConfirmPayment = () => {
+    if (!itemToPay) return;
+    const currentItem = itemToPay;
+    updatePipelineMutation.mutate({
+      id: currentItem.id,
+      acao: 'finalizar_pagamento',
+      // @ts-ignore
+      updatedAt: currentItem.atualizado_em || new Date().toISOString()
+    }, {
+      onSuccess: (result: any) => {
+        setConfirmPaymentOpen(false);
+        setItemToPay(null);
+        setSelectedItem(null);
+        // Dismiss específico apenas para o toast de atualização de status do pipeline
+        toast.dismiss("pipeline-status");
+
+        const competencia = currentItem.data ? format(new Date(currentItem.data), "yyyy-MM") : format(new Date(), "yyyy-MM");
+        openPipeline(buildCustosExtrasPipeline({
+          competencia,
+          empresa: currentItem.empresas?.nome || currentItem.empresa_nome || "Empresa",
+          currentStep: 'concluido',
+          pipelineStatus: result?.pipeline_status || 'FINALIZADO',
+          statusPagamento: result?.status_pagamento || 'PAGO',
+          userRole: role,
+          isAdmin,
+        }));
+      }
+    });
+  };
+
   const handleDevolvePipeline = (item: CustoExtraItem) => {
+    const isEmValidacao = item.pipeline_status === 'EM_VALIDACAO';
     setJustificationModal({
       open: true,
       itemId: item.id,
+      title: isEmValidacao ? "Devolver para correção" : "Devolver para Operação",
+      description: isEmValidacao
+        ? "Explique o motivo do retorno deste custo extra para correção pelo encarregado."
+        : "Explique o motivo da devolução desta despesa para a equipe operacional.",
       // @ts-ignore
       targetStatus: item.atualizado_em || new Date().toISOString(),
     });
@@ -341,8 +568,12 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
         acao: 'devolver',
         updatedAt: justificationModal.targetStatus, // Estamos usando o targetStatus para carregar o updated_at no state do modal temporalmente
         justification
+      }, {
+        onSuccess: () => {
+          setSelectedItem(null);
+        }
       });
-      setJustificationModal({ open: false, itemId: null, targetStatus: null });
+      setJustificationModal({ open: false, itemId: null, targetStatus: null, title: undefined, description: undefined });
     }
   };
 
@@ -350,9 +581,10 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
     if (isAdmin) return true;
     const status = item.pipeline_status || 'PENDENTE';
 
-    if (status === 'RECEBIDO' && (role === 'encarregado' || role === 'gestor')) return true;
-    if (status === 'EM_VALIDACAO' && (role === 'gestor')) return true;
-    if ((status === 'APROVADO_OPERACAO' || status === 'ENVIADO_FINANCEIRO') && role === 'financeiro') return true;
+    if ((status === 'RECEBIDO' || status === 'PENDENTE') && (role === 'encarregado' || role === 'gestor')) return true;
+    if (status === 'EM_VALIDACAO' && (role === 'gestor' || role === 'rh')) return true;
+    if (status === 'APROVADO_OPERACAO' && (role === 'gestor' || role === 'rh' || role === 'financeiro')) return true;
+    if (status === 'ENVIADO_FINANCEIRO' && role === 'financeiro') return true;
 
     return false;
   };
@@ -360,10 +592,10 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
   const canDevolve = (item: CustoExtraItem) => {
     if (isAdmin) return true;
     const status = item.pipeline_status;
-    if (!status || status === 'RECEBIDO') return false;
+    if (!status || status === 'RECEBIDO' || status === 'FINALIZADO') return false;
 
-    if (status === 'EM_VALIDACAO' && (role === 'gestor')) return true;
-    if (status === 'APROVADO_OPERACAO' && (role === 'financeiro' || role === 'gestor')) return true;
+    if (status === 'EM_VALIDACAO' && (role === 'gestor' || role === 'rh')) return true;
+    if (status === 'APROVADO_OPERACAO' && (role === 'financeiro' || role === 'gestor' || role === 'rh')) return true;
     if (status === 'ENVIADO_FINANCEIRO' && role === 'financeiro') return true;
 
     return false;
@@ -415,8 +647,17 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
         const pipelineMatch = pipelineFilter === "todos" || (() => {
           // Normalizamos para upper case na leitura
           const s = String(item.pipeline_status || "RECEBIDO").toUpperCase();
+          const sp = String(item.status_pagamento || "").toUpperCase();
+
+          if (isContextualCustosExtras) {
+            if (pipelineFilter === "aguardando_liberacao") return s === "APROVADO_OPERACAO" && sp !== "PAGO";
+            if (pipelineFilter === "a_pagar") return s === "ENVIADO_FINANCEIRO" && sp !== "PAGO";
+            if (pipelineFilter === "pagos") return s === "FINALIZADO" || sp === "PAGO";
+          }
+
+          if (pipelineFilter === "aprovacoes") return ["RECEBIDO", "PENDENTE", "EM_VALIDACAO"].includes(s);
           if (pipelineFilter === "pendentes") return ["RECEBIDO", "PENDENTE", "REPROVADO", "EM_ANALISE", "DEVOLVIDO"].includes(s);
-          if (pipelineFilter === "rh") return ["EM_VALIDACAO"].includes(s);
+          if (pipelineFilter === "validacao") return ["EM_VALIDACAO"].includes(s);
           if (pipelineFilter === "financeiro") return ["APROVADO_OPERACAO", "ENVIADO_FINANCEIRO"].includes(s);
           if (pipelineFilter === "concluidos") return ["FINALIZADO", "PAGO", "CONCLUIDO"].includes(s);
           return true;
@@ -455,10 +696,12 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
       CustoExtraOperacionalService.update(id, payload),
     onSuccess: () => {
       toast.success("Custo extra atualizado.");
-      queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["custos-extras"], refetchType: "all" });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+      queryClient.invalidateQueries({ queryKey: ["aprovacoes-rh"] });
+      queryClient.invalidateQueries({ queryKey: ["aprovacoes-kpis"] });
       setEditingItem(null);
       setEditForm(null);
     },
@@ -471,10 +714,12 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
     mutationFn: (id: string) => CustoExtraOperacionalService.delete(id),
     onSuccess: () => {
       toast.success("Custo extra removido.");
-      queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["custos-extras"], refetchType: "all" });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+      queryClient.invalidateQueries({ queryKey: ["aprovacoes-rh"] });
+      queryClient.invalidateQueries({ queryKey: ["aprovacoes-kpis"] });
       setSelectedItem(null);
     },
     onError: (error: Error) => {
@@ -509,10 +754,12 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
       toast.success("Coluna atualizada em massa.", {
         description: `${count} linha(s) atualizada(s).`,
       });
-      queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["custos-extras"], refetchType: "all" });
       queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
       queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
       queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+      queryClient.invalidateQueries({ queryKey: ["aprovacoes-rh"] });
+      queryClient.invalidateQueries({ queryKey: ["aprovacoes-kpis"] });
       setIsBulkEditOpen(false);
       setBulkValue("");
     },
@@ -528,7 +775,8 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
         origem_dado: item.origem_dado === "importacao" ? "ajuste" : item.origem_dado,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["custos-extras"] });
+      queryClient.invalidateQueries({ queryKey: ["custos-extras"], refetchType: "all" });
+      queryClient.invalidateQueries({ queryKey: ["financeiro-despesas"] });
       toast.success("Status de pagamento atualizado.");
     },
     onError: (error: Error) => {
@@ -693,18 +941,33 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
           </Select>
 
           <div className="flex items-center bg-muted/30 p-1 rounded-lg border border-border">
-            {["todos", "pendentes", "rh", "financeiro", "concluidos"].map((id) => (
+            {(isContextualCustosExtras
+              ? [
+                  { id: "todos", label: "Todos" },
+                  { id: "aguardando_liberacao", label: "Aguardando liberação para pagamento" },
+                  { id: "a_pagar", label: "A pagar" },
+                  { id: "pagos", label: "Pago" },
+                ]
+              : [
+                  { id: "todos", label: "Todos" },
+                  { id: "aprovacoes", label: "Aprovações Pendentes" },
+                  { id: "pendentes", label: "Recebidos" },
+                  { id: "validacao", label: "Em Validação" },
+                  { id: "financeiro", label: "Financeiro" },
+                  { id: "concluidos", label: "Concluídos" },
+                ]
+            ).map((tab) => (
               <button
-                key={id}
-                onClick={() => setPipelineFilter(id as any)}
+                key={tab.id}
+                onClick={() => setPipelineFilter(tab.id)}
                 className={cn(
                   "px-3 py-1.5 text-[11px] font-bold uppercase tracking-tight rounded-md transition-all",
-                  pipelineFilter === id
+                  pipelineFilter === tab.id
                     ? "shadow-sm border scale-[1.02] bg-white text-primary border-border"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                 )}
               >
-                {id.charAt(0).toUpperCase() + id.slice(1)}
+                {tab.label}
               </button>
             ))}
           </div>
@@ -788,7 +1051,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                   key={item.id}
                   className={cn(
                     "esc-table-row cursor-pointer transition-all border-b border-border last:border-0 hover:bg-muted/50",
-                    getPipelineStatusConfig(item.pipeline_status).opacity
+                    getDisplayPipelineStatus(item, isContextualCustosExtras).opacity
                   )}
                   onClick={() => setSelectedItem(item)}
                 >
@@ -831,7 +1094,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                   {visibleCols.pipelineStatus && (
                     <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       {(() => {
-                        const cfg = getPipelineStatusConfig(item.pipeline_status);
+                        const cfg = getDisplayPipelineStatus(item, isContextualCustosExtras);
                         return (
                           <Badge className={cn("border shadow-none font-medium uppercase h-6 px-2 text-[11px]", cfg.className)}>
                             {cfg.label}
@@ -849,26 +1112,13 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
                   {visibleCols.acoes && (
                     <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-1">
-                        {item.pipeline_status !== 'FINALIZADO' && canAdvance(item) && (
-                          <button
-                            className="h-7 w-7 rounded-md hover:bg-emerald-50 flex items-center justify-center text-emerald-600 hover:text-emerald-700"
-                            onClick={() => handleAdvancePipeline(item)}
-                            title="Avancar Pipeline"
-                            disabled={updatePipelineMutation.isPending}
-                          >
-                            <PlayCircle className="h-4 w-4" />
-                          </button>
-                        )}
-                        {item.pipeline_status && item.pipeline_status !== 'RECEBIDO' && canDevolve(item) && (
-                          <button
-                            className="h-7 w-7 rounded-md hover:bg-orange-50 flex items-center justify-center text-orange-600 hover:text-orange-700"
-                            onClick={() => handleDevolvePipeline(item.id)}
-                            title="Devolver etapa"
-                            disabled={updatePipelineMutation.isPending}
-                          >
-                            <RotateCcw className="h-4 w-4" />
-                          </button>
-                        )}
+                        <button
+                          className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
+                          onClick={() => setSelectedItem(item)}
+                          title="Ver detalhes da despesa"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
                         <button
                           className="h-7 w-7 rounded-md hover:bg-secondary flex items-center justify-center text-muted-foreground hover:text-foreground"
                           onClick={() => openEditor(item)}
@@ -900,66 +1150,564 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
         </div>
       </div >
 
-      <Sheet open={!!selectedItem} onOpenChange={(value) => !value && setSelectedItem(null)}>
-        <SheetContent className="sm:max-w-md overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Detalhes do custo extra</SheetTitle>
-            <SheetDescription>Informacoes completas do lancamento de despesa.</SheetDescription>
-          </SheetHeader>
+      <Sheet
+        open={!!selectedItem}
+        onOpenChange={(value) => {
+          if (!value) {
+            setSelectedItem(null);
+            setDetailsViewMode("details");
+          }
+        }}
+      >
+        <SheetContent className="w-full sm:max-w-lg h-[100dvh] max-h-[100dvh] p-0 flex flex-col overflow-hidden overflow-x-hidden bg-background border-l border-border shadow-2xl">
+          {/* Header Fixo */}
+          <header className="p-6 pb-4 border-b border-border bg-card shrink-0">
+            <SheetHeader>
+              <SheetTitle className="text-xl font-bold text-foreground">
+                {detailsViewMode === "flow" ? "Linha do Tempo — Custo Extra" : "Detalhes do Custo Extra"}
+              </SheetTitle>
+              <SheetDescription>
+                {detailsViewMode === "flow"
+                  ? "Acompanhamento das 5 etapas operacionais e financeiras deste lançamento."
+                  : "Informações operacionais e financeiras consolidadas deste lançamento."}
+              </SheetDescription>
+            </SheetHeader>
+          </header>
 
-          {selectedItem && (
-            <div className="space-y-4 mt-6">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Data</p>
-                  <p className="font-medium">{formatDate(selectedItem.data)}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Empresa</p>
-                  <p className="font-medium">{selectedItem.empresas?.nome || selectedItem.empresa_nome || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Categoria</p>
-                  <p className="font-medium">{selectedItem.categoria_custo}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Status</p>
-                  <p className="font-medium">{selectedItem.status_pagamento || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Valor unitario</p>
-                  <p className="font-medium">{currencyFormatter.format(Number(selectedItem.valor_unitario ?? 0))}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Quantidade</p>
-                  <p className="font-medium">{Number(selectedItem.quantidade ?? 0).toLocaleString("pt-BR")}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Total</p>
-                  <p className="font-medium">{currencyFormatter.format(Number(selectedItem.total ?? 0))}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Vencimento</p>
-                  <p className="font-medium">{formatDate(selectedItem.data_vencimento)}</p>
-                </div>
-              </div>
+          {/* Área Central com Scroll Vertical e Proteção min-h-0 */}
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-6 space-y-5">
+            {selectedItem && (() => {
+              const item = selectedItem;
+              const pipelineCfg = getDisplayPipelineStatus(item, isContextualCustosExtras);
+              const origemBadge = getOrigemRecursoBadge(item.origem_recurso);
+              const currentStatus = String(item.pipeline_status || "RECEBIDO").toUpperCase();
+              const currentStatusPgto = String(item.status_pagamento || "").toUpperCase();
+              const isFinalizado = currentStatus === "FINALIZADO" || currentStatus === "CONCLUIDO" || currentStatusPgto === "PAGO";
+              const currentStageIdx = getCustoExtraStageIndex(item);
 
-              <div>
-                <p className="text-muted-foreground text-sm">Descricao</p>
-                <p className="font-medium text-sm">{selectedItem.descricao}</p>
-              </div>
+              return (
+                <div className="space-y-4 min-w-0">
+                  {detailsViewMode === "flow" ? (
+                    <div className="space-y-3 min-w-0">
+                      {/* Modo Fluxo Completo: Voltar aos detalhes sem duplicação do mini-fluxo */}
+                      <div className="flex items-center justify-between pb-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDetailsViewMode("details")}
+                          className="text-xs font-semibold text-primary hover:text-primary hover:bg-primary/10 h-7 px-2 -ml-2 shrink-0 gap-1.5"
+                        >
+                          <ArrowLeft className="h-3.5 w-3.5" />
+                          Voltar aos detalhes
+                        </Button>
+                      </div>
 
-              <div>
-                <p className="text-muted-foreground text-sm">Forma de pagamento</p>
-                <p className="font-medium text-sm">{selectedItem.forma_pagamento || "—"}</p>
-              </div>
-            </div>
-          )}
+                      {/* Linha do tempo completa com 5 etapas e forte destaque na etapa atual */}
+                      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+                        <div className="flex items-center justify-between pb-1 border-b border-border/60">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Linha do Tempo
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            5 etapas
+                          </span>
+                        </div>
+
+                        <div className="space-y-0 pt-1">
+                          {FULL_FLOW_STAGES.map((stage, idx) => {
+                            const isStepDone = isFinalizado || idx < currentStageIdx;
+                            const isStepCurrent = !isFinalizado && idx === currentStageIdx;
+                            const isStepPending = !isFinalizado && idx > currentStageIdx;
+                            const isLast = idx === FULL_FLOW_STAGES.length - 1;
+
+                            return (
+                              <div key={stage.id} className="flex gap-3 relative">
+                                <div className="flex flex-col items-center">
+                                  {isStepDone ? (
+                                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-xs">
+                                      <Check className="h-3.5 w-3.5 stroke-[3]" />
+                                    </div>
+                                  ) : isStepCurrent ? (
+                                    <div className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-white ring-4 ring-primary/25 ring-offset-2 ring-offset-background shadow-xs">
+                                      <span className="absolute inset-0 rounded-full bg-primary/40 animate-ping" />
+                                      <Circle className="h-2.5 w-2.5 fill-white text-white" />
+                                    </div>
+                                  ) : (
+                                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-slate-300 dark:border-slate-700 bg-muted/40">
+                                      <Circle className="h-1.5 w-1.5 fill-slate-300 text-slate-300 dark:fill-slate-600 dark:text-slate-600" />
+                                    </div>
+                                  )}
+
+                                  {!isLast && (
+                                    <div
+                                      className={cn(
+                                        "w-0.5 my-1 flex-1 min-h-[30px]",
+                                        isStepDone ? "bg-emerald-400/80" : "bg-border/70"
+                                      )}
+                                    />
+                                  )}
+                                </div>
+
+                                <div
+                                  className={cn(
+                                    "flex-1 pb-4 min-w-0 transition-all p-3 -mt-1 rounded-lg",
+                                    isStepCurrent && "bg-primary/5 dark:bg-primary/10 border-l-4 border-l-primary border-y border-r border-border/80 shadow-xs rounded-r-lg",
+                                    isLast && "pb-1"
+                                  )}
+                                >
+                                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <div className="flex items-center gap-1.5">
+                                      <span
+                                        className={cn(
+                                          "text-xs",
+                                          isStepDone && "font-semibold text-emerald-700 dark:text-emerald-400",
+                                          isStepCurrent && "font-bold text-foreground text-sm",
+                                          isStepPending && "font-medium text-muted-foreground/70"
+                                        )}
+                                      >
+                                        {stage.label}
+                                      </span>
+
+                                      {isStepDone && (
+                                        <Badge
+                                          variant="outline"
+                                          className="text-[10px] font-semibold h-4 px-1.5 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400"
+                                        >
+                                          ✓ Concluído
+                                        </Badge>
+                                      )}
+
+                                      {isStepCurrent && (
+                                        <Badge
+                                          className="text-[10px] font-bold uppercase tracking-tight h-5 px-2 bg-primary text-primary-foreground shadow-xs animate-pulse"
+                                        >
+                                          ● Você está aqui
+                                        </Badge>
+                                      )}
+
+                                      {isStepPending && (
+                                        <Badge
+                                          variant="outline"
+                                          className="text-[10px] font-medium h-4 px-1.5 bg-muted/80 text-muted-foreground border-border"
+                                        >
+                                          Pendente
+                                        </Badge>
+                                      )}
+                                    </div>
+
+                                    <span className="text-[10px] text-muted-foreground font-medium">
+                                      {stage.responsible}
+                                    </span>
+                                  </div>
+
+                                  <p
+                                    className={cn(
+                                      "mt-1 text-[11px] leading-relaxed",
+                                      isStepCurrent ? "text-foreground/90 font-medium" : "text-muted-foreground/70"
+                                    )}
+                                  >
+                                    {stage.description}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Modo Detalhes: Mini-resumo compacto no topo com ação Ver fluxo completo */}
+                      <div className="p-3 rounded-xl bg-muted/40 border border-border/70 space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-1 text-xs">
+                            {MINI_FLOW_STAGES.map((st, idx) => {
+                              const isDone = isFinalizado || idx < currentStageIdx;
+                              const isCurrent = !isFinalizado && idx === currentStageIdx;
+                              return (
+                                <React.Fragment key={st.id}>
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center gap-1 text-[11px] rounded-md px-1.5 py-0.5 transition-colors",
+                                      isDone && "text-emerald-700 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/40",
+                                      isCurrent && "text-primary font-bold bg-primary/10",
+                                      !isDone && !isCurrent && "text-muted-foreground/60 font-normal"
+                                    )}
+                                  >
+                                    {isDone ? "✓" : isCurrent ? "●" : "○"} {st.label}
+                                  </span>
+                                  {idx < MINI_FLOW_STAGES.length - 1 && (
+                                    <span className="text-muted-foreground/40 text-[10px]">→</span>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })}
+                          </div>
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDetailsViewMode("flow")}
+                            className="text-xs font-semibold text-primary hover:text-primary hover:bg-primary/10 h-7 px-2 shrink-0"
+                          >
+                            Ver fluxo completo →
+                          </Button>
+                        </div>
+                      </div>
+                      {/* Status Badges */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-xl bg-muted/30 border border-border/70 min-w-0">
+                        <div className="space-y-1 min-w-0 sm:col-span-2">
+                          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block">
+                            Pipeline Operacional
+                          </span>
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => setDetailsViewMode("flow")}
+                              className="group inline-flex items-center gap-1 focus:outline-none"
+                              title="Clique para ver a linha do tempo completa do fluxo"
+                            >
+                              <Badge className={cn("border shadow-none font-medium uppercase px-2.5 py-1 text-[11px] whitespace-normal leading-tight group-hover:ring-1 group-hover:ring-primary/40 cursor-pointer transition-all", pipelineCfg.className)}>
+                                {pipelineCfg.label}
+                              </Badge>
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-1 min-w-0">
+                          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block truncate">
+                            Status Financeiro
+                          </span>
+                          <div>
+                            <Badge className={cn("border-0 font-medium px-2 py-0.5 text-[11px] whitespace-normal inline-block", getStatusBadgeClass(item.status_pagamento))}>
+                              {item.status_pagamento || "A PAGAR"}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="space-y-1 min-w-0">
+                          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider block truncate">
+                            Origem do Recurso
+                          </span>
+                          <div>
+                            <Badge variant={origemBadge.variant} className={cn("border font-medium px-2 py-0.5 text-[11px] max-w-full whitespace-normal break-words inline-block leading-tight text-left", origemBadge.className)}>
+                              {origemBadge.labelCompleto}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+
+                  {/* Highlighted Value Card */}
+                  <div className="p-4 rounded-xl bg-muted/50 border border-border space-y-2.5 min-w-0">
+                    <div className="flex items-baseline justify-between gap-2 min-w-0">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
+                        Valor Total da Despesa
+                      </span>
+                      <span className="text-2xl font-bold font-display text-foreground tracking-tight truncate">
+                        {currencyFormatter.format(Number(item.total ?? 0))}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground pt-2 border-t border-border/60 min-w-0">
+                      <span className="truncate">
+                        Qtd: <strong className="text-foreground font-medium">{Number(item.quantidade ?? 0).toLocaleString("pt-BR")}</strong> × Un: <strong className="text-foreground font-medium">{currencyFormatter.format(Number(item.valor_unitario ?? 0))}</strong>
+                      </span>
+                      <Badge variant="outline" className="text-[11px] font-medium uppercase shrink-0">
+                        {item.categoria_custo || "OPERACIONAL"}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Grid de Dados Operacionais */}
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3.5 text-sm min-w-0">
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground font-medium">Data da Despesa</p>
+                      <p className="font-medium text-foreground mt-0.5 truncate">{formatDate(item.data)}</p>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground font-medium">Empresa</p>
+                      <p className="font-medium text-foreground mt-0.5 truncate" title={item.empresas?.nome || item.empresa_nome || "—"}>
+                        {item.empresas?.nome || item.empresa_nome || "—"}
+                      </p>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground font-medium">Origem do Recurso</p>
+                      <p className="font-medium text-foreground mt-0.5 break-words">{origemBadge.labelCompleto}</p>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground font-medium">Forma de Pagamento</p>
+                      <p className="font-medium text-foreground mt-0.5 truncate" title={item.forma_pagamento_ref?.nome || item.forma_pagamento || "—"}>
+                        {item.forma_pagamento_ref?.nome || item.forma_pagamento || "—"}
+                      </p>
+                    </div>
+                    {item.origem_recurso === "REEMBOLSO_COLABORADOR" && (item.favorecido_colaborador?.nome || item.favorecido_colaborador_id) && (
+                      <div className="min-w-0 col-span-2 sm:col-span-1">
+                        <p className="text-xs text-muted-foreground font-medium">Favorecido (Reembolso)</p>
+                        <p className="font-medium text-foreground mt-0.5 truncate" title={item.favorecido_colaborador?.nome || item.favorecido_colaborador_id}>
+                          {item.favorecido_colaborador?.nome || item.favorecido_colaborador_id}
+                        </p>
+                      </div>
+                    )}
+                    {item.origem_recurso === "PAGAMENTO_PENDENTE" && (item.favorecido_fornecedor?.nome || item.favorecido_fornecedor_id) && (
+                      <div className="min-w-0 col-span-2 sm:col-span-1">
+                        <p className="text-xs text-muted-foreground font-medium">Favorecido (Fornecedor)</p>
+                        <p className="font-medium text-foreground mt-0.5 truncate" title={item.favorecido_fornecedor?.nome || item.favorecido_fornecedor_id}>
+                          {item.favorecido_fornecedor?.nome || item.favorecido_fornecedor_id}
+                        </p>
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground font-medium">Vencimento</p>
+                      <p className="font-medium text-foreground mt-0.5 truncate">{formatDate(item.data_vencimento)}</p>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground font-medium">Responsável</p>
+                      <p className="font-medium text-foreground mt-0.5 truncate" title={item.responsavel?.full_name || item.responsavel_nome || "—"}>
+                        {item.responsavel?.full_name || item.responsavel_nome || "—"}
+                      </p>
+                    </div>
+                    <div className="min-w-0 col-span-2">
+                      <p className="text-xs text-muted-foreground font-medium">Operação Vinculada</p>
+                      <p className="font-medium text-foreground mt-0.5 break-all text-xs font-mono">
+                        {item.operacao_id || "Não vinculada"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Descrição / Observação */}
+                  <div className="space-y-1.5 min-w-0">
+                    <p className="text-xs text-muted-foreground font-medium">Descrição / Observações</p>
+                    <div className="p-3 rounded-lg bg-card border border-border/80 text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words">
+                      {item.descricao || "Nenhuma descrição ou observação informada."}
+                    </div>
+                  </div>
+
+                  {/* Alerta de Devolução Anterior se houver */}
+                  {(item.justificativa_devolucao || (item as any).motivo_devolucao) && (
+                    <div className="p-3.5 rounded-xl bg-orange-50/80 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-900/50 text-xs text-orange-900 dark:text-orange-200 space-y-1 min-w-0">
+                      <div className="flex items-center gap-1.5 font-semibold text-orange-800 dark:text-orange-300">
+                        <AlertTriangle className="h-4 w-4 shrink-0 text-orange-600 dark:text-orange-400" />
+                        <span>Motivo do Retorno / Devolução</span>
+                      </div>
+                      <p className="pl-5.5 text-xs text-orange-800/90 dark:text-orange-300/90 break-words">
+                        {item.justificativa_devolucao || (item as any).motivo_devolucao}
+                      </p>
+                    </div>
+                  )}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Rodapé com Ações de Negócio Contextualizadas e Banner Informativo */}
+          {selectedItem && (() => {
+            const item = selectedItem;
+            const currentStatus = String(item.pipeline_status || 'RECEBIDO').toUpperCase();
+            const currentStatusPgto = String(item.status_pagamento || '').toUpperCase();
+            const isFinalizado = currentStatus === 'FINALIZADO' || currentStatus === 'CONCLUIDO' || currentStatusPgto === 'PAGO';
+            const footerBanner = getContextualFooterBanner(currentStatus, isFinalizado);
+            const BannerIcon = footerBanner.icon;
+
+            return (
+              <footer className="p-4 sm:p-5 border-t border-border bg-card/95 backdrop-blur-xs shrink-0 w-full">
+                <SheetFooter className="m-0 p-0 border-0 flex-col gap-2.5 sm:flex-col sm:space-x-0 w-full min-w-0">
+                  {/* Banner Contextual obrigatório em todos os estados */}
+                  <div className={cn("w-full flex items-center gap-2 py-2 px-3 rounded-lg border text-xs font-medium", footerBanner.className)}>
+                    <BannerIcon className="h-4 w-4 shrink-0" />
+                    <span className="leading-snug">{footerBanner.text}</span>
+                  </div>
+
+                {!isFinalizado && (
+                  <div className="flex flex-col gap-2.5 w-full min-w-0">
+                    {/* Botão de Avanço Principal no topo do footer (largura total, destaque claro, sem corte lateral) */}
+                    {currentStatus === 'RECEBIDO' && (
+                      <Button
+                        size="sm"
+                        className="w-full font-medium h-10 gap-2 text-sm justify-center shadow-sm"
+                        onClick={() => handleAdvancePipeline(item)}
+                        disabled={!canAdvance(item) || updatePipelineMutation.isPending}
+                      >
+                        {updatePipelineMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 mr-1.5 animate-spin shrink-0" />
+                        ) : (
+                          <ArrowRight className="h-4 w-4 mr-1.5 shrink-0" />
+                        )}
+                        Encaminhar para Validação
+                      </Button>
+                    )}
+
+                    {currentStatus === 'EM_VALIDACAO' && (
+                      <Button
+                        size="sm"
+                        className="w-full font-medium h-10 gap-2 text-sm justify-center shadow-sm"
+                        onClick={() => handleAdvancePipeline(item)}
+                        disabled={!canAdvance(item) || updatePipelineMutation.isPending}
+                      >
+                        {updatePipelineMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 mr-1.5 animate-spin shrink-0" />
+                        ) : (
+                          <Check className="h-4 w-4 mr-1.5 shrink-0" />
+                        )}
+                        Aprovar Despesa
+                      </Button>
+                    )}
+
+                    {currentStatus === 'APROVADO_OPERACAO' && (
+                      <Button
+                        size="sm"
+                        className="w-full font-medium h-10 gap-2 text-sm justify-center shadow-sm"
+                        onClick={() => handleAdvancePipeline(item)}
+                        disabled={!canAdvance(item) || updatePipelineMutation.isPending}
+                      >
+                        {updatePipelineMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 mr-1.5 animate-spin shrink-0" />
+                        ) : (
+                          <ArrowRight className="h-4 w-4 mr-1.5 shrink-0" />
+                        )}
+                        Liberar para pagamento
+                      </Button>
+                    )}
+
+                    {currentStatus === 'ENVIADO_FINANCEIRO' && (
+                      <Button
+                        size="sm"
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm h-10 gap-2 text-sm justify-center"
+                        onClick={() => handleAdvancePipeline(item)}
+                        disabled={!canAdvance(item) || updatePipelineMutation.isPending}
+                      >
+                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+                        Registrar Pagamento
+                      </Button>
+                    )}
+
+                    {/* Linha de Ações Secundárias (Devolver + Editar) perfeitamente responsiva */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 w-full min-w-0">
+                      {canDevolve(item) && currentStatus !== 'RECEBIDO' ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 min-w-[140px] border-orange-200 text-orange-700 hover:bg-orange-50 hover:text-orange-800 dark:border-orange-900/50 dark:text-orange-400 dark:hover:bg-orange-950/30 text-xs justify-center"
+                          onClick={() => handleDevolvePipeline(item)}
+                          disabled={updatePipelineMutation.isPending}
+                        >
+                          <RotateCcw className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                          {currentStatus === 'EM_VALIDACAO' ? 'Devolver para correção' : 'Devolver para Operação'}
+                        </Button>
+                      ) : null}
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          "text-muted-foreground hover:text-foreground text-xs justify-center",
+                          canDevolve(item) && currentStatus !== 'RECEBIDO' ? "shrink-0 px-3" : "w-full"
+                        )}
+                        onClick={() => {
+                          openEditor(item);
+                          setSelectedItem(null);
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+                        Editar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                </SheetFooter>
+              </footer>
+            );
+          })()}
         </SheetContent>
       </Sheet>
 
+      <Dialog open={confirmPaymentOpen} onOpenChange={setConfirmPaymentOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              Confirmar Liquidação de Pagamento
+            </DialogTitle>
+            <DialogDescription>
+              Confirme a liquidação financeira desta despesa operacional. O status do pipeline será concluído como FINALIZADO e o status de pagamento será alterado para PAGO.
+            </DialogDescription>
+          </DialogHeader>
+
+          {itemToPay && (
+            <div className="space-y-3 py-2 text-sm">
+              <div className="p-3.5 rounded-xl bg-muted/50 border border-border/80 space-y-2.5">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-muted-foreground text-xs uppercase tracking-wider font-semibold">Valor a Liquidar</span>
+                  <span className="text-xl font-bold font-display text-emerald-600">
+                    {currencyFormatter.format(Number(itemToPay.total ?? 0))}
+                  </span>
+                </div>
+                <div className="text-xs text-muted-foreground space-y-1.5 pt-2 border-t border-border/60">
+                  <div className="flex justify-between">
+                    <span>Empresa:</span>
+                    <span className="font-medium text-foreground">{itemToPay.empresas?.nome || itemToPay.empresa_nome || "—"}</span>
+                  </div>
+                  {itemToPay.origem_recurso === "REEMBOLSO_COLABORADOR" && (
+                    <div className="flex justify-between">
+                      <span>Favorecido (Reembolso):</span>
+                      <span className="font-medium text-foreground">
+                        {itemToPay.favorecido_colaborador?.nome || itemToPay.favorecido_colaborador_id || "—"}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span>Categoria:</span>
+                    <span className="font-medium text-foreground">{itemToPay.categoria_custo}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Forma de Pagamento:</span>
+                    <span className="font-medium text-foreground">{itemToPay.forma_pagamento_ref?.nome || itemToPay.forma_pagamento || "—"}</span>
+                  </div>
+                  {itemToPay.data_vencimento && (
+                    <div className="flex justify-between">
+                      <span>Vencimento:</span>
+                      <span className="font-medium text-foreground">{formatDate(itemToPay.data_vencimento)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setConfirmPaymentOpen(false);
+                setItemToPay(null);
+              }}
+              disabled={updatePipelineMutation.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+              onClick={handleConfirmPayment}
+              disabled={updatePipelineMutation.isPending}
+            >
+              {updatePipelineMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Liquidando...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                  Confirmar Pagamento
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Sheet open={!!editingItem} onOpenChange={(value) => !value && setEditingItem(null)}>
-        <SheetContent className="sm:max-w-2xl overflow-y-auto">
+        <SheetContent className="sm:max-w-2xl max-h-[100dvh] overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Editar custo extra</SheetTitle>
             <SheetDescription>Ajuste os campos do lancamento diretamente na tela operacional.</SheetDescription>
@@ -1041,7 +1789,7 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
       </Sheet>
 
       <Sheet open={isBulkEditOpen} onOpenChange={(value) => !bulkUpdateMutation.isPending && setIsBulkEditOpen(value)}>
-        <SheetContent className="sm:max-w-xl overflow-y-auto">
+        <SheetContent className="sm:max-w-xl max-h-[100dvh] overflow-y-auto">
           <SheetHeader>
             <SheetTitle>Editar coluna em massa</SheetTitle>
             <SheetDescription>
@@ -1130,10 +1878,10 @@ export function CustosExtrasTableBlock({ data }: CustosExtrasTableBlockProps) {
 
       <JustificationModal
         isOpen={justificationModal.open}
-        title="Justificativa de Devolução"
-        description="Explique o motivo do retorno deste custo extra para a etapa anterior."
+        title={justificationModal.title || "Justificativa de Devolução"}
+        description={justificationModal.description || "Explique o motivo do retorno deste custo extra para a etapa anterior."}
         onConfirm={confirmDevolve}
-        onClose={() => setJustificationModal({ open: false, itemId: null, targetStatus: null })}
+        onClose={() => setJustificationModal({ open: false, itemId: null, targetStatus: null, title: undefined, description: undefined })}
         isLoading={updatePipelineMutation.isPending}
       />
     </div >

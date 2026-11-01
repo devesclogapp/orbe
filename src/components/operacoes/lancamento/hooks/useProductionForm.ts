@@ -9,6 +9,7 @@ import {
   RegrasDadosService,
   ServicosEspecificosRegrasService
 } from "@/services/base.service";
+import { calcularValoresOperacao } from "@/utils/financeiro";
 
 interface UseProductionFormProps {
   empresaId: string;
@@ -96,20 +97,24 @@ export function useProductionForm({ empresaId, defaultValues }: UseProductionFor
     }
   }, [regraIss, values.nf_emite, setValue]);
 
-  // Cálculo de total e ISS
+  // Cálculo de total e ISS unificado com a regra financeira canônica
   useEffect(() => {
-    let bruto = Number(values.quantidade || 0) * Number(values.valor_unitario || 0);
+    let unitario = Number(values.valor_unitario || 0);
     
     // Aplicar Multiplicador de Turno se for Serviço Específico
     if (values.tipo_lancamento === 'servicos_especificos' && selectedPeriodo) {
-      bruto = bruto * Number(selectedPeriodo.peso_multiplicador || 1);
+      unitario = unitario * Number(selectedPeriodo.peso_multiplicador || 1);
     }
 
-    const taxa = Number(values.iss_percentual || 0);
-    const iss = values.nf_emite ? (bruto * (taxa / 100)) : 0;
+    const calc = calcularValoresOperacao({
+      quantidade: Number(values.quantidade || 0),
+      valorUnitario: unitario,
+      percentualIss: (Number(values.iss_percentual) || 0) / 100,
+      nfRaw: values.nf_emite ? "SIM" : "NÃO",
+    });
     
-    setValue("valor_iss", iss);
-    setValue("valor_total_liquido", bruto - iss);
+    setValue("valor_iss", calc.custoIssCalculado);
+    setValue("valor_total_liquido", calc.totalFinalCalculado);
   }, [values.quantidade, values.valor_unitario, values.iss_percentual, values.nf_emite, values.tipo_lancamento, selectedPeriodo, setValue]);
 
   // Lookup de Regra Financeira (Modalidade vs Forma)

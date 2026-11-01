@@ -4,7 +4,8 @@ import {
     ChevronRight,
     ChevronLeft,
     Save,
-    Loader2
+    Loader2,
+    CheckCircle2
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -22,8 +23,11 @@ import {
     FormaPagamentoOperacionalService,
     TransportadoraClienteService,
     FornecedorService,
-    MateriaisOperacionaisService
+    MateriaisOperacionaisService,
+    RegrasFinanceirasService
 } from "@/services/base.service";
+import { classificarFinanceiroSync, calcularValoresOperacao } from "@/utils/financeiro";
+import { format } from "date-fns";
 
 import { useProductionForm } from "@/components/operacoes/lancamento/hooks/useProductionForm";
 import { FormStepSelector } from "@/components/operacoes/lancamento/FormStepSelector";
@@ -53,11 +57,33 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
     const [justificativa, setJustificativa] = useState("");
     const [justificativaError, setJustificativaError] = useState("");
     const [concurrencyError, setConcurrencyError] = useState(false);
+    const [isRegularizando, setIsRegularizando] = useState(false);
+
+    const isPendenciaHorario = useMemo(() => {
+        if (!initialData || !initialData.id) return false;
+        const motivoRestricao = initialData.avaliacao_json?.motivo_restricao;
+        const motivoTemHorario = typeof motivoRestricao === 'string' && (
+            motivoRestricao.toLowerCase().includes("horário") || 
+            motivoRestricao.toLowerCase().includes("horario")
+        );
+        const isRestricaoOuPendencia = initialData.status === 'EM_RESTRICAO' || 
+            initialData.status_rh === 'PENDENTE_RH' || 
+            initialData.had_infraction;
+        const faltaHorario = !initialData.entrada_ponto || !initialData.saida_ponto || !initialData.horario_inicio || !initialData.horario_fim;
+
+        return Boolean(motivoTemHorario || (isRestricaoOuPendencia && faltaHorario));
+    }, [initialData]);
 
     // Quick initialize from initialData if editing
     useEffect(() => {
         if (initialData && initialData.id) {
             setEtapa(2); // Pula a escolha do tipo se for edição
+            if (!form.getValues("modalidade_financeira")) {
+                form.setValue("modalidade_financeira", (initialData.modalidade_financeira || "CAIXA_IMEDIATO") as any);
+            }
+            if (isPendenciaHorario && !justificativa) {
+                setJustificativa("Regularização de horários de início e término da operação.");
+            }
 
             // Popula os colaboradores vinculados a esta operação da nova relação: production_entry_collaborators
             if (initialData.production_entry_collaborators && Array.isArray(initialData.production_entry_collaborators)) {
@@ -73,7 +99,7 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 setSelectedMateriais(initialData.operacao_producao_materiais);
             }
         }
-    }, [initialData]);
+    }, [initialData, isPendenciaHorario]);
 
     const [selectedMateriais, setSelectedMateriais] = useState<Array<{
         material_id: string;
@@ -94,8 +120,15 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
         defaultValues: initialData ? { ...DEFAULT_PRODUCTION_VALUES, ...cleanInitialData } : DEFAULT_PRODUCTION_VALUES,
     });
 
+    const watchedHorarioInicio = form.watch("horario_inicio");
+    const watchedHorarioFim = form.watch("horario_fim");
+    const hasHorariosValidos = Boolean(
+        watchedHorarioInicio && String(watchedHorarioInicio).trim() !== "" &&
+        watchedHorarioFim && String(watchedHorarioFim).trim() !== ""
+    );
+
     const currentEmpresaId = form.watch("empresa_id") || empresaId;
-    const currentModalidade = form.watch("modalidade_financeira") as "CAIXA_IMEDIATO" | "DUPLICATA" | undefined;
+    const currentModalidade = form.watch("modalidade_financeira") as "CAIXA_IMEDIATO" | "DUPLICATA" | "FATURAMENTO_MENSAL" | undefined;
 
     // Queries globais
     const { data: empresas = [] } = useQuery({ queryKey: ["empresas"], queryFn: () => EmpresaService.getAll() });
@@ -104,7 +137,12 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
         queryFn: () => UnidadeOperacionalService.getByEmpresa(currentEmpresaId),
         enabled: !!currentEmpresaId
     });
-    const { data: tiposServico = [] } = useQuery({ queryKey: ["tipos_servico"], queryFn: () => TipoServicoOperacionalService.getAllActive() });
+    const { data: todosTiposServico = [] } = useQuery({ queryKey: ["tipos_servico"], queryFn: () => TipoServicoOperacionalService.getAllActive() });
+
+    // Filtro essencial (FIX 01): A "Operação por Volume" deve listar apenas os serviços que NÃO são estritamente caracterizados como serviços adicionais.
+    const tiposServico = useMemo(() => {
+        return (todosTiposServico as Array<{ id: string, nome: string, is_extra_service?: boolean }>).filter(t => !t.is_extra_service);
+    }, [todosTiposServico]);
     const { data: transportadoras = [] } = useQuery({
         queryKey: ["transportadoras", currentEmpresaId],
         queryFn: () => TransportadoraClienteService.getByEmpresa(currentEmpresaId),
@@ -131,6 +169,10 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
     const { data: materiaisDisponiveis = [] } = useQuery({
         queryKey: ["materiais_ativos"],
         queryFn: () => MateriaisOperacionaisService.getAllActive()
+    });
+    const { data: regrasFinanceiras = [] } = useQuery({
+        queryKey: ["regras_financeiras_form"],
+        queryFn: () => RegrasFinanceirasService.getAllActive(),
     });
 
     const currentTipoLancamento = form.watch("tipo_lancamento");
@@ -178,9 +220,48 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 ...rest
             } = formData;
 
+            // Resolução do vencimento (Source of Truth no lançamento):
+            // 1. Data manual se fornecida explicitamente
+            // 2. Regra financeira específica da empresa / global via regras_financeiras
+            let resolvedVencimento: string | null = null;
+            if (data_vencimento && String(data_vencimento).trim() !== "") {
+                resolvedVencimento = String(data_vencimento).trim();
+            } else {
+                const formaSelecionada = formasPagamento.find((f: any) => f.id === forma_pagamento);
+                const classif = classificarFinanceiroSync(
+                    {
+                        data_operacao: data,
+                        forma_pagamento: formaSelecionada || forma_pagamento,
+                        formas_pagamento_operacional: formaSelecionada,
+                        empresa_id: currentEmpresaId,
+                    },
+                    { id: currentEmpresaId },
+                    regrasFinanceiras
+                );
+                if (classif.vencimento) {
+                    resolvedVencimento = format(classif.vencimento, "yyyy-MM-dd");
+                }
+            }
+
+            const totalMateriais = selectedMateriais.reduce((acc, m) => acc + m.valor_total, 0);
+
+            let unitarioCalculado = Number(valor_unitario || 0);
+            if (tipo_lancamento === 'servicos_especificos' && selectedPeriodo) {
+                unitarioCalculado = unitarioCalculado * Number(selectedPeriodo.peso_multiplicador || 1);
+            }
+
+            const valoresCalculados = calcularValoresOperacao({
+                quantidade: Number(formData.quantidade || 0),
+                valorUnitario: unitarioCalculado,
+                percentualIss: (Number(iss_percentual) || 0) / 100,
+                nfRaw: formData.nf_emite ? "SIM" : "NÃO",
+                valorTotalMateriais: totalMateriais,
+            });
+
             const payload = {
                 ...rest,
                 data_operacao: data,
+                data_vencimento: resolvedVencimento || null,
                 placa: placa_veiculo || rest.placa || null,
                 tipo_servico_id: tipo_servico,
                 transportadora_id: transportadora,
@@ -188,11 +269,11 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 produto_carga_id: produto,
                 forma_pagamento_id: forma_pagamento,
                 valor_unitario_snapshot: valor_unitario,
-                percentual_iss: (iss_percentual || 0) / 100,
-                custo_com_iss: valor_iss || 0,
-                valor_total_materiais: selectedMateriais.reduce((acc, m) => acc + m.valor_total, 0),
-                valor_total: (valor_total_liquido || (formData.quantidade * (valor_unitario || 0))) + selectedMateriais.reduce((acc, m) => acc + m.valor_total, 0),
-                valor_descarga: formData.quantidade * (valor_unitario || 0),
+                percentual_iss: valoresCalculados.percentualCalculado,
+                custo_com_iss: valoresCalculados.custoIssCalculado,
+                valor_total_materiais: valoresCalculados.valorTotalMateriais,
+                valor_total: valoresCalculados.totalFinalCalculado,
+                valor_descarga: valoresCalculados.valorDescargaCalculado,
                 tipo_calculo_snapshot: "volume",
                 nf_numero: formData.nf_emite
                     ? (!rest.nf_numero || rest.nf_numero === "NÃO" || rest.nf_numero === "NAO" ? "SIM" : rest.nf_numero)
@@ -259,15 +340,25 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
             }
         },
         onSuccess: (data: any) => {
-            toast.success(data?.isEdit ? "Operação atualizada com sucesso!" : "Produção lançada com sucesso!");
+            if (isPendenciaHorario) {
+                toast.success("Horários corrigidos. Operação liberada para continuar o fluxo.");
+            } else {
+                toast.success(data?.isEdit ? "Operação atualizada com sucesso!" : "Produção lançada com sucesso!");
+            }
             queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
+            queryClient.invalidateQueries({ queryKey: ["lancamentos_hoje_portal"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
             queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
             queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+            queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+            queryClient.invalidateQueries({ queryKey: ["aprovacoes_rh"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-inconsistencias"] });
+            queryClient.invalidateQueries({ queryKey: ["receitas-pipeline"] });
+            queryClient.invalidateQueries({ queryKey: ["receita-detalhes"] });
 
-            // Trigger the operational progress modal natively if it's a new launch (Volume)
-            if (!data?.isEdit && (form.getValues().tipo_lancamento === 'volume' || !form.getValues().tipo_lancamento)) {
+            // Trigger the operational progress modal natively if it's a new launch (Volume) in admin mode
+            if (mode === "admin" && !data?.isEdit && (form.getValues().tipo_lancamento === 'volume' || !form.getValues().tipo_lancamento)) {
                 const currentEmpresa = empresas.find(e => e.id === (form.getValues().empresa_id || empresaId));
 
                 // Evita new Date() plain em GMT negativo. Parse puramente lexicográfico:
@@ -280,7 +371,7 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 openPipeline(buildOperacaoVolumePipeline({
                     competencia: compStr,
                     empresa: currentEmpresa?.nome || "Operacional",
-                    currentStep: mode === "admin" ? "validacao" : "lancamento"
+                    currentStep: "validacao"
                 }));
             }
 
@@ -309,6 +400,48 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
         toast.error("Erro de validação. Verifique os campos: " + errorFields, {
             description: "Um ou mais campos obrigatórios estão ausentes ou inválidos."
         });
+    };
+
+    const handleSalvarSaneamentoRapido = async () => {
+        if (!hasHorariosValidos || !initialData?.id) return;
+
+        const inicio = String(watchedHorarioInicio || '').trim();
+        const fim = String(watchedHorarioFim || '').trim();
+
+        if (!inicio || !fim) {
+            toast.error("Informe os horários de início e término.");
+            return;
+        }
+
+        setIsRegularizando(true);
+        try {
+            const just = justificativa.trim() || "Regularização de horários de início e término da operação.";
+            await OperacaoProducaoService.regularizarHorarios(
+                initialData.id,
+                inicio,
+                fim,
+                just
+            );
+
+            toast.success("Horários corrigidos. Operação liberada para continuar o fluxo.");
+            queryClient.invalidateQueries({ queryKey: ["producao_recente"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-grid"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-base"] });
+            queryClient.invalidateQueries({ queryKey: ["resumo_producao_dia"] });
+            queryClient.invalidateQueries({ queryKey: ["inconsistencias"] });
+            queryClient.invalidateQueries({ queryKey: ["aprovacoes_rh"] });
+            queryClient.invalidateQueries({ queryKey: ["operacoes-inconsistencias"] });
+
+            if (onSuccess) {
+                onSuccess();
+            }
+        } catch (err: any) {
+            console.error("[SANEAMENTO_RAPIDO] Erro ao regularizar horários:", err);
+            toast.error(err.message || "Erro ao regularizar horários.");
+        } finally {
+            setIsRegularizando(false);
+        }
     };
 
     const handleNext = async () => {
@@ -370,7 +503,29 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                     {etapa === 1 && (
                         <FormStepSelector
                             form={form}
+                            mode={mode}
                             onNext={(preset) => {
+                                if (mode === 'admin') {
+                                    switch (preset.id) {
+                                        case "servicos_extras":
+                                            if (onCancel) onCancel();
+                                            navigate("/servicos-extras/lancamentos?action=novo-servico-extra", { replace: true });
+                                            return;
+                                        case "custos_operacionais":
+                                            if (onCancel) onCancel();
+                                            navigate("/custos-extras/lancamentos?action=novo-custo-extra", { replace: true });
+                                            return;
+                                        case "operacao_padrao_vista":
+                                        case "operacao_padrao_prazo":
+                                            // Preserve estado selecionado pela form (modalidade) e apenas avança pro passo 2.
+                                            setEtapa(2);
+                                            return;
+                                        default:
+                                            toast.warning("Modalidade não suportada neste launcher administrativo.");
+                                            return;
+                                    }
+                                }
+
                                 if (mode === 'encarregado') {
                                     switch (preset.id) {
                                         case "diaristas":
@@ -385,11 +540,12 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                                         case "servicos_especificos":
                                             navigate("/producao/servicos-especificos");
                                             return;
+                                        case "operacao_padrao_vista":
+                                        case "operacao_padrao_prazo":
+                                            setEtapa(2);
+                                            return;
                                     }
                                 }
-
-                                // Para o Admin manter no mesmo modal, ou fluxos padrão, apenas pula a etapa
-                                setEtapa(2);
                             }}
                         />
                     )}
@@ -403,6 +559,7 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                                 tiposServico={tiposServico}
                                 transportadoras={transportadoras}
                                 fornecedores={fornecedores}
+                                isPendenciaHorario={isPendenciaHorario}
                             />
                         </div>
                     )}
@@ -479,18 +636,45 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                                 ? "fixed bottom-0 left-0 right-0 bg-white border-t p-4 flex justify-between gap-4 z-50 lg:left-64"
                                 : "mt-6 pt-4 border-t flex justify-between gap-4"
                         }>
-                            <Button type="button" variant="outline" className="flex-1" onClick={() => {
-                                if (etapa > 1) setEtapa(prev => prev - 1);
-                                else if (onCancel) onCancel();
-                            }}>
-                                <ChevronLeft className="h-4 w-4 mr-2" /> Voltar
-                            </Button>
+                            {isPendenciaHorario && etapa === 2 ? (
+                                <>
+                                    <Button 
+                                        type="button" 
+                                        variant="outline" 
+                                        className="flex-1" 
+                                        onClick={() => onCancel && onCancel()}
+                                    >
+                                        <ChevronLeft className="h-4 w-4 mr-2" /> Cancelar
+                                    </Button>
 
-                            {etapa < 4 ? (
-                                <Button type="button" className="flex-1" onClick={handleNext}>
-                                    Próximo <ChevronRight className="h-4 w-4 ml-2" />
-                                </Button>
+                                    <Button
+                                        type="button"
+                                        className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 font-medium shadow-sm transition-all"
+                                        disabled={!hasHorariosValidos || isRegularizando}
+                                        onClick={handleSalvarSaneamentoRapido}
+                                    >
+                                        {isRegularizando ? (
+                                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                        ) : (
+                                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                                        )}
+                                        Salvar e liberar pendência
+                                    </Button>
+                                </>
                             ) : (
+                                <>
+                                    <Button type="button" variant="outline" className="flex-1" onClick={() => {
+                                        if (etapa > 1) setEtapa(prev => prev - 1);
+                                        else if (onCancel) onCancel();
+                                    }}>
+                                        <ChevronLeft className="h-4 w-4 mr-2" /> Voltar
+                                    </Button>
+
+                                    {etapa < 4 ? (
+                                        <Button type="button" className="flex-1" onClick={handleNext}>
+                                            Próximo <ChevronRight className="h-4 w-4 ml-2" />
+                                        </Button>
+                                    ) : (
                                 <Button
                                     type="button"
                                     onClick={() => {
@@ -532,6 +716,8 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                                     {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                                     {initialData ? "Salvar Alterações" : "Finalizar Lançamento"}
                                 </Button>
+                            )}
+                                </>
                             )}
                         </div>
                     )}

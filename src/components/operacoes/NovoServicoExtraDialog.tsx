@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -31,7 +31,7 @@ import {
     ServicosEspecificosRegrasService,
     FornecedorValorServicoService,
 } from "@/services/base.service";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, Package } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
@@ -147,22 +147,44 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
         enabled: !!user?.id && open,
     });
 
+    const previousTipoServicoIdRef = useRef<string | undefined>(undefined);
+
     useEffect(() => {
         if (!open) {
             setForm({ ...INITIAL_FORM });
             setErrors({});
+            previousTipoServicoIdRef.current = undefined;
             return;
         }
         if (initialData) {
+            previousTipoServicoIdRef.current = initialData.tipo_servico_id || "";
+
+            // P0: Evitar dupla aplicação de multiplicador de período na edição.
+            // No banco, valor_unitario armazena o preço efetivo (com multiplicador já embutido),
+            // enquanto valor_unitario_snapshot armazena o preço base original.
+            let unitarioBaseCarregado = "";
+            const regraIdOriginal = initialData.regra_id || "";
+            const regraOriginal = (regrasPeriodo as any[]).find((r: any) => r.id === regraIdOriginal);
+            const multOriginal = Number(regraOriginal?.peso_multiplicador || 1);
+
+            if (initialData.valor_unitario_snapshot !== null && initialData.valor_unitario_snapshot !== undefined && Number(initialData.valor_unitario_snapshot) > 0) {
+                unitarioBaseCarregado = String(initialData.valor_unitario_snapshot);
+            } else if (regraIdOriginal && multOriginal > 1 && initialData.valor_unitario !== null) {
+                // Registro legado sem snapshot: desfaz o multiplicador para carregar a base correta
+                unitarioBaseCarregado = String(Number((Number(initialData.valor_unitario) / multOriginal).toFixed(4)));
+            } else if (initialData.valor_unitario !== null && initialData.valor_unitario !== undefined) {
+                unitarioBaseCarregado = String(initialData.valor_unitario);
+            }
+
             setForm({
                 data: initialData.data || format(new Date(), "yyyy-MM-dd"),
                 empresa_id: initialData.empresa_id || "",
                 tipo_servico_id: initialData.tipo_servico_id || "",
                 descricao: initialData.descricao_servico || initialData.descricao || "",
-                quantidade: initialData.quantidade !== null && initialData.quantidade !== undefined ? String(initialData.quantidade) : "1",
+                quantidade: initialData.quantidade !== null && initialData.quantidade !== undefined ? String(initialData.quantidade) : "",
                 quantidade_colaboradores: initialData.quantidade_colaboradores ? String(initialData.quantidade_colaboradores) : "",
                 regra_periodo_id: initialData.regra_id || "",
-                valor_unitario: initialData.valor_unitario !== null ? String(initialData.valor_unitario) : "",
+                valor_unitario: unitarioBaseCarregado,
                 forma_cobranca: (initialData.modalidade_financeira as FormaCobranca) || "DEPOSITO_IMEDIATO",
                 forma_pagamento_id: initialData.forma_pagamento_id || "",
                 nf_emite: initialData.emite_nf || false,
@@ -171,11 +193,13 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                 observacao: initialData.observacao || "",
                 tipo_calculo_snapshot: initialData.tipo_calculo_snapshot || "por_operacao",
                 unidade_cobranca_snapshot: initialData.unidade_cobranca_snapshot || "op",
-                valor_unitario_snapshot: initialData.valor_unitario_snapshot || 0,
+                valor_unitario_snapshot: Number(initialData.valor_unitario_snapshot || 0),
                 iss_percentual: initialData.iss_percentual ? String(Number(initialData.iss_percentual) * 100) : "0",
             });
+        } else {
+            previousTipoServicoIdRef.current = "";
         }
-    }, [open, initialData]);
+    }, [open, initialData, regrasPeriodo]);
 
     useEffect(() => {
         if (form.responsavel_nome) return;
@@ -185,9 +209,16 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
 
     // ─── Calculations ─────────────────────────────────────────────────────────
 
-    const parseNumeric = (value: string): number => {
-        const normalized = String(value).replace(/\./g, "").replace(",", ".");
-        const parsed = Number(normalized);
+    const parseNumeric = (value: string | number): number => {
+        if (typeof value === "number") return Number.isFinite(value) && value >= 0 ? value : 0;
+        const str = String(value).trim();
+        if (!str) return 0;
+        if (str.includes(",")) {
+            const normalized = str.replace(/\./g, "").replace(",", ".");
+            const parsed = Number(normalized);
+            return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+        }
+        const parsed = Number(str);
         return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
     };
 
@@ -197,10 +228,27 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
     );
 
     const multiplicadorPeriodo = Number(periodSelecionado?.peso_multiplicador || 1);
-    const quantidade = parseNumeric(form.quantidade || "1");
+    // Não usar fallback silencioso para 1 quando o usuário apagar o campo
+    const quantidade = form.quantidade.trim() === "" ? 0 : parseNumeric(form.quantidade);
     const valorUnitarioBase = parseNumeric(form.valor_unitario);
     const valorUnitarioEfetivo = valorUnitarioBase * multiplicadorPeriodo;
     const valorTotalServico = quantidade * valorUnitarioEfetivo;
+
+    // Preservação de materiais existentes (P0)
+    const custoMateriaisPreservado = Number(initialData?.custo_materiais || 0);
+
+    // Se o usuário não alterou quantidade, regra de período, tipo de serviço nem valor, preservar exatamente o total original
+    const isEdicaoSemAlteracaoFinanceira = Boolean(
+        initialData &&
+        String(form.quantidade).trim() === String(initialData.quantidade ?? "").trim() &&
+        String(form.regra_periodo_id || "") === String(initialData.regra_id || "") &&
+        String(form.tipo_servico_id || "") === String(initialData.tipo_servico_id || "") &&
+        Number(initialData.total || 0) > 0
+    );
+
+    const valorTotalGeral = isEdicaoSemAlteracaoFinanceira
+        ? Number(initialData.total)
+        : valorTotalServico + custoMateriaisPreservado;
 
     const issPercentual = parseNumeric(form.iss_percentual);
     const valorIss = form.nf_emite ? (valorTotalServico * (issPercentual / 100)) : 0;
@@ -212,7 +260,15 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
     );
 
     useEffect(() => {
-        if (tipoServicoSelecionado && open) {
+        if (!open) return;
+        // Preservar valores históricos de initialData se o tipo_servico_id não foi trocado pelo usuário
+        if (initialData && form.tipo_servico_id === initialData.tipo_servico_id && previousTipoServicoIdRef.current === initialData.tipo_servico_id) {
+            return;
+        }
+
+        // Aplicar recálculo canônico quando o usuário seleciona ou altera explicitamente o tipo de serviço
+        if (tipoServicoSelecionado && form.tipo_servico_id !== previousTipoServicoIdRef.current) {
+            previousTipoServicoIdRef.current = form.tipo_servico_id;
             setField("valor_unitario", String(tipoServicoSelecionado.valor_unitario || "0"));
             setField("valor_unitario_snapshot", tipoServicoSelecionado.valor_unitario || 0);
             if (tipoServicoSelecionado.tipo_calculo) {
@@ -222,7 +278,7 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                 setField("unidade_cobranca_snapshot", tipoServicoSelecionado.unidade_cobranca);
             }
         }
-    }, [tipoServicoSelecionado, open]);
+    }, [tipoServicoSelecionado, form.tipo_servico_id, open, initialData]);
 
     useEffect(() => {
         if (form.nf_emite && open) {
@@ -244,7 +300,9 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
         if (!form.data) newErrors.data = "Informe a data.";
         if (!form.tipo_servico_id) newErrors.tipo_servico_id = "Selecione o tipo de serviço.";
         if (!form.descricao.trim()) newErrors.descricao = "Informe a descrição.";
-        if (quantidade <= 0) newErrors.quantidade = "Inválido.";
+        if (!form.quantidade || form.quantidade.trim() === "" || quantidade <= 0) {
+            newErrors.quantidade = "Informe uma quantidade válida maior que zero.";
+        }
         if (valorUnitarioBase <= 0 && form.tipo_calculo_snapshot !== "manual") newErrors.valor_unitario = "Informe o valor.";
         if (!form.forma_pagamento_id) newErrors.forma_pagamento_id = "Informe a forma de pagamento.";
         setErrors(newErrors);
@@ -257,17 +315,33 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
         mutationFn: async () => {
             if (!validate()) throw new Error("Corrija os campos obrigatórios.");
 
+            const formaSelecionada = (formasPagamento as any[]).find((f: any) => f.id === form.forma_pagamento_id);
+            let modalidadeFinal = "DUPLICATA";
+            if (formaSelecionada?.modalidade && formaSelecionada.modalidade !== "AMBOS") {
+                modalidadeFinal = formaSelecionada.modalidade;
+            } else if (formaSelecionada?.nome) {
+                const nomeUpper = formaSelecionada.nome.toUpperCase();
+                if (nomeUpper.includes("MENSAL") || nomeUpper.includes("FATURAMENTO")) modalidadeFinal = "FATURAMENTO_MENSAL";
+                else if (["PIX", "DINHEIRO", "CART", "DEBITO", "DÉBITO"].some(k => nomeUpper.includes(k))) modalidadeFinal = "CAIXA_IMEDIATO";
+                else modalidadeFinal = "DUPLICATA";
+            }
+
+            // P2: Bloqueio de governança no frontend contra edição pós-aprovação
+            if (initialData && ['APROVADO_OPERACAO', 'APROVADO_FINANCEIRO', 'FATURADO', 'CONCLUIDO'].includes(String(initialData.pipeline_status || '').toUpperCase())) {
+                throw new Error(`OPERACAO_BLOQUEADA: Este serviço extra já se encontra no estágio ${initialData.pipeline_status} e não pode ser alterado.`);
+            }
+
             const payload = {
                 data: form.data,
                 empresa_id: form.empresa_id,
                 quantidade: quantidade,
-                valor_unitario: valorUnitarioEfetivo,
-                total: valorTotalServico,
+                valor_unitario: isEdicaoSemAlteracaoFinanceira ? Number(initialData.valor_unitario || valorUnitarioEfetivo) : valorUnitarioEfetivo,
+                total: valorTotalGeral,
                 tipo_servico: tipoServicoSelecionado?.nome || "Outro",
                 tipo_servico_id: form.tipo_servico_id,
                 descricao_servico: form.descricao.trim(),
                 descricao: form.descricao.trim(),
-                modalidade_financeira: form.forma_cobranca || "DEPOSITO_IMEDIATO",
+                modalidade_financeira: modalidadeFinal,
                 forma_pagamento_id: form.forma_pagamento_id,
                 responsavel_nome: (form.responsavel_nome.trim() || perfil?.nome || user?.email || "Admin").trim(),
                 observacao: form.observacao.trim(),
@@ -280,10 +354,9 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                 regra_id: (form.regra_periodo_id && form.regra_periodo_id !== "none") ? form.regra_periodo_id : null,
                 emite_nf: form.nf_emite,
                 nf_numero: form.nf_numero,
-                materiais_snapshot: null,
-                custo_materiais: 0,
-                transportadora_id: null,
-                // Status direto como PENDENTE para aparecer na lista do RH/Admin, se aplicável
+                materiais_snapshot: initialData ? (initialData.materiais_snapshot ?? null) : null,
+                custo_materiais: custoMateriaisPreservado,
+                transportadora_id: initialData?.transportadora_id ?? null,
             };
 
             if (initialData) {
@@ -367,7 +440,16 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                                 <Label>
                                     Quantidade {form.unidade_cobranca_snapshot && <span className="text-muted-foreground font-normal">({form.unidade_cobranca_snapshot})</span>} <span className="text-red-500">*</span>
                                 </Label>
-                                <Input type="number" step="0.01" placeholder="1" value={form.quantidade} onChange={(e) => setField("quantidade", e.target.value)} className={cn(errors.quantidade && "border-destructive")} />
+                                <Input 
+                                    type="number" 
+                                    step="0.01" 
+                                    placeholder="1" 
+                                    value={form.quantidade} 
+                                    onFocus={(e) => e.target.select()}
+                                    onChange={(e) => setField("quantidade", e.target.value)} 
+                                    className={cn(errors.quantidade && "border-destructive")} 
+                                />
+                                {errors.quantidade && <p className="text-xs text-destructive">{errors.quantidade}</p>}
                             </div>
                             <div className="space-y-2">
                                 <Label>Período Operacional</Label>
@@ -413,7 +495,16 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Forma de Pagamento <span className="text-red-500">*</span></Label>
-                                <Select value={form.forma_pagamento_id} onValueChange={(v) => setField("forma_pagamento_id", v)}>
+                                <Select 
+                                    value={form.forma_pagamento_id} 
+                                    onValueChange={(v) => {
+                                        setField("forma_pagamento_id", v);
+                                        const forma = (formasPagamento as any[]).find((f: any) => f.id === v);
+                                        if (forma?.modalidade && forma.modalidade !== "AMBOS") {
+                                            setField("forma_cobranca", forma.modalidade as any);
+                                        }
+                                    }}
+                                >
                                     <SelectTrigger className={cn(errors.forma_pagamento_id && "border-destructive")}>
                                         <SelectValue placeholder="Selecione a forma" />
                                     </SelectTrigger>
@@ -447,13 +538,31 @@ export const NovoServicoExtraDialog = ({ open, onOpenChange, initialData }: Novo
                         )}
                     </div>
 
+                    {/* Aviso de Materiais Preservados (P0) */}
+                    {initialData && custoMateriaisPreservado > 0 && (
+                        <div className="flex items-center gap-2 p-3 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/40 rounded-lg text-xs text-blue-800 dark:text-blue-300">
+                            <Package className="h-4 w-4 shrink-0 text-blue-600" />
+                            <span>
+                                Este lançamento possui <strong>{formatCurrency(custoMateriaisPreservado)}</strong> em materiais extras vinculados que serão preservados no total.
+                            </span>
+                        </div>
+                    )}
+
                     {/* Resumo Financeiro */}
                     {quantidade && valorUnitarioEfetivo > 0 && (
-                        <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg flex items-center justify-between">
-                            <span className="text-sm font-medium text-muted-foreground">Total Previsto:</span>
-                            <span className="text-lg font-bold text-primary">
-                                {formatCurrency(valorTotalServico)}
-                            </span>
+                        <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg space-y-1">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm font-medium text-muted-foreground">Total Previsto:</span>
+                                <span className="text-lg font-bold text-primary">
+                                    {formatCurrency(valorTotalGeral)}
+                                </span>
+                            </div>
+                            {custoMateriaisPreservado > 0 && (
+                                <div className="text-[11px] text-muted-foreground flex justify-between pt-1 border-t border-border/40">
+                                    <span>Serviço: {formatCurrency(valorTotalServico)}</span>
+                                    <span>+ Materiais: {formatCurrency(custoMateriaisPreservado)}</span>
+                                </div>
+                            )}
                         </div>
                     )}
 

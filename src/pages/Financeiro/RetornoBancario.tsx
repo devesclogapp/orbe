@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -108,8 +109,36 @@ const RetornoBancario = () => {
   const canConciliar = role === "admin" || role === "financeiro";
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
 
-  const [banco, setBanco] = useState("001");
+  const tabParam =
+    searchParams.get("tab") ||
+    searchParams.get("aba") ||
+    (searchParams.get("origem") === "receitas" || searchParams.get("origem") === "operacoes" || searchParams.get("receita") ? "receitas" : null) ||
+    (location.state as any)?.activeTab ||
+    (location.state as any)?.aba ||
+    ((location.state as any)?.highlightReceitaId ? "receitas" : null);
+
+  const [activeTab, setActiveTab] = useState<string>(() => (tabParam === "receitas" ? "receitas" : "pagamentos"));
+  const highlightReceitaId = searchParams.get("receita") || (location.state as any)?.highlightReceitaId;
+  const empresaIdParam = searchParams.get("empresaId") || searchParams.get("empresa") || (location.state as any)?.empresaId;
+
+  useEffect(() => {
+    const tab =
+      searchParams.get("tab") ||
+      searchParams.get("aba") ||
+      (searchParams.get("origem") === "receitas" || searchParams.get("origem") === "operacoes" || searchParams.get("receita") ? "receitas" : null) ||
+      (location.state as any)?.activeTab ||
+      (location.state as any)?.aba ||
+      ((location.state as any)?.highlightReceitaId ? "receitas" : null);
+
+    if (tab === "receitas" || tab === "pagamentos") {
+      setActiveTab(tab);
+    }
+  }, [searchParams, location.state]);
+
+  const [banco, setBanco] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [resultado, setResultado] = useState<ProcessarRetornoResult | null>(null);
@@ -204,6 +233,10 @@ const RetornoBancario = () => {
   });
 
   const handleProcessar = async () => {
+    if (!banco) {
+      toast.error("Selecione o banco do arquivo antes de processar o retorno.");
+      return;
+    }
     if (!selectedFile) {
       toast.error("Selecione um arquivo .txt ou .ret para processar.");
       return;
@@ -316,7 +349,7 @@ const RetornoBancario = () => {
   return (
     <AppShell title="Central de Conciliações">
       <div className="mx-auto max-w-[1700px] w-full px-4 sm:px-6 md:px-8">
-        <Tabs defaultValue="pagamentos">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-6 grid w-full max-w-[500px] grid-cols-2 bg-muted/60">
             <TabsTrigger value="pagamentos" className="data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm">Pagamentos & CNAB</TabsTrigger>
             <TabsTrigger value="receitas" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-sm">Faturamentos (Receitas)</TabsTrigger>
@@ -338,9 +371,7 @@ const RetornoBancario = () => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="001">001 - Banco do Brasil</SelectItem>
-                        <SelectItem value="237">237 - Bradesco</SelectItem>
-                        <SelectItem value="033">033 - Santander</SelectItem>
-                        <SelectItem value="341">341 - Itaú</SelectItem>
+                        <SelectItem value="341">341 - Itaú Unibanco</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -350,6 +381,7 @@ const RetornoBancario = () => {
                     type="file"
                     accept=".txt,.ret"
                     className="hidden"
+                    disabled={!banco}
                     onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
                   />
 
@@ -358,16 +390,16 @@ const RetornoBancario = () => {
                       Após enviar a remessa ao banco, aguarde o processamento. Quando o banco disponibilizar o arquivo de retorno (.RET), importe-o aqui para que o ORBE confirme automaticamente quais pagamentos foram realizados e quais apresentaram divergências.
                     </p>
 
-                    <Button variant="outline" className="w-full" onClick={() => fileInputRef.current?.click()}>
+                    <Button variant="outline" className="w-full" disabled={!banco} onClick={() => fileInputRef.current?.click()}>
                       <Upload className="mr-2 h-4 w-4" />
-                      {selectedFile ? "Trocar arquivo" : "Selecionar arquivo"}
+                      {!banco ? "Selecione o banco primeiro" : (selectedFile ? "Trocar arquivo" : "Selecionar arquivo")}
                     </Button>
 
                     <div className="break-all text-xs text-muted-foreground">
-                      {selectedFile ? selectedFile.name : "Nenhum arquivo selecionado"}
+                      {selectedFile ? selectedFile.name : (!banco ? "Aguardando seleção do banco" : "Nenhum arquivo selecionado")}
                     </div>
 
-                    <Button className="w-full" disabled={!selectedFile || isProcessing} onClick={handleProcessar}>
+                    <Button className="w-full" disabled={!selectedFile || isProcessing || !banco} onClick={handleProcessar}>
                       {isProcessing ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -405,11 +437,18 @@ const RetornoBancario = () => {
                       financeira definitiva.
                     </p>
                   </div>
-                  {arquivoSelecionado?.nome_arquivo && (
-                    <Badge variant="outline" className="font-mono">
-                      {arquivoSelecionado.nome_arquivo}
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {arquivoSelecionado?.modo === "homologacao" && (
+                      <Badge variant="outline" className="text-amber-700 bg-amber-500/10 border-amber-500/30 dark:text-amber-400 font-bold uppercase text-[10px]">
+                        Simulação Homologação
+                      </Badge>
+                    )}
+                    {arquivoSelecionado?.nome_arquivo && (
+                      <Badge variant="outline" className="font-mono">
+                        {arquivoSelecionado.nome_arquivo}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
                 {!arquivoSelecionado ? (
@@ -848,7 +887,10 @@ const RetornoBancario = () => {
           </TabsContent>
 
           <TabsContent value="receitas" className="m-0 animate-in fade-in-50 duration-500">
-            <ConciliacaoReceitasBlock />
+            <ConciliacaoReceitasBlock
+              highlightReceitaId={highlightReceitaId}
+              empresaId={empresaIdParam}
+            />
           </TabsContent>
         </Tabs>
       </div>

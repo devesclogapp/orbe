@@ -3,10 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   Check,
+  Clock,
   Copy,
+  KeyRound,
   Link2,
   Mail,
-  MessageCircle,
   Pencil,
   Plus,
   RefreshCw,
@@ -114,15 +115,7 @@ function formatDateTime(value?: string | null) {
 }
 
 function buildInviteLink(token: string) {
-  return `${window.location.origin}/app/convite?token=${encodeURIComponent(token)}`;
-}
-
-function openWhatsAppShare(link: string) {
-  const message = encodeURIComponent(
-    `Olá! Você foi convidado para acessar o ERP Orbe.\n\nAcesse o link abaixo para criar sua conta:\n\n${link}`,
-  );
-
-  window.open(`https://wa.me/?text=${message}`, "_blank", "noopener,noreferrer");
+  return `${window.location.origin}/cadastro?token=${encodeURIComponent(token)}`;
 }
 
 const statusStyles: Record<string, string> = {
@@ -141,9 +134,12 @@ const UsuariosGestao = () => {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [resultOpen, setResultOpen] = useState(false);
+  const [isFormDirty, setIsFormDirty] = useState(false);
   const [form, setForm] = useState<InviteFormState>(emptyInviteForm);
   const [editingRow, setEditingRow] = useState<AccessOverviewRow | null>(null);
   const [generatedLink, setGeneratedLink] = useState("");
+  const [generatedCode, setGeneratedCode] = useState("");
+  const [generatedMessage, setGeneratedMessage] = useState("");
 
   const { data = [], isLoading } = useQuery({
     queryKey: ["admin_user_access_overview"],
@@ -181,7 +177,7 @@ const UsuariosGestao = () => {
   const createInviteMutation = useMutation({
     mutationFn: async (payload: InviteFormState) => {
       const { data: invite, error } = await supabase.rpc(
-        "admin_create_tenant_invitation",
+        "admin_create_invitation_with_activation_code",
         {
           p_full_name: payload.fullName,
           p_email: payload.email,
@@ -193,11 +189,24 @@ const UsuariosGestao = () => {
       );
 
       if (error) throw error;
-      return invite as { token: string };
+      return invite as {
+        token: string;
+        code: string;
+        invitation_message: string;
+        tenant_name?: string;
+        full_name?: string;
+      };
     },
     onSuccess: async (invite) => {
       const link = buildInviteLink(invite.token);
       setGeneratedLink(link);
+      setGeneratedCode(invite.code);
+      const rawMsg = invite.invitation_message || "";
+      const fullUrlMessage = rawMsg.includes("/cadastro?token=")
+        ? rawMsg.replace("/cadastro?token=", `${window.location.origin}/cadastro?token=`)
+        : `Olá, ${invite.full_name || "colaborador"}!\n\nVocê foi convidado para acessar a plataforma ORBE pela empresa ${invite.tenant_name || ""}.\n\nPara ativar sua conta com segurança, siga os passos abaixo:\n\n1. Acesse o link de ativação:\n${link}\n\n2. Informe o seu Código de Ativação temporário:\n${invite.code}\n\n3. Crie sua senha de acesso pessoal.\n\nAtenção: Por razões de segurança, este código expira em 10 minutos. Caso você não reconheça este convite, desconsidere esta mensagem.`;
+      setGeneratedMessage(fullUrlMessage);
+      setIsFormDirty(false);
       setResultOpen(true);
       setDialogOpen(false);
       setEditingRow(null);
@@ -207,6 +216,45 @@ const UsuariosGestao = () => {
     },
     onError: (error: Error) => {
       toast.error("Não foi possível gerar o convite.", {
+        description: error.message,
+      });
+    },
+  });
+
+  const reissueCodeMutation = useMutation({
+    mutationFn: async (row: AccessOverviewRow) => {
+      if (!row.invite_id) {
+        throw new Error("Convite inválido para reemissão de código.");
+      }
+
+      const { data, error } = await supabase.rpc(
+        "admin_issue_new_activation_code",
+        {
+          p_invitation_id: row.invite_id,
+        },
+      );
+
+      if (error) throw error;
+      return {
+        ...(data as { code: string; invitation_message: string }),
+        token: row.token,
+      };
+    },
+    onSuccess: async (data) => {
+      const link = data.token ? buildInviteLink(data.token) : "";
+      setGeneratedLink(link);
+      setGeneratedCode(data.code);
+      const rawMsg = data.invitation_message || "";
+      const fullUrlMessage = rawMsg.includes("/cadastro?token=")
+        ? rawMsg.replace("/cadastro?token=", `${window.location.origin}/cadastro?token=`)
+        : rawMsg;
+      setGeneratedMessage(fullUrlMessage);
+      setResultOpen(true);
+      await queryClient.invalidateQueries({ queryKey: ["admin_user_access_overview"] });
+      toast.success("Novo código de ativação gerado com sucesso.");
+    },
+    onError: (error: Error) => {
+      toast.error("Não foi possível gerar novo código.", {
         description: error.message,
       });
     },
@@ -235,6 +283,7 @@ const UsuariosGestao = () => {
       return invite;
     },
     onSuccess: async () => {
+      setIsFormDirty(false);
       await queryClient.invalidateQueries({ queryKey: ["admin_user_access_overview"] });
       setDialogOpen(false);
       setEditingRow(null);
@@ -264,6 +313,7 @@ const UsuariosGestao = () => {
       if (error) throw error;
     },
     onSuccess: async () => {
+      setIsFormDirty(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["admin_user_access_overview"] }),
         refetchAccess(),
@@ -315,10 +365,9 @@ const UsuariosGestao = () => {
 
   const deleteInviteMutation = useMutation({
     mutationFn: async (inviteId: string) => {
-      const { error } = await supabase
-        .from("tenant_invitations")
-        .delete()
-        .eq("id", inviteId);
+      const { error } = await supabase.rpc("admin_delete_tenant_invitation", {
+        p_invitation_id: inviteId,
+      });
 
       if (error) throw error;
     },
@@ -336,6 +385,7 @@ const UsuariosGestao = () => {
   const handleOpenNewInvite = () => {
     setEditingRow(null);
     setForm(emptyInviteForm());
+    setIsFormDirty(false);
     setDialogOpen(true);
   };
 
@@ -352,6 +402,7 @@ const UsuariosGestao = () => {
       expiresAt: row.expires_at ? row.expires_at.slice(0, 10) : defaultExpiryDate(),
       permissions: normalizePermissionMatrix(row.permissions, normalizedRole),
     });
+    setIsFormDirty(false);
     setDialogOpen(true);
   };
 
@@ -421,6 +472,7 @@ const UsuariosGestao = () => {
 
   const applyPreset = (role: string) => {
     const normalizedRole = normalizeRole(role);
+    setIsFormDirty(true);
     setForm((current) => ({
       ...current,
       preset: normalizedRole,
@@ -433,6 +485,7 @@ const UsuariosGestao = () => {
     action: (typeof ACCESS_ACTIONS)[number],
     checked: boolean,
   ) => {
+    setIsFormDirty(true);
     setForm((current) => ({
       ...current,
       permissions: {
@@ -647,18 +700,33 @@ const UsuariosGestao = () => {
                                   variant="outline"
                                   className={cn("gap-1.5", tableActionButtonClass)}
                                   onClick={() => handleCopyInviteLink(row)}
+                                  title="Copiar link do convite"
                                 >
                                   <Copy className="h-3.5 w-3.5" />
-                                  Copiar
+                                  Link
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className={cn(
+                                    tableActionButtonClass,
+                                    "gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300",
+                                  )}
+                                  onClick={() => reissueCodeMutation.mutate(row)}
+                                  title="Gerar novo código de ativação temporário"
+                                >
+                                  <KeyRound className="h-3.5 w-3.5" />
+                                  Novo código
                                 </Button>
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   className={cn("gap-1.5", tableActionButtonClass)}
                                   onClick={() => renewInviteMutation.mutate(row)}
+                                  title="Estender prazo de validade do convite"
                                 >
-                                  <Link2 className="h-3.5 w-3.5" />
-                                  Reenviar
+                                  <RefreshCw className="h-3.5 w-3.5" />
+                                  Renovar
                                 </Button>
                                 <Button
                                   size="sm"
@@ -739,7 +807,18 @@ const UsuariosGestao = () => {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
+        <DialogContent
+          className="max-h-[90vh] overflow-y-auto sm:max-w-5xl"
+          isDirty={isFormDirty}
+          onChange={() => setIsFormDirty(true)}
+          onInput={() => setIsFormDirty(true)}
+          onAbandon={() => {
+            setIsFormDirty(false);
+            setDialogOpen(false);
+            setEditingRow(null);
+            setForm(emptyInviteForm());
+          }}
+        >
           <DialogHeader>
             <DialogTitle>
               {editingRow
@@ -937,6 +1016,13 @@ const UsuariosGestao = () => {
             <Button
               variant="ghost"
               onClick={() => {
+                if (isFormDirty) {
+                  const confirmed = window.confirm(
+                    "Você possui alterações não salvas. Se sair agora, todas as informações preenchidas serão perdidas. Deseja realmente sair?",
+                  );
+                  if (!confirmed) return;
+                }
+                setIsFormDirty(false);
                 setDialogOpen(false);
                 setEditingRow(null);
                 setForm(emptyInviteForm());
@@ -953,36 +1039,104 @@ const UsuariosGestao = () => {
       </Dialog>
 
       <Dialog open={resultOpen} onOpenChange={setResultOpen}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="sm:max-w-xl" disableDirtyCheck>
           <DialogHeader>
-            <DialogTitle>Convite pronto para envio</DialogTitle>
+            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+              <Check className="h-5 w-5" />
+              <DialogTitle className="text-xl">Convite pronto para envio</DialogTitle>
+            </div>
             <DialogDescription>
-              O usuário será vinculado ao mesmo tenant do admin ao concluir o cadastro.
+              Compartilhe as instruções com o colaborador usando o botão principal abaixo.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-border bg-muted/30 p-4 text-sm text-foreground">
-              {generatedLink}
+
+          <div className="space-y-4 pt-2">
+            {/* Bloco de Código de Ativação */}
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-400">
+                    Código de Ativação
+                  </span>
+                  <div className="mt-1 font-mono text-3xl font-bold tracking-widest text-foreground">
+                    {generatedCode
+                      ? `${generatedCode.slice(0, 3)} ${generatedCode.slice(3)}`
+                      : "—"}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100/80 px-3 py-1 text-xs font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                  <Clock className="h-3.5 w-3.5" />
+                  Válido por 10 min
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-amber-800/90 dark:text-amber-400/90">
+                Este código é individual e expira em 10 minutos. Envie-o imediatamente ao colaborador para ativação da conta.
+              </p>
             </div>
-            <div className="flex flex-wrap gap-2">
+
+            {/* Link de Ativação */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">Link de ativação</Label>
+              <div className="rounded-xl border border-border bg-muted/40 p-3 font-mono text-xs text-foreground select-all break-all">
+                {generatedLink}
+              </div>
+            </div>
+
+            {/* Mensagem Formatada Pronta */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-muted-foreground">Mensagem completa para envio manual</Label>
+              <pre className="max-h-36 overflow-y-auto whitespace-pre-wrap rounded-xl border border-border bg-muted/20 p-3 font-sans text-xs text-muted-foreground">
+                {generatedMessage}
+              </pre>
+            </div>
+
+            {/* Ações */}
+            <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={async () => {
+                    if (generatedCode) {
+                      await navigator.clipboard.writeText(generatedCode);
+                      toast.success("Código copiado.");
+                    }
+                  }}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  Copiar código
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={async () => {
+                    if (generatedLink) {
+                      await navigator.clipboard.writeText(generatedLink);
+                      toast.success("Link copiado.");
+                    }
+                  }}
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                  Copiar link
+                </Button>
+              </div>
+
+              {/* Botão de Destaque: Copiar Convite */}
               <Button
-                variant="outline"
-                className="gap-2"
+                className="gap-2 bg-primary px-5 font-semibold text-primary-foreground shadow"
                 onClick={async () => {
-                  await navigator.clipboard.writeText(generatedLink);
-                  toast.success("Link copiado.");
+                  if (generatedMessage) {
+                    await navigator.clipboard.writeText(generatedMessage);
+                    toast.success("Mensagem do convite copiada com sucesso!", {
+                      description: "Cole no WhatsApp, Teams, e-mail corporativo ou chat direto.",
+                    });
+                  }
                 }}
               >
                 <Copy className="h-4 w-4" />
-                Copiar link
-              </Button>
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={() => openWhatsAppShare(generatedLink)}
-              >
-                <MessageCircle className="h-4 w-4" />
-                Compartilhar via WhatsApp
+                Copiar convite
               </Button>
             </div>
           </div>

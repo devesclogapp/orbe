@@ -2,6 +2,18 @@ import { supabase } from "@/lib/supabase";
 import MotorExecutavel from "./operationalEngine/MotorIndex";
 import { CicloOperacionalService } from "./operationalEngine/CicloOperacionalService";
 import { ensurePreCadastroColaboradorFromPonto } from "./preCadastroColaborador.service";
+import { JornadaResolver } from "./operationalEngine/JornadaResolver";
+import { JornadaTrabalho, JornadaResolveResult } from "@/types/jornada.types";
+import { RemuneracaoResolver, RemuneracaoResult } from "./operationalEngine/RemuneracaoResolver";
+import {
+  avaliarMarcacoesPonto,
+  parseMarcacoesPonto,
+  parseTimeToMinutes,
+  AvaliacaoMarcacoesResult,
+  TipoInterpretacaoMarcacao,
+} from "./operationalEngine/MarcacoesPontoParser";
+import { PontoRegularizacaoService } from "./operationalEngine/pontoRegularizacao.service";
+import { PontoDecisaoService } from "./operationalEngine/pontoDecisao.service";
 
 type Empresa = {
   id: string;
@@ -16,6 +28,7 @@ type Colaborador = {
   id: string;
   tenant_id?: string | null;
   empresa_id?: string | null;
+  jornada_id?: string | null;
   nome?: string | null;
   matricula?: string | null;
   cpf?: string | null;
@@ -46,7 +59,12 @@ type Regra = {
   empresa_id?: string | null;
   nome?: string | null;
   bh_ativo?: boolean | null;
+  vigencia_inicio?: string | null;
+  vigencia_fim?: string | null;
+  adicional_hora_extra_percentual?: number | null;
+  /** @deprecated Utilizar exclusivamente JornadaResolver */
   carga_horaria_diaria?: number | null;
+  /** @deprecated Utilizar exclusivamente JornadaResolver */
   jornada_contratada?: number | null;
   tolerancia_atraso?: number | null;
   tolerancia_hora_extra?: number | null;
@@ -97,6 +115,7 @@ type ProcessParams = {
   empresas: Empresa[];
   colaboradores: Colaborador[];
   regras: Regra[];
+  jornadas?: JornadaTrabalho[];
   executionType?: "manual" | "automatica";
 };
 
@@ -110,6 +129,8 @@ type ProcessResult = {
   inconsistencias: string[];
   durationMs: number;
   pendentesCadastrais: number;
+  pendentesJornada?: number;
+  pendentesMarcacoes?: number;
   processedAt?: string;
 };
 
@@ -165,8 +186,18 @@ const validateColaboradorApto = (colaborador: Colaborador | null): CadastralVali
   return { apto: motivos.length === 0, motivos };
 };
 
+export const getMultiplicadorHoraExtra = (regra?: Regra | null | any): number => {
+  const raw =
+    regra?.adicional_hora_extra_percentual ??
+    regra?.adicionalHoraExtraPercentual ??
+    regra?.payload?.adicional_hora_extra_percentual ??
+    regra?.payload?.adicionalHoraExtraPercentual;
+  const percentual = raw !== undefined && raw !== null && !isNaN(Number(raw)) ? Number(raw) : 50;
+  return Number((1 + Math.max(percentual, 0) / 100).toFixed(4));
+};
+
 const RH_EVENT_ORIGIN = "processamento_rh";
-const EXTRA_RATE = 1.5;
+export const DEFAULT_EXTRA_RATE = 1.5;
 const AUTO_IMPORT_ORIGIN = "importacao_ponto";
 const DEFAULT_RULE_NAME = "Regra padrão automática 8h";
 const VENCIMENTO_ALERT_WINDOW_DAYS = 30;
@@ -253,17 +284,23 @@ const getQuarterEndDate = (dateStr: string) => {
 
 const formatIsoDate = (date: Date) => date.toISOString().split("T")[0];
 
-const calculateDataVencimento = (dateStr: string, regra: Regra | null) => {
-  const quarterEnd = getQuarterEndDate(dateStr);
+export const calculateDataVencimento = (dateStr: string, regra: Regra | null): string | null => {
+  if (!dateStr) return null;
   const prazoDias = Number(
     regra?.prazo_compensacao_dias ?? regra?.validade_horas ?? 0,
   );
 
-  if (prazoDias > 0) {
-    quarterEnd.setUTCDate(quarterEnd.getUTCDate() + prazoDias);
+  if (!prazoDias || prazoDias <= 0) {
+    return null;
   }
 
-  return formatIsoDate(quarterEnd);
+  const [year, month, day] = dateStr.split("-").map(Number);
+  if (!year || !month || !day) return null;
+
+  const baseDate = new Date(Date.UTC(year, month - 1, day));
+  baseDate.setUTCDate(baseDate.getUTCDate() + prazoDias);
+
+  return formatIsoDate(baseDate);
 };
 
 const isWithinAlertWindow = (dateStr?: string | null) => {
@@ -282,7 +319,13 @@ const isWithinAlertWindow = (dateStr?: string | null) => {
 
 const resolveOperationalEventType = (ponto: Ponto, saldoDia: number) => {
   if (saldoDia > 0) return "hora_extra";
-  if (ponto.status === "Ausente" || ponto.status === "Falta") return "falta";
+  if (
+    ponto.status === "Ausente" ||
+    ponto.status === "Falta" ||
+    (ponto as any)?.decisao?.tipo_decisao === "FALTA_INJUSTIFICADA_CONFIRMADA"
+  ) {
+    return "falta";
+  }
   return "atraso";
 };
 
@@ -447,9 +490,10 @@ const buildInconsistencias = (params: {
   workedMinutes: number;
   jornadaMinutes: number;
   atrasoMinutes: number;
+  isDiaNaoTrabalhavel?: boolean;
 }) => {
   const inconsistencias: Array<{ tipo: string; descricao: string; gravidade: string }> = [];
-  const { ponto, empresaId, colaborador, regra, workedMinutes, jornadaMinutes, atrasoMinutes } = params;
+  const { ponto, empresaId, colaborador, regra, workedMinutes, jornadaMinutes, atrasoMinutes, isDiaNaoTrabalhavel } = params;
 
   if (!empresaId) {
     inconsistencias.push({
@@ -475,7 +519,7 @@ const buildInconsistencias = (params: {
     });
   }
 
-  if (!ponto.entrada && ponto.status !== "Ausente" && ponto.status !== "Falta") {
+  if (!ponto.entrada && ponto.status !== "Ausente" && ponto.status !== "Falta" && !isDiaNaoTrabalhavel) {
     inconsistencias.push({
       tipo: "entrada_ausente",
       descricao: "Registro sem horário de entrada.",
@@ -483,7 +527,7 @@ const buildInconsistencias = (params: {
     });
   }
 
-  if (!ponto.saida && ponto.status !== "Ausente" && ponto.status !== "Falta") {
+  if (!ponto.saida && ponto.status !== "Ausente" && ponto.status !== "Falta" && !isDiaNaoTrabalhavel) {
     inconsistencias.push({
       tipo: "saida_ausente",
       descricao: "Registro sem horário de saída.",
@@ -511,7 +555,7 @@ const buildInconsistencias = (params: {
     });
   }
 
-  if (jornadaMinutes <= 0) {
+  if (jornadaMinutes <= 0 && !isDiaNaoTrabalhavel) {
     inconsistencias.push({
       tipo: "jornada_invalida",
       descricao: "A regra de jornada diária está inválida para este colaborador.",
@@ -547,56 +591,174 @@ const buildInconsistencias = (params: {
   return inconsistencias;
 };
 
-const calculateCompensation = (params: {
+export interface RemuneracaoColaborador {
+  valorHora: number;
+  valorDiaBase: number;
+  salarioMensal: number;
+  modeloAplicado: string;
+  origemValor?: string;
+  origemDivisor?: string;
+  divisorMensal?: number;
+}
+
+export const resolveRemuneracaoColaborador = (
+  colaborador: Colaborador | null | undefined,
+  jornadaHours: number = 8,
+  cargaSemanalMinutos?: number | null,
+  isJornadaConfigurada?: boolean,
+): RemuneracaoColaborador => {
+  const res = RemuneracaoResolver.resolve({
+    colaborador,
+    minutosJornadaDia: Math.round(jornadaHours * 60),
+    cargaSemanalMinutos,
+    isJornadaConfigurada,
+  });
+
+  return {
+    valorHora: res.valorHora,
+    valorDiaBase: res.valorDiaBase,
+    salarioMensal: res.salarioMensal,
+    modeloAplicado: res.modeloAplicado,
+    origemValor: res.origemValor,
+    origemDivisor: res.origemDivisor,
+    divisorMensal: res.divisorMensal,
+  };
+};
+
+export const calculateCompensation = (params: {
   ponto: Ponto;
   regra: Regra | null;
   colaborador: Colaborador | null;
+  minutosPrevistosJornada?: number | null;
+  avaliacaoMarcacoes?: AvaliacaoMarcacoesResult | null;
+  cargaSemanalMinutos?: number | null;
+  isJornadaConfigurada?: boolean;
 }) => {
-  const { ponto, regra, colaborador } = params;
-  const workedMinutes =
-    ponto.status === "Ausente" || ponto.status === "Falta" ? 0 : calculateWorkedMinutes(ponto);
-  const jornadaHours =
-    Number(regra?.carga_horaria_diaria ?? regra?.jornada_contratada ?? 8) || 8;
-  const jornadaMinutes = Math.round(jornadaHours * 60);
+  const { ponto, regra, colaborador, minutosPrevistosJornada, avaliacaoMarcacoes } = params;
+  const decisaoAtiva = (ponto as any)?.decisao || avaliacaoMarcacoes?.decisaoRh || null;
+  const tipoDecisao = decisaoAtiva?.tipo_decisao || null;
+
+  const isFalta =
+    ponto.status === "Ausente" ||
+    ponto.status === "Falta" ||
+    tipoDecisao === "FALTA_INJUSTIFICADA_CONFIRMADA" ||
+    avaliacaoMarcacoes?.tipo === "FALTA_CONFIRMADA";
+
+  const isFaltaAbonada =
+    tipoDecisao === "FALTA_JUSTIFICADA_ABONADA" ||
+    avaliacaoMarcacoes?.tipo === "FALTA_ABONADA";
+
+  const isDsrBancoHoras =
+    tipoDecisao === "DSR_DIRECIONADO_BANCO_HORAS" ||
+    avaliacaoMarcacoes?.tipo === "DSR_DIRECIONADO_BH";
+
+  const isDsrHoraExtra =
+    tipoDecisao === "DSR_DIRECIONADO_HORA_EXTRA" ||
+    avaliacaoMarcacoes?.tipo === "DSR_DIRECIONADO_HE";
+
+  // FIX 04.2-D: Determinação segura dos minutos trabalhados via parser de marcações
+  let workedMinutes = 0;
+  if (!isFalta && !isFaltaAbonada) {
+    if (avaliacaoMarcacoes) {
+      if (!avaliacaoMarcacoes.calculavel) {
+        throw new Error(
+          `calculateCompensation não pode ser invocado para marcações não calculáveis (${avaliacaoMarcacoes.tipo}): ${avaliacaoMarcacoes.motivo}`
+        );
+      }
+      workedMinutes = avaliacaoMarcacoes.minutosTrabalhados ?? 0;
+    } else {
+      const avaliacaoDireta = avaliarMarcacoesPonto({
+        ponto,
+        jornadaResolvida:
+          typeof minutosPrevistosJornada === "number"
+            ? {
+                temJornadaConfigurada: true,
+                trabalhavel: minutosPrevistosJornada > 0,
+                minutosPrevistos: minutosPrevistosJornada,
+              }
+            : null,
+        decisao: decisaoAtiva,
+      });
+
+      if (avaliacaoDireta.calculavel) {
+        workedMinutes = avaliacaoDireta.minutosTrabalhados ?? 0;
+      } else {
+        throw new Error(
+          `calculateCompensation impedido pelo Gate de Marcações (${avaliacaoDireta.tipo}): ${avaliacaoDireta.motivo}`
+        );
+      }
+    }
+  }
+  
+  // FIX 04.2-C: Prioriza os minutos previstos apurados deterministamente pelo JornadaResolver
+  const jornadaMinutes =
+    typeof minutosPrevistosJornada === "number" && minutosPrevistosJornada >= 0
+      ? minutosPrevistosJornada
+      : Math.round((Number(regra?.carga_horaria_diaria ?? regra?.jornada_contratada ?? 8) || 8) * 60);
+  const jornadaHours = Number((jornadaMinutes / 60).toFixed(4));
   const toleranciaAtraso = Number(regra?.tolerancia_atraso ?? 5) || 0;
   const toleranciaExtra = Number(regra?.tolerancia_hora_extra ?? 0) || 0;
-  const limiteDiarioBanco = Number(regra?.limite_diario_banco ?? 480) || 480;
+  const bhAtivo = regra?.bh_ativo !== false;
+  const rawLimite = regra?.limite_diario_banco;
+  const limiteDiarioBanco = bhAtivo
+    ? (rawLimite !== undefined && rawLimite !== null && !isNaN(Number(rawLimite))
+        ? Number(rawLimite)
+        : 480)
+    : 0;
 
   let saldoBase = workedMinutes - jornadaMinutes;
-  let minutosExtra = 0;
+  let minutosBanco = 0;
+  let minutosExcedentePagar = 0;
   let minutosDebito = 0;
 
-  if (ponto.status === "Ausente" || ponto.status === "Falta") {
+  if (isFalta) {
     saldoBase = -jornadaMinutes;
     minutosDebito = jornadaMinutes;
+  } else if (isFaltaAbonada) {
+    // Falta Abonada pelo RH: jornada prevista preservada, sem débito BH, sem HE
+    saldoBase = 0;
+    minutosDebito = 0;
+    minutosBanco = 0;
+    minutosExcedentePagar = 0;
+  } else if (isDsrBancoHoras) {
+    // DSR direcionado para Banco de Horas: minutos factuais integralmente creditados no BH
+    saldoBase = workedMinutes;
+    minutosBanco = workedMinutes;
+    minutosExcedentePagar = 0;
+    minutosDebito = 0;
+  } else if (isDsrHoraExtra) {
+    // DSR direcionado para pagamento de Hora Extra: segrega para pagamento sem criar crédito BH simultaneamente
+    saldoBase = 0;
+    minutosBanco = 0;
+    minutosExcedentePagar = workedMinutes;
+    minutosDebito = 0;
   } else if (saldoBase > toleranciaExtra) {
-    minutosExtra = Math.min(saldoBase, limiteDiarioBanco);
+    const saldoPositivoBruto = Math.max(0, saldoBase);
+    minutosBanco = Math.min(saldoPositivoBruto, limiteDiarioBanco);
+    minutosExcedentePagar = Math.max(0, saldoPositivoBruto - limiteDiarioBanco);
   } else if (saldoBase < -toleranciaAtraso) {
     minutosDebito = Math.abs(saldoBase);
   }
 
-  const saldoDia = minutosExtra - minutosDebito;
-  const atrasoMinutes = saldoBase < 0 ? minutosDebito : 0;
+  const saldoDia = minutosBanco - minutosDebito;
+  const atrasoMinutes =
+    !isFalta && !isFaltaAbonada && !isDsrBancoHoras && !isDsrHoraExtra && saldoBase < 0
+      ? minutosDebito
+      : 0;
 
-  const valorHoraBase =
-    Number(colaborador?.valor_hora ?? 0) ||
-    (Number(colaborador?.salario_base ?? 0) > 0
-      ? Number(colaborador?.salario_base) / (jornadaHours * 22)
-      : 0) ||
-    (Number(colaborador?.valor_diaria ?? 0) > 0
-      ? Number(colaborador?.valor_diaria) / jornadaHours
-      : 0) ||
-    (Number(colaborador?.valor_base ?? 0) > 0
-      ? Number(colaborador?.valor_base) / jornadaHours
-      : 0);
+  const remuneracao = resolveRemuneracaoColaborador(
+    colaborador,
+    jornadaHours,
+    params.cargaSemanalMinutos,
+    params.isJornadaConfigurada,
+  );
+  const valorHoraBase = remuneracao.valorHora;
+  const valorDiaBase = remuneracao.valorDiaBase;
 
-  const valorDiaBase =
-    Number(colaborador?.valor_diaria ?? 0) ||
-    (valorHoraBase > 0 ? valorHoraBase * jornadaHours : 0);
-
-  const valorExtras = minutesToHourDecimal(minutosExtra) * valorHoraBase * EXTRA_RATE;
+  const multiplicadorExtra = getMultiplicadorHoraExtra(regra);
+  const valorExtras = minutesToHourDecimal(minutosExcedentePagar) * valorHoraBase * multiplicadorExtra;
   const valorAtraso = minutesToHourDecimal(atrasoMinutes) * valorHoraBase;
-  const valorFalta = ponto.status === "Ausente" || ponto.status === "Falta" ? valorDiaBase : 0;
+  const valorFalta = isFalta ? valorDiaBase : 0;
   const valorDia = Math.max(valorDiaBase + valorExtras - valorAtraso - valorFalta, 0);
 
   return {
@@ -604,7 +766,9 @@ const calculateCompensation = (params: {
     jornadaHours,
     jornadaMinutes,
     saldoDia,
-    minutosExtra,
+    minutosBanco,
+    minutosExcedentePagar,
+    minutosExtra: minutosExcedentePagar,
     minutosDebito,
     atrasoMinutes,
     valorHoraBase,
@@ -613,6 +777,7 @@ const calculateCompensation = (params: {
     valorAtraso,
     valorFalta,
     valorDia,
+    multiplicadorExtra,
   };
 };
 
@@ -633,7 +798,7 @@ const loadPontosPendentes = async ({
     .from("registros_ponto")
     .select("*")
     .eq("tenant_id", tenantId)
-    .eq("status_processamento", "PENDENTE_PROCESSAMENTO")
+    .in("status_processamento", ["pendente", "PENDENTE", "PENDENTE_PROCESSAMENTO"])
     .gte("data", startDate)
     .lte("data", endDate)
     .order("data", { ascending: true })
@@ -876,7 +1041,7 @@ const processarVencimentosPendentes = async ({
   };
 };
 
-const upsertFechamentoMensal = async ({
+export const upsertFechamentoMensal = async ({
   tenantId,
   colaborador,
   empresaId,
@@ -896,7 +1061,7 @@ const upsertFechamentoMensal = async ({
     .eq("colaborador_id", colaborador.id)
     .gte("data", startDate)
     .lte("data", endDate)
-    .in("status_processamento", ["processado", "inconsistente"]);
+    .in("status_processamento", ["processado", "inconsistente", "PROCESSADO", "INCONSISTENTE"]);
   if (pontosError) throw pontosError;
 
   const { data: eventos, error: eventosError } = await supabase
@@ -1035,6 +1200,155 @@ const insertLog = async ({
   return executadoEm;
 };
 
+export interface GateEvaluationResult {
+  passouCadastral: boolean;
+  passouJornada: boolean;
+  passouRegraBanco: boolean;
+  passouConsistenciaMarcacoes: boolean;
+  bloqueado: boolean;
+  motivoBloqueio?: string | null;
+  tipoBloqueio?:
+    | "bloqueio_cadastral"
+    | "jornada_nao_parametrizada"
+    | "regra_banco_nao_parametrizada"
+    | "marcacao_incompleta"
+    | "marcacao_invalida"
+    | "sem_marcacoes"
+    | "falta_pendente_justificativa"
+    | "trabalho_em_dia_nao_trabalhavel"
+    | string
+    | null;
+  resolucaoJornada?: JornadaResolveResult | null;
+  regra?: Regra | null;
+  avaliacaoMarcacoes?: AvaliacaoMarcacoesResult | null;
+}
+
+/**
+ * Avalia em ordem estrita de precedência os Gates de Segurança do pipeline CLT:
+ * Gate 1: Gate Cadastral (Completude do colaborador)
+ * Gate 2: Gate de Jornada (JornadaResolver - escala/jornada configurada)
+ * Gate 3: Gate de Banco de Horas (Bloqueio de fallback 8h automático)
+ * Gate 4: Gate de Consistência das Marcações (Validação e interpretação segura das batidas)
+ */
+export const avaliarPontoGates = async (params: {
+  tenantId: string;
+  ponto: Ponto;
+  colaborador: Colaborador | null;
+  resolvedEmpresaId: string | null;
+  jornadasRuntime?: JornadaTrabalho[];
+  regrasRuntime?: Regra[];
+}): Promise<GateEvaluationResult> => {
+  const { tenantId, ponto, colaborador, resolvedEmpresaId, jornadasRuntime = [], regrasRuntime = [] } = params;
+
+  // 1. GATE CADASTRAL
+  const validacaoCadastral = validateColaboradorApto(colaborador);
+  if (!validacaoCadastral.apto) {
+    return {
+      passouCadastral: false,
+      passouJornada: false,
+      passouRegraBanco: false,
+      passouConsistenciaMarcacoes: false,
+      bloqueado: true,
+      tipoBloqueio: "bloqueio_cadastral",
+      motivoBloqueio: validacaoCadastral.motivos.join("; "),
+      resolucaoJornada: null,
+      regra: null,
+      avaliacaoMarcacoes: null,
+    };
+  }
+
+  // 2. GATE DE JORNADA (FIX 04.2-C)
+  const resolucaoJornada = await JornadaResolver.resolve({
+    tenantId,
+    data: ponto.data,
+    colaboradorId: colaborador?.id || null,
+    colaboradorJornadaId: colaborador?.jornada_id || null,
+    empresaId: resolvedEmpresaId,
+    jornadasDisponiveis: jornadasRuntime,
+  });
+
+  if (!resolucaoJornada.temJornadaConfigurada) {
+    return {
+      passouCadastral: true,
+      passouJornada: false,
+      passouRegraBanco: false,
+      passouConsistenciaMarcacoes: false,
+      bloqueado: true,
+      tipoBloqueio: "jornada_nao_parametrizada",
+      motivoBloqueio: "Jornada de trabalho não parametrizada para este colaborador/empresa.",
+      resolucaoJornada,
+      regra: null,
+      avaliacaoMarcacoes: null,
+    };
+  }
+
+  // 3. GATE DE BANCO DE HORAS (BLOQUEIO DEFINITIVO DE FALLBACK AUTOMÁTICO)
+  const tipoColab = colaborador?.tipo_colaborador || "CLT";
+  const calendario = MotorExecutavel.Calendar.getCalendario(ponto.data, tipoColab);
+
+  const motorCtx = {
+    tenantId,
+    empresaId: resolvedEmpresaId,
+    colaboradorId: colaborador?.id || null,
+    operacaoId: null,
+    dataProcessamento: ponto.data,
+    tipoColaborador: tipoColab,
+    calendario,
+  };
+
+  const { rule: abstractRegra, isFallback } = MotorExecutavel.resolveRule(motorCtx, regrasRuntime);
+
+  if (isFallback) {
+    return {
+      passouCadastral: true,
+      passouJornada: true,
+      passouRegraBanco: false,
+      passouConsistenciaMarcacoes: false,
+      bloqueado: true,
+      tipoBloqueio: "regra_banco_nao_parametrizada",
+      motivoBloqueio: "Regra de banco de horas/compensação não parametrizada para este colaborador/empresa.",
+      resolucaoJornada,
+      regra: null,
+      avaliacaoMarcacoes: null,
+    };
+  }
+
+  // 4. GATE DE CONSISTÊNCIA DAS MARCAÇÕES (FIX 04.2-D & FIX CP06.6-A)
+  const avaliacaoMarcacoes = avaliarMarcacoesPonto({
+    ponto,
+    jornadaResolvida: resolucaoJornada,
+    decisao: (ponto as any)?.decisao,
+  });
+
+  if (!avaliacaoMarcacoes.calculavel) {
+    return {
+      passouCadastral: true,
+      passouJornada: true,
+      passouRegraBanco: true,
+      passouConsistenciaMarcacoes: false,
+      bloqueado: true,
+      tipoBloqueio: avaliacaoMarcacoes.tipo.toLowerCase(),
+      motivoBloqueio: avaliacaoMarcacoes.motivo,
+      resolucaoJornada,
+      regra: (abstractRegra.payload as Regra) ?? null,
+      avaliacaoMarcacoes,
+    };
+  }
+
+  return {
+    passouCadastral: true,
+    passouJornada: true,
+    passouRegraBanco: true,
+    passouConsistenciaMarcacoes: true,
+    bloqueado: false,
+    tipoBloqueio: null,
+    motivoBloqueio: null,
+    resolucaoJornada,
+    regra: (abstractRegra.payload as Regra) ?? null,
+    avaliacaoMarcacoes,
+  };
+};
+
 export const processRhPeriod = async ({
   tenantId,
   month,
@@ -1043,6 +1357,7 @@ export const processRhPeriod = async ({
   empresas,
   colaboradores,
   regras,
+  jornadas,
   executionType = "manual",
 }: ProcessParams): Promise<ProcessResult> => {
   const startedAt = Date.now();
@@ -1050,6 +1365,22 @@ export const processRhPeriod = async ({
   const empresasRuntime = [...empresas];
   const colaboradoresRuntime = [...colaboradores];
   const regrasRuntime = [...regras];
+
+  let jornadasRuntime: JornadaTrabalho[] = [];
+  if (jornadas) {
+    jornadasRuntime = [...jornadas];
+  } else {
+    try {
+      const { data: dbJornadas } = await (supabase as any)
+        .from("jornadas_trabalho")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("status", "ativo");
+      jornadasRuntime = (dbJornadas || []) as JornadaTrabalho[];
+    } catch (err: any) {
+      console.warn("[rhProcessing] Não foi possível carregar jornadas do banco:", err?.message);
+    }
+  }
 
   if (pontos.length === 0) {
     return {
@@ -1062,6 +1393,7 @@ export const processRhPeriod = async ({
       inconsistencias: [],
       durationMs: Date.now() - startedAt,
       pendentesCadastrais: 0,
+      pendentesJornada: 0,
     };
   }
 
@@ -1109,6 +1441,8 @@ export const processRhPeriod = async ({
           : [],
       durationMs: Date.now() - startedAt,
       pendentesCadastrais: 0,
+      pendentesJornada: 0,
+      pendentesMarcacoes: 0,
     };
   }
 
@@ -1130,17 +1464,66 @@ export const processRhPeriod = async ({
   const inconsistenciasResumo: string[] = [];
   const colaboradoresAfetados = new Map<string, Colaborador>();
 
+  // FIX CP04.8: Carregar regularizações ativas para os pontos a processar
+  let regularizacoesPorPonto = new Map<string, any>();
+  try {
+    const { data: dbRegularizacoes } = await (supabase as any)
+      .from("registros_ponto_regularizacoes")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("ativo", true)
+      .in("registro_ponto_id", pontoIds);
+
+    if (dbRegularizacoes && dbRegularizacoes.length > 0) {
+      regularizacoesPorPonto = PontoRegularizacaoService.mapearRegularizacoesPorPonto(dbRegularizacoes);
+    }
+  } catch (err: any) {
+    console.warn("[rhProcessing] Não foi possível carregar regularizações:", err?.message);
+  }
+
+  // FIX CP06.6-A: Carregar decisões RH ativas para os pontos a processar
+  let decisoesPorPonto = new Map<string, any>();
+  try {
+    const { data: dbDecisoes } = await (supabase as any)
+      .from("registros_ponto_decisoes")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("ativo", true)
+      .in("registro_ponto_id", pontoIds);
+
+    if (dbDecisoes && dbDecisoes.length > 0) {
+      decisoesPorPonto = PontoDecisaoService.mapearDecisoesPorPonto(dbDecisoes);
+    }
+  } catch (err: any) {
+    console.warn("[rhProcessing] Não foi possível carregar decisões RH:", err?.message);
+  }
+
   let totalInconsistencias = 0;
   let totalCreditos = 0;
   let totalDebitos = 0;
   let pendentesCadastrais = 0;
+  let pendentesJornada = 0;
+  let pendentesMarcacoes = 0;
+  let totalProcessados = 0;
 
   for (const ponto of validPontosUnicos) {
     const alertas: Array<{ tipo: string; descricao: string }> = [];
 
-    let empresa = getEmpresaFromPonto(ponto, empresasRuntime);
-    if (!empresa && (ponto.empresa_nome || ponto.nome_empresa)) {
-      empresa = await createEmpresaFromPonto({ tenantId, ponto });
+    // FIX CP04.8: Anexa regularizações ativas existentes (marcações efetivas para Gate 4)
+    let pontoEfetivo = PontoRegularizacaoService.anexarRegularizacoes(
+      ponto,
+      regularizacoesPorPonto.get(ponto.id)
+    );
+
+    // FIX CP06.6-A: Anexa decisões RH ativas existentes (governança para Gate 4)
+    pontoEfetivo = PontoDecisaoService.anexarDecisao(
+      pontoEfetivo,
+      decisoesPorPonto.get(ponto.id)
+    );
+
+    let empresa = getEmpresaFromPonto(pontoEfetivo, empresasRuntime);
+    if (!empresa && (pontoEfetivo.empresa_nome || pontoEfetivo.nome_empresa)) {
+      empresa = await createEmpresaFromPonto({ tenantId, ponto: pontoEfetivo });
       if (empresa) {
         empresasRuntime.push(empresa);
         alertas.push({
@@ -1150,14 +1533,14 @@ export const processRhPeriod = async ({
       }
     }
 
-    const resolvedEmpresaId = empresa?.id ?? ponto.empresa_id ?? null;
+    const resolvedEmpresaId = empresa?.id ?? pontoEfetivo.empresa_id ?? null;
 
-    let colaborador = findColaborador(ponto, colaboradoresRuntime, resolvedEmpresaId);
-    if (!colaborador && resolvedEmpresaId && (ponto.nome_colaborador || ponto.matricula_colaborador || ponto.cpf_colaborador)) {
+    let colaborador = findColaborador(pontoEfetivo, colaboradoresRuntime, resolvedEmpresaId);
+    if (!colaborador && resolvedEmpresaId && (pontoEfetivo.nome_colaborador || pontoEfetivo.matricula_colaborador || pontoEfetivo.cpf_colaborador)) {
       colaborador = await createColaboradorFromPonto({
         tenantId,
         empresaId: resolvedEmpresaId,
-        ponto,
+        ponto: pontoEfetivo,
         colaboradores: colaboradoresRuntime,
       });
 
@@ -1170,66 +1553,58 @@ export const processRhPeriod = async ({
       }
     }
 
-    // === GATE CADASTRAL — Bloqueia pontos de colaboradores não aptos ===
-    const validacaoCadastral = validateColaboradorApto(colaborador);
-    if (!validacaoCadastral.apto) {
-      pendentesCadastrais += 1;
+    // === GATES DE SEGURANÇA (FIX 04.2-C & FIX 04.2-D & FIX CP04.8) ===
+    const gateResult = await avaliarPontoGates({
+      tenantId,
+      ponto: pontoEfetivo,
+      colaborador,
+      resolvedEmpresaId,
+      jornadasRuntime,
+      regrasRuntime,
+    });
 
-      // Registrar motivos como inconsistência para rastreabilidade
-      const motivoDescricao = validacaoCadastral.motivos.join("; ");
-      const nomeColab = colaborador?.nome || ponto.nome_colaborador || "Colaborador";
-      inconsistenciasResumo.push(`${nomeColab}: ${motivoDescricao}`);
+    if (gateResult.bloqueado) {
+      const nomeColab = colaborador?.nome || pontoEfetivo.nome_colaborador || "Colaborador";
+      inconsistenciasResumo.push(`${nomeColab}: ${gateResult.motivoBloqueio}`);
 
-      await saveAlertas(tenantId, ponto, colaborador?.id ?? null, resolvedEmpresaId, [
+      if (gateResult.tipoBloqueio === "bloqueio_cadastral") {
+        pendentesCadastrais += 1;
+      } else if (gateResult.tipoBloqueio === "jornada_nao_parametrizada") {
+        pendentesJornada += 1;
+      } else {
+        pendentesMarcacoes += 1;
+      }
+
+      await saveAlertas(tenantId, pontoEfetivo, colaborador?.id ?? null, resolvedEmpresaId, [
         {
-          tipo: "bloqueio_cadastral",
-          descricao: `Ponto não processado — ${motivoDescricao}`,
+          tipo: gateResult.tipoBloqueio!,
+          descricao: gateResult.motivoBloqueio!,
         },
       ]);
 
-      // NÃO processar: manter status pendente, não gerar saldo/evento
+      // NUNCA processa: mantém ponto pendente, zero saldo, zero evento, zero regra de fallback no banco
       continue;
     }
 
-    const tipoColab = colaborador?.tipo_colaborador || "CLT";
-    const calendario = MotorExecutavel.Calendar.getCalendario(ponto.data, tipoColab);
+    const regra = gateResult.regra!;
+    const resolucaoJornada = gateResult.resolucaoJornada!;
+    const regraAplicadaNome = regra.nome || DEFAULT_RULE_NAME;
 
-    const motorCtx = {
-      tenantId: tenantId,
-      empresaId: resolvedEmpresaId,
-      colaboradorId: colaborador?.id || null,
-      operacaoId: null,
-      dataProcessamento: ponto.data,
-      tipoColaborador: tipoColab,
-      calendario
-    };
+    alertas.push({
+      tipo: "motor_regra_aplicada",
+      descricao: `Motor aplicou regra de jornada (${resolucaoJornada.jornadaId}) e banco (${regraAplicadaNome})`,
+    });
 
-    const { rule: abstractRegra, isFallback } = MotorExecutavel.resolveRule(motorCtx, regrasRuntime);
-    let regra = abstractRegra.payload as Regra;
-    let regraAplicadaNome = abstractRegra.nome || regra?.nome || DEFAULT_RULE_NAME;
-
-    if (isFallback) {
-      const existingFallback = regrasRuntime.find(r => r.nome === regra.nome && r.origem_ponto === "automatica");
-      if (!existingFallback) {
-        regra = await createFallbackRegra(tenantId);
-        regrasRuntime.push(regra);
-      } else {
-        regra = existingFallback as Regra;
-      }
-      regraAplicadaNome = regra?.nome || abstractRegra.nome || DEFAULT_RULE_NAME;
-      alertas.push({
-        tipo: "regra_padrao_aplicada",
-        descricao: `Regra resolvida via Motor Seguro: ${regraAplicadaNome}`,
-      });
-    } else {
-      regraAplicadaNome = regra?.nome || abstractRegra.nome || DEFAULT_RULE_NAME;
-      alertas.push({
-        tipo: "motor_regra_aplicada",
-        descricao: `Motor aplicou regra: ${regraAplicadaNome} via prioridade ${abstractRegra.prioridade}`,
-      });
-    }
-
-    const calculo = calculateCompensation({ ponto, regra, colaborador });
+    const calculo = calculateCompensation({
+      ponto: pontoEfetivo,
+      regra,
+      colaborador,
+      minutosPrevistosJornada: resolucaoJornada.minutosPrevistos,
+      avaliacaoMarcacoes: gateResult.avaliacaoMarcacoes,
+      cargaSemanalMinutos: resolucaoJornada.cargaSemanalMinutos,
+      isJornadaConfigurada: resolucaoJornada.temJornadaConfigurada,
+    });
+    totalProcessados += 1;
     const dataVencimentoCalculada =
       calculo.saldoDia > 0 ? calculateDataVencimento(ponto.data, regra) : null;
 
@@ -1346,7 +1721,7 @@ export const processRhPeriod = async ({
     }
 
     const updatePayload = {
-      status_processamento: inconsistencias.length > 0 ? "inconsistente" : "processado",
+      status_processamento: inconsistencias.length > 0 ? "INCONSISTENTE" : "PROCESSADO",
       processado_em: processedAt,
       ciclo_id: ponto.ciclo_id ?? null,
       competencia: ponto.competencia,
@@ -1371,8 +1746,15 @@ export const processRhPeriod = async ({
         calculo.minutosExtra > 0
           ? {
               minutos: calculo.minutosExtra,
-              percentual: 50,
-              multiplicador: EXTRA_RATE,
+              minutos_banco: calculo.minutosBanco,
+              percentual: (() => {
+                const raw =
+                  regra?.adicional_hora_extra_percentual ??
+                  (regra as any)?.adicionalHoraExtraPercentual ??
+                  (regra as any)?.payload?.adicional_hora_extra_percentual;
+                return raw !== undefined && raw !== null && !isNaN(Number(raw)) ? Number(raw) : 50;
+              })(),
+              multiplicador: calculo.multiplicadorExtra,
               valor: Number(calculo.valorExtras.toFixed(2)),
             }
           : null,
@@ -1429,13 +1811,13 @@ export const processRhPeriod = async ({
       .from("registros_ponto")
       .select("*", { count: "exact", head: true })
       .eq("ciclo_id", ciclo.id)
-      .in("status_processamento", ["processado", "inconsistente"]);
+      .in("status_processamento", ["processado", "inconsistente", "PROCESSADO", "INCONSISTENTE"]);
 
     const { count: totalInconsistenciasCiclo } = await supabase
       .from("registros_ponto")
       .select("*", { count: "exact", head: true })
       .eq("ciclo_id", ciclo.id)
-      .eq("status_processamento", "inconsistente");
+      .in("status_processamento", ["inconsistente", "INCONSISTENTE"]);
 
     await CicloOperacionalService.updateCiclo(ciclo.id, {
       total_registros: totalProcessados || 0,
@@ -1450,7 +1832,7 @@ export const processRhPeriod = async ({
     month,
     empresaId,
     totalRegistros: validPontosUnicos.length + lockedPontosCount.total,
-    totalProcessados: validPontosUnicos.length,
+    totalProcessados,
     totalInconsistencias,
     totalCreditos,
     totalDebitos,
@@ -1460,7 +1842,7 @@ export const processRhPeriod = async ({
 
   return {
     totalRegistros: validPontosUnicos.length + lockedPontosCount.total,
-    totalProcessados: validPontosUnicos.length,
+    totalProcessados,
     totalInconsistencias,
     totalCreditos,
     totalDebitos,
@@ -1468,6 +1850,8 @@ export const processRhPeriod = async ({
     inconsistencias: inconsistenciasResumo.slice(0, 10),
     durationMs,
     pendentesCadastrais,
+    pendentesJornada,
+    pendentesMarcacoes,
     processedAt: executadoEm ?? processedAt,
   };
 };
@@ -1667,4 +2051,17 @@ export const rhProcessingUtils = {
   timeToMinutes,
   minutesToHourDecimal,
   calculateWorkedMinutes,
+  avaliarMarcacoesPonto,
+  parseMarcacoesPonto,
 };
+
+export {
+  avaliarMarcacoesPonto,
+  parseMarcacoesPonto,
+  parseTimeToMinutes,
+} from "./operationalEngine/MarcacoesPontoParser";
+export type {
+  TipoInterpretacaoMarcacao,
+  AvaliacaoMarcacoesResult,
+  MarcacaoPreservada,
+} from "./operationalEngine/MarcacoesPontoParser";

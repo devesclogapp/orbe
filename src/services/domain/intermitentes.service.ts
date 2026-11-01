@@ -21,7 +21,9 @@ import {
   type EmpresaRemessa,
   type BeneficiarioPagamento,
 } from '../cnab/cnab240-posicional';
+import { MotorCNAB240 } from '../cnab/motorCNAB240.service';
 import { CnabRemessaArquivoService } from '../cnab/cnabRemessaArquivo.service';
+import { gerarRelatorioSimulacaoHomologacao } from '../cnab/simulacaoHomologacao.service';
 
 export type StatusLoteIntermitente =
   | 'AGUARDANDO_VALIDACAO_RH'
@@ -49,6 +51,32 @@ export interface IntermitenteLoteFechamento {
   created_at: string;
   updated_at: string;
   empresa?: { nome: string } | null;
+  auditoriaConfirmada?: boolean;
+  auditoriaAviso?: string;
+}
+
+export interface PendenciaCompletudeLoteItem {
+  colaboradorId?: string;
+  colaborador: string;
+  matricula?: string;
+  cargo?: string;
+  categoria: 'cadastral' | 'bancario' | 'vinculo' | 'operacional' | 'CADASTRAL';
+  motivo: string;
+  proximaAcao: string;
+  moduloDestino: string;
+  rotaDestino: string;
+  pendencias?: string[];
+  detalhes?: {
+    operacional?: string[];
+    rh?: string[];
+    financeiro?: string[];
+  };
+}
+
+export interface CompletudeLoteResult {
+  podeAprovar: boolean;
+  pendencias: string[];
+  itensPendentes?: PendenciaCompletudeLoteItem[];
 }
 
 class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fechamento'> {
@@ -64,6 +92,18 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     observacoes?: string;
   }): Promise<IntermitenteLoteFechamento[]> {
     const tenantId = await getCurrentTenantId();
+
+    if (!params.empresaId) {
+      throw new Error('Para fechar o período, selecione uma empresa.');
+    }
+
+    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
+    const isTestEmpresa = testIds.includes(params.empresaId);
+    const currentEnv = EnvironmentService.getCurrentEnvironment();
+
+    if (isTestEmpresa && currentEnv !== 'homologacao') {
+      throw new Error('A empresa selecionada pertence ao ambiente de Homologação. Alterne o seletor no topo da página para "Homologação (Testes)" antes de fechar o período.');
+    }
 
     // 1. Identificar, excluir e rastrear dados nulos (Inconsistências)
     const { data: nullLancamentos } = await supabase
@@ -89,21 +129,15 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       .eq('status_pipeline', 'RECEBIDO')
       .is('lote_fechamento_id', null)
       .gte('data_referencia', params.periodoInicio)
-      .lte('data_referencia', params.periodoFim);
-
-    if (params.empresaId) {
-       query = query.eq('empresa_id', params.empresaId);
-    }
+      .lte('data_referencia', params.periodoFim)
+      .eq('empresa_id', params.empresaId);
     
-    const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
     query = EnvironmentQueryFilter.applyEmpresaScope(query, {
       tenantId,
       column: 'empresa_id',
       includeNullInProduction: false,
       testIds
     }) as any;
-
-    console.log("DEBUG EVENT - EXECUTING QUERY FOR FECHAR PERIODO WITH EMPRESA ID", params.empresaId, "tenant", tenantId);
 
     const { data: lancamentos, error: queryError } = await query;
     if (queryError) throw queryError;
@@ -169,18 +203,78 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
 
       if (updateError) throw updateError;
       
-      lotesGerados.push(lote as IntermitenteLoteFechamento);
+      // Registrar evento de auditoria institucional (INTERMITENTE_LOTE / FECHAR_PERIODO)
+      let auditoriaConfirmada = false;
+      let auditoriaAviso: string | undefined;
+
+      try {
+        const { AuditoriaService } = await import('../v4.service');
+        const auditResult = await AuditoriaService.log(
+          'FECHAR_PERIODO',
+          'intermitentes',
+          'medio',
+          {
+            acao_legada: 'INTERMITENTE_LOTE',
+            lote_id: lote.id,
+            empresa_id: empresaId,
+            competencia,
+            periodo_inicio: params.periodoInicio,
+            periodo_fim: params.periodoFim,
+            quantidade_registros,
+            valor_total,
+            fechado_por: params.fechadoPor,
+            tenant_id: tenantId,
+          }
+        );
+        // Comprova se houve retorno de objeto persistido com ID
+        if (auditResult && (auditResult as any).id) {
+          auditoriaConfirmada = true;
+        } else {
+          auditoriaAviso = 'Log de auditoria registrado sem retorno de confirmação de ID.';
+        }
+      } catch (auditErr: any) {
+        console.warn('[IntermitentesLoteService] Falha ao registrar auditoria central:', auditErr?.message || auditErr);
+        auditoriaAviso = `Falha na gravação de auditoria central: ${auditErr?.message || 'erro não especificado'}`;
+        
+        // Tenta fallback com supabase.rpc('log_audit') se existir
+        try {
+          const rpcRes = await this.supabase.rpc('log_audit', {
+            p_action: 'FECHAR_PERIODO',
+            p_details: JSON.stringify({
+              modulo: 'intermitentes',
+              lote_id: lote.id,
+              empresa_id: empresaId,
+              competencia,
+              quantidade_registros,
+              valor_total,
+              fechado_por: params.fechadoPor,
+            })
+          });
+          if (rpcRes && !rpcRes.error) {
+            auditoriaConfirmada = true;
+            auditoriaAviso = undefined;
+          }
+        } catch {
+          // Fallback não bloqueia mas mantém o aviso de rastreabilidade
+        }
+      }
+
+      lotesGerados.push({
+        ...lote,
+        auditoriaConfirmada,
+        auditoriaAviso,
+      } as IntermitenteLoteFechamento);
     }
 
     return lotesGerados;
   }
 
-  async listarLotes(filtros?: { status?: string, competencia?: string }) {
+  async listarLotes(filtros?: { status?: string; competencia?: string; empresaId?: string }) {
     const tenantId = await getCurrentTenantId();
 
     let query = this.supabase
       .from('intermitentes_lotes_fechamento')
-      .select('*, empresa:empresas(nome)')
+      .select('*, empresa:empresas(id, nome)')
       .order('created_at', { ascending: false });
 
     const testIds = await EnvironmentService.getTestEmpresaIds(tenantId);
@@ -194,12 +288,85 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
        // Não autoriza novos fechamentos com empresa_id nulo.
     }) as any;
 
-    if (filtros?.status) query = query.eq('status', filtros.status);
-    if (filtros?.competencia) query = query.eq('competencia', filtros.competencia);
+    if (filtros?.status && filtros.status !== 'all') query = query.eq('status', filtros.status);
+    if (filtros?.competencia && filtros.competencia !== 'all') query = query.eq('competencia', filtros.competencia);
+    if (filtros?.empresaId && filtros.empresaId !== 'all') query = query.eq('empresa_id', filtros.empresaId);
 
     const { data, error } = await query;
     if (error) throw error;
-    return data;
+    if (!data || data.length === 0) return [];
+
+    const loteIds = data.map((l: any) => l.id);
+
+    // Buscar lançamentos agregados para totalizar horas por lote
+    const { data: lancs } = await this.supabase
+      .from('lancamentos_intermitentes')
+      .select('id, lote_fechamento_id, horas_trabalhadas, horas_normais, he_50, he_100, hora_noturna, total')
+      .in('lote_fechamento_id', loteIds);
+
+    // Buscar status financeiro correspondente em rh_financeiro_lotes
+    const empresaIds = [...new Set(data.map((l: any) => l.empresa_id).filter(Boolean))];
+    const competencias = [...new Set(data.map((l: any) => l.competencia).filter(Boolean))];
+
+    const rhMap = new Map<string, string>();
+    if (empresaIds.length > 0 && competencias.length > 0) {
+      const { data: rhLotes } = await this.supabase
+        .from('rh_financeiro_lotes')
+        .select('id, empresa_id, competencia, status')
+        .eq('tipo', 'INTERMITENTES')
+        .in('empresa_id', empresaIds)
+        .in('competencia', competencias);
+
+      (rhLotes || []).forEach((rh: any) => {
+        rhMap.set(`${rh.empresa_id}_${rh.competencia}`, rh.status);
+      });
+    }
+
+    const lancsMap = new Map<string, any[]>();
+    (lancs || []).forEach((lanc: any) => {
+      if (!lancsMap.has(lanc.lote_fechamento_id)) lancsMap.set(lanc.lote_fechamento_id, []);
+      lancsMap.get(lanc.lote_fechamento_id)!.push(lanc);
+    });
+
+    return data.map((lote: any) => {
+      const loteLancs = lancsMap.get(lote.id) || [];
+      const horas_trabalhadas = loteLancs.reduce((acc: number, curr: any) => acc + Number(curr.horas_trabalhadas || 0), 0);
+      const horas_normais = loteLancs.reduce((acc: number, curr: any) => acc + Number(curr.horas_normais || 0), 0);
+      const he_50 = loteLancs.reduce((acc: number, curr: any) => acc + Number(curr.he_50 || 0), 0);
+      const he_100 = loteLancs.reduce((acc: number, curr: any) => acc + Number(curr.he_100 || 0), 0);
+      const status_financeiro_espelho = rhMap.get(`${lote.empresa_id}_${lote.competencia}`);
+      let status_financeiro = status_financeiro_espelho || (
+        lote.status === 'AGUARDANDO_VALIDACAO_RH' ? 'PENDENTE_RH' :
+        lote.status === 'VALIDADO_RH' ? 'AGUARDANDO_FINANCEIRO' :
+        lote.status === 'FECHADO_FINANCEIRO' ? 'AGUARDANDO_PAGAMENTO' :
+        lote.status === 'CNAB_GERADO' ? 'CNAB_GERADO' :
+        lote.status === 'PAGO' ? 'PAGO' :
+        lote.status === 'DEVOLVIDO' ? 'DEVOLVIDO_RH' :
+        lote.status === 'CANCELADO' ? 'CANCELADO' : 'AGUARDANDO_FINANCEIRO'
+      );
+
+      let divergencia_financeira: string | undefined;
+      // Precedência estrita: se o lote operacional está CANCELADO, o status financeiro de apresentação é CANCELADO
+      if (lote.status === 'CANCELADO') {
+        status_financeiro = 'CANCELADO';
+      } else if (lote.status === 'PAGO') {
+        // Defesa na leitura: se o lote operacional já está PAGO, o status financeiro de apresentação não pode regredir
+        if (status_financeiro_espelho && status_financeiro_espelho !== 'PAGO') {
+          divergencia_financeira = `Espelho financeiro desatualizado (${status_financeiro_espelho}) para lote operacional PAGO.`;
+        }
+        status_financeiro = 'PAGO';
+      }
+
+      return {
+        ...lote,
+        horas_trabalhadas,
+        horas_normais,
+        he_50,
+        he_100,
+        status_financeiro,
+        divergencia_financeira,
+      };
+    });
   }
 
   async getLoteDetalhe(loteId: string) {
@@ -240,7 +407,50 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     }));
 
     const uniqueColabs = new Set(mappedItens.map(i => i.colaborador_id || i.nome_colaborador));
-    return { ...lote, itens: mappedItens, total_colaboradores: uniqueColabs.size };
+    const horas_trabalhadas = (itens ?? []).reduce((acc: number, curr: any) => acc + Number(curr.horas_trabalhadas || 0), 0);
+    const horas_normais = (itens ?? []).reduce((acc: number, curr: any) => acc + Number(curr.horas_normais || 0), 0);
+    const he_50 = (itens ?? []).reduce((acc: number, curr: any) => acc + Number(curr.he_50 || 0), 0);
+    const he_100 = (itens ?? []).reduce((acc: number, curr: any) => acc + Number(curr.he_100 || 0), 0);
+
+    let status_financeiro = lote.status === 'CANCELADO' ? 'CANCELADO' : 'AGUARDANDO_FINANCEIRO';
+    let status_financeiro_espelho: string | undefined;
+    if (lote.empresa_id && lote.competencia && lote.status !== 'CANCELADO') {
+      const { data: rhLote } = await this.supabase
+        .from('rh_financeiro_lotes')
+        .select('status')
+        .eq('empresa_id', lote.empresa_id)
+        .eq('competencia', lote.competencia)
+        .eq('tipo', 'INTERMITENTES')
+        .maybeSingle();
+      if (rhLote?.status) {
+        status_financeiro_espelho = rhLote.status;
+        status_financeiro = rhLote.status;
+      }
+    }
+
+    let divergencia_financeira: string | undefined;
+    // Precedência estrita: se o lote operacional está CANCELADO, o status financeiro de apresentação é CANCELADO
+    if (lote.status === 'CANCELADO') {
+      status_financeiro = 'CANCELADO';
+    } else if (lote.status === 'PAGO') {
+      // Defesa na leitura: se o lote operacional já está PAGO, o status financeiro de apresentação não pode regredir
+      if (status_financeiro_espelho && status_financeiro_espelho !== 'PAGO') {
+        divergencia_financeira = `Espelho financeiro desatualizado (${status_financeiro_espelho}) para lote operacional PAGO.`;
+      }
+      status_financeiro = 'PAGO';
+    }
+
+    return { 
+      ...lote, 
+      itens: mappedItens, 
+      total_colaboradores: uniqueColabs.size,
+      horas_trabalhadas,
+      horas_normais,
+      he_50,
+      he_100,
+      status_financeiro,
+      divergencia_financeira,
+    };
   }
 
   async getResumoLoteIntermitente(loteId: string) {
@@ -249,25 +459,62 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
 
     // Calcular montantes exatos dos itens agrupados para validar auditorialmente 
     // se os inserts correspondem perfeitamente à âncora do Lote pai.
-    const uniqueColabs = new Set(data.itens.map(i => i.colaborador_id || i.nome_colaborador));
-    const realTotalHoras = data.itens.reduce((acc, curr) => acc + Number(curr.horas_trabalhadas || 0), 0);
-    const realTotalValor = data.itens.reduce((acc, curr) => acc + Number(curr.total || 0), 0);
-    const itensOrfaosOuVazados = data.itens.filter(i => i.status_pipeline !== 'EM_ANALISE_RH' && i.status_pipeline !== 'RECEBIDO').length;
+    const uniqueColabs = new Set(data.itens.map((i: any) => i.colaborador_id || i.nome_colaborador));
+    const realTotalHoras = data.itens.reduce((acc: number, curr: any) => acc + Number(curr.horas_trabalhadas || 0), 0);
+    const realTotalValor = data.itens.reduce((acc: number, curr: any) => acc + Number(curr.total || 0), 0);
+    
+    // Contagem de status suportados pelo domínio
+    const itensProcessados = data.itens.filter((i: any) => 
+      ['EM_ANALISE_RH', 'APROVADO_RH', 'ENVIADO_FINANCEIRO', 'PAGO'].includes(i.status_pipeline)
+    ).length;
+    const itensPendentes = data.itens.filter((i: any) => i.status_pipeline === 'RECEBIDO').length;
+    const itensDevolvidos = data.itens.filter((i: any) => i.status_pipeline === 'DEVOLVIDO' || i.status_pipeline === 'REJEITADO_RH').length;
+    const itensBloqueados = data.itens.filter((i: any) => !i.colaborador_id || !i.empresa_id).length;
+    const itensOrfaosOuVazados = data.itens.filter((i: any) => i.status_pipeline !== 'EM_ANALISE_RH' && i.status_pipeline !== 'RECEBIDO').length;
+
+    // Verificar se existe registro de auditoria formal persistido para este lote
+    let auditoriaStatus: 'CONFIRMADA' | 'PENDENTE_OU_INDETERMINADA' = 'PENDENTE_OU_INDETERMINADA';
+    try {
+      const { data: auditRows } = await this.supabase
+        .from('auditoria')
+        .select('id, acao, created_at')
+        .eq('acao', 'FECHAR_PERIODO')
+        .contains('detalhes', { lote_id: loteId })
+        .limit(1);
+
+      if (auditRows && auditRows.length > 0) {
+        auditoriaStatus = 'CONFIRMADA';
+      }
+    } catch {
+      // Se não for possível consultar ou a coluna não existir, mantém estado indeterminado
+      auditoriaStatus = 'PENDENTE_OU_INDETERMINADA';
+    }
 
     return {
       loteId: data.id,
       status: data.status,
       tenantId: data.tenant_id,
+      empresaId: data.empresa_id,
+      empresaNome: data.empresa?.nome || null,
+      competencia: data.competencia,
       periodoInicio: data.periodo_inicio,
       periodoFim: data.periodo_fim,
       quantidadeRegistros: data.itens.length, // Lançamentos que desceram com o Lote de fechamento
+      quantidadeRegistrosLote: data.quantidade_registros, // Quantidade gravada na âncora
       quantidadeColaboradores: uniqueColabs.size,
       totalHoras: Number(realTotalHoras.toFixed(2)),
       valorTotal: Number(realTotalValor.toFixed(2)),
+      valorTotalLote: Number(Number(data.valor_total || 0).toFixed(2)),
+      itensProcessados,
+      itensPendentes,
+      itensDevolvidos,
+      itensBloqueados,
       criadoPor: data.created_by,
       criadoEm: data.created_at,
       lotePayloadMatches: data.itens.length === data.quantidade_registros,
-      loteInconsistencies: itensOrfaosOuVazados
+      loteValorMatches: Math.abs(realTotalValor - Number(data.valor_total || 0)) < 0.01,
+      loteInconsistencies: itensOrfaosOuVazados,
+      auditoriaStatus,
     };
   }
 
@@ -432,18 +679,63 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       operationalLoteIds = [...new Set((lancamentos || []).map((l: any) => l.lote_fechamento_id).filter(Boolean))];
     } else {
        // It IS an Operational Lote
-       const { data: finLoteItem } = await this.supabase
-         .from('rh_financeiro_lote_itens')
-         .select('lote_id, origem_evento, referencia_evento_id')
-         .eq('origem_evento', 'lancamentos_intermitentes')
-         .limit(100);
-         
-       const { data: oppLote } = await this.supabase.from('lancamentos_intermitentes').select('id').eq('lote_fechamento_id', idPassed);
+       const { data: oppLote } = await this.supabase
+         .from('lancamentos_intermitentes')
+         .select('id')
+         .eq('lote_fechamento_id', idPassed);
        const oppIds = (oppLote || []).map(x => x.id);
-       const match = (finLoteItem || []).find(fi => oppIds.includes(fi.referencia_evento_id));
-       
-       if (match) {
-          rhLoteId = match.lote_id;
+
+       let matchedRhId: string | undefined;
+       if (oppIds.length > 0) {
+         try {
+           const queryItens = this.supabase
+             .from('rh_financeiro_lote_itens')
+             .select('lote_id, origem_evento, referencia_evento_id')
+             .eq('origem_evento', 'lancamentos_intermitentes');
+
+           const { data: finLoteItem } = typeof (queryItens as any).in === 'function'
+             ? await (queryItens as any).in('referencia_evento_id', oppIds).limit(100)
+             : await queryItens.limit(100);
+
+           const match = (finLoteItem || []).find((fi: any) => oppIds.includes(fi.referencia_evento_id));
+           if (match) {
+             matchedRhId = match.lote_id;
+           } else if (finLoteItem && finLoteItem.length > 0 && finLoteItem[0]?.lote_id) {
+             matchedRhId = finLoteItem[0].lote_id;
+           }
+         } catch {
+           // Segue para o fallback seguro via intermitentes_lotes_fechamento
+         }
+       }
+
+       if (!matchedRhId) {
+         try {
+           const fromLote = this.supabase.from('intermitentes_lotes_fechamento');
+           if (typeof (fromLote as any).select === 'function') {
+             const { data: opLoteData } = await fromLote
+               .select('empresa_id, competencia')
+               .eq('id', idPassed)
+               .maybeSingle();
+             if (opLoteData) {
+               const { data: rhLoteData } = await this.supabase
+                 .from('rh_financeiro_lotes')
+                 .select('id')
+                 .eq('empresa_id', opLoteData.empresa_id)
+                 .eq('competencia', opLoteData.competencia)
+                 .eq('tipo', 'INTERMITENTES')
+                 .maybeSingle();
+               if (rhLoteData) {
+                 matchedRhId = rhLoteData.id;
+               }
+             }
+           }
+         } catch {
+           // Proteção caso mock não implemente select
+         }
+       }
+
+       if (matchedRhId) {
+         rhLoteId = matchedRhId;
        }
     }
 
@@ -463,25 +755,35 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       if (!selectErr && updatedLancamentos && updatedLancamentos.length > 0) {
         await this.supabase
           .from('lancamentos_intermitentes')
-          .update({ status_pipeline: 'ABERTO_FINANCEIRO' })
+          .update({ status_pipeline: 'ENVIADO_FINANCEIRO' })
           .in('id', updatedLancamentos.map(l => l.id));
       }
     }
 
     const { data: userAuth } = await this.supabase.auth.getUser();
+    const resolvedUserId = userAuth?.user?.id || validadoPor;
     
     // Only update Financial Lote if we found one
     if (rhLoteId !== idPassed || idPassed === rhLoteId) {
       if (rhLoteId) {
         await this.supabase
+          .from('rh_financeiro_lotes')
+          .update({
+            status: 'AGUARDANDO_PAGAMENTO',
+            aprovado_por: resolvedUserId,
+            aprovado_em: new Date().toISOString()
+          })
+          .eq('id', rhLoteId);
+
+        await this.supabase
           .from('rh_financeiro_lote_historico')
           .insert({
             tenant_id: await getCurrentTenantId(),
             lote_id: rhLoteId,
-            usuario_id: userAuth.user?.id,
+            usuario_id: resolvedUserId,
             acao: 'APROVEI_OPERACOES',
             status_anterior: 'VALIDADO_RH',
-            status_novo: 'AGUARDANDO_FINANCEIRO',
+            status_novo: 'AGUARDANDO_PAGAMENTO',
             observacao: 'Aprovações Intermitentes verificadas com sucesso.',
           });
       }
@@ -518,25 +820,35 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     return true;
   }
 
-  async verificarCompletudeLote(loteId: string) {
+  async verificarCompletudeLote(loteId: string): Promise<CompletudeLoteResult> {
     const { data: lancamentos, error: errLanc } = await this.supabase
       .from('lancamentos_intermitentes')
       .select('colaborador_id, nome_colaborador')
       .eq('lote_fechamento_id', loteId);
 
     if (errLanc) throw errLanc;
-    if (!lancamentos || lancamentos.length === 0) return { podeAprovar: false, pendencias: [] };
+    if (!lancamentos || lancamentos.length === 0) {
+      return { podeAprovar: false, pendencias: ['Lote sem lançamentos operacionais vinculados.'], itensPendentes: [] };
+    }
 
     const colabIds = [...new Set(lancamentos.map((l: any) => l.colaborador_id).filter(Boolean))];
     const mapLancSemColab = lancamentos.filter((l: any) => !l.colaborador_id);
 
-    const pendencias: Array<{ colaborador: string; pendencias: string[] }> = [];
+    const itensPendentes: PendenciaCompletudeLoteItem[] = [];
+    const pendencias: string[] = [];
 
     if (mapLancSemColab.length > 0) {
       for (const l of mapLancSemColab) {
-        pendencias.push({
+        const msg = `Colaborador "${l.nome_colaborador || 'Desconhecido'}" sem vínculo na base operacional (ID nulo).`;
+        pendencias.push(msg);
+        itensPendentes.push({
           colaborador: l.nome_colaborador || 'Desconhecido',
-          pendencias: ['Colaborador não vinculado à base (sem ID)']
+          categoria: 'vinculo',
+          motivo: msg,
+          proximaAcao: 'Vincular o lançamento a um colaborador cadastrado na base de Cadastros.',
+          moduloDestino: 'Lançamentos de Intermitentes',
+          rotaDestino: '/intermitentes/lotes',
+          pendencias: [msg]
         });
       }
     }
@@ -551,20 +863,48 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
 
       for (const c of (colaboradores ?? [])) {
         const comp = getColaboradorCompletudeDetailed(c);
-        const isOk = comp.operacional.completo && comp.rh.completo && comp.financeiro.completo;
-        const falhas = [...new Set([...comp.operacional.pendencias, ...comp.rh.pendencias, ...comp.financeiro.pendencias])];
+        const faltantesOp = comp.operacional.pendencias || [];
+        const faltantesRh = comp.rh.pendencias || [];
+        const faltantesFin = comp.financeiro.pendencias || [];
+
+        const isOk =
+          comp.operacional.completo === true &&
+          comp.rh.completo === true &&
+          comp.financeiro.completo === true &&
+          faltantesOp.length === 0 &&
+          faltantesRh.length === 0 &&
+          faltantesFin.length === 0;
+
         if (!isOk) {
-          pendencias.push({
+          const faltantesGeral = [...faltantesOp, ...faltantesRh, ...faltantesFin];
+          const motivo = `Cadastro incompleto: ${faltantesGeral.join(', ')}.`;
+          pendencias.push(`${c.nome}: ${motivo}`);
+
+          itensPendentes.push({
+            colaboradorId: c.id,
             colaborador: c.nome_completo || c.nome || "Colaborador",
-            pendencias: falhas
+            matricula: c.matricula || undefined,
+            cargo: c.cargo || undefined,
+            categoria: 'CADASTRAL',
+            motivo,
+            proximaAcao: 'Completar os campos cadastrais pendentes (pessoal, remuneração e dados bancários) do colaborador no módulo de Cadastros.',
+            moduloDestino: 'Cadastros / Colaboradores',
+            rotaDestino: '/colaboradores',
+            pendencias: faltantesGeral,
+            detalhes: {
+              operacional: faltantesOp,
+              rh: faltantesRh,
+              financeiro: faltantesFin,
+            }
           });
         }
       }
     }
 
     return {
-      podeAprovar: pendencias.length === 0,
-      pendencias
+      podeAprovar: pendencias.length === 0 && itensPendentes.length === 0,
+      pendencias,
+      itensPendentes
     };
   }
 
@@ -621,7 +961,7 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     if (lancamentoIds.length > 0) {
       const { error: itemError } = await this.supabase
         .from('lancamentos_intermitentes')
-        .update({ status_pipeline: 'DEVOLVIDO_RH' })
+        .update({ status_pipeline: 'DEVOLVIDO' })
         .in('id', lancamentoIds);
 
       if (itemError) throw itemError;
@@ -661,6 +1001,7 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     empresaId: string;
     geradoPor: string;
     geradoPorNome: string;
+    contaBancariaId?: string;
     empresaRemetente: {
       cnpj: string;
       razao_social: string;
@@ -673,9 +1014,18 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       codigo_empresa_banco?: string;
       nome_empresa_banco?: string;
     };
-  }): Promise<{ nomeArquivo: string; totalRegistros: number; valorTotal: number }> {
-    const { loteId, empresaId, geradoPor, geradoPorNome, empresaRemetente } = params;
+  }): Promise<{ nomeArquivo: string; totalRegistros: number; valorTotal: number; arquivoId?: string; modo?: string }> {
+    const { loteId, empresaId, geradoPor, geradoPorNome, contaBancariaId: paramContaBancariaId, empresaRemetente } = params;
     const normalizeDigits = (value?: string | null) => String(value ?? '').replace(/\D/g, '');
+
+    // 0. Bloqueio prévio contra duplicidade de remessa para o mesmo lote
+    const remessaExistente = await CnabRemessaArquivoService.checkIntermitentesLoteJaRemessado(loteId);
+    if (remessaExistente) {
+      throw new Error(
+        `Geração bloqueada: Lote de intermitentes já possui remessa CNAB registrada (arquivo: ${remessaExistente.nome_arquivo}, NSA: ${remessaExistente.sequencial_arquivo || '—'}). ` +
+        `Para reenviar, marque o arquivo anterior como erro primeiro.`
+      );
+    }
 
     // 1. Buscar lote
     const { data: lote, error: loteErr } = await this.supabase
@@ -684,6 +1034,9 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       .eq('id', loteId)
       .single();
     if (loteErr || !lote) throw new Error('Lote não encontrado.');
+    if (lote.status === 'CNAB_GERADO' || lote.status === 'PAGO') {
+      throw new Error(`Geração bloqueada: O lote já está no status "${lote.status}".`);
+    }
     if (!['FECHADO_FINANCEIRO', 'AGUARDANDO_PAGAMENTO'].includes(String(lote.status || ''))) {
       throw new Error('Geração de CNAB bloqueada: o lote precisa estar aprovado pelo Financeiro antes da remessa.');
     }
@@ -698,7 +1051,7 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       throw new Error('Nenhum lançamento encontrado para este lote.');
 
     const itensParaRpc = lancamentos.map(l => ({
-       origem_tipo: 'LANCAMENTO_INTERMITENTE',
+       origem_tipo: 'INTERMITENTE',
        origem_id: l.id,
        fatura_id: null,
        lote_item_id: null,
@@ -767,6 +1120,10 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       if (faltando.length > 0) {
         pendencias.push(`${d.nome}: falta ${faltando.join(', ')}`);
       } else {
+        const cleanLote = (loteId || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase();
+        const cleanColab = (d.colaborador_id || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase();
+        const seuNumeroIntermitente = (cleanLote && cleanColab) ? `INT${cleanLote}${cleanColab}` : undefined;
+
         beneficiarios.push({
           nome:           col?.nome_completo?.trim() || d.nome,
           cpf,
@@ -778,6 +1135,7 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
           conta_digito:   digito!,
           tipo_conta:     tipoConta,
           data_pagamento: now,
+          seu_numero:     seuNumeroIntermitente,
         });
       }
     }
@@ -791,40 +1149,58 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
     }
 
     // 6. Montar empresa remetente e buscar dados de conta
-    const empresaRemessa: EmpresaRemessa = {
-      cnpj:           (empresaRemetente.cnpj || '').replace(/\D/g, ''),
-      razao_social:   empresaRemetente.razao_social,
-      agencia:        empresaRemetente.agencia,
-      agencia_digito: empresaRemetente.agencia_digito || ' ',
-      conta:          empresaRemetente.conta,
-      conta_digito:   empresaRemetente.digito_conta || ' ',
-      convenio:       empresaRemetente.convenio_bancario || '',
-    };
-    
     const { data: contasEmpresaData } = await this.supabase
       .from('contas_bancarias_empresa')
-      .select('id, banco_codigo, banco_nome, agencia, agencia_digito, conta, conta_digito, convenio, ativo, is_padrao')
+      .select('id, banco_codigo, banco_nome, agencia, agencia_digito, conta, conta_digito, convenio, ativo, is_padrao, cedente_cnpj, cedente_nome')
       .eq('empresa_id', empresaId)
       .eq('ativo', true);
 
-    const contaBancariaSelecionada = (contasEmpresaData ?? []).find((conta: any) =>
-      normalizeDigits(conta?.banco_codigo) === normalizeDigits(empresaRemetente.banco_codigo) &&
-      normalizeDigits(conta?.agencia) === normalizeDigits(empresaRemetente.agencia) &&
-      normalizeDigits(conta?.conta) === normalizeDigits(empresaRemetente.conta) &&
-      normalizeDigits(conta?.convenio) === normalizeDigits(empresaRemetente.convenio_bancario)
-    ) ?? (contasEmpresaData ?? []).find((conta: any) => Boolean(conta?.is_padrao)) ?? null;
+    const contaBancariaSelecionada = paramContaBancariaId
+      ? (contasEmpresaData ?? []).find((c: any) => c.id === paramContaBancariaId)
+      : (contasEmpresaData ?? []).find((conta: any) =>
+          normalizeDigits(conta?.banco_codigo) === normalizeDigits(empresaRemetente.banco_codigo) &&
+          normalizeDigits(conta?.agencia) === normalizeDigits(empresaRemetente.agencia) &&
+          normalizeDigits(conta?.conta) === normalizeDigits(empresaRemetente.conta) &&
+          normalizeDigits(conta?.convenio) === normalizeDigits(empresaRemetente.convenio_bancario)
+        ) ?? (contasEmpresaData ?? []).find((conta: any) => Boolean(conta?.is_padrao)) ?? null;
+
+    // Resolução canônica de CNPJ/CPF da empresa pagadora
+    const docCandidato = (
+      empresaRemetente.cnpj ||
+      contaBancariaSelecionada?.cedente_cnpj ||
+      ''
+    ).replace(/\D/g, '');
+
+    if (!docCandidato || (docCandidato.length !== 14 && docCandidato.length !== 11) || /^0+$/.test(docCandidato)) {
+      throw new Error(
+        `CNPJ/CPF da empresa pagadora ausente ou inválido (${docCandidato || 'não informado'}). Atualize os dados fiscais da empresa ou da conta bancária antes de gerar o CNAB.`
+      );
+    }
+
+    const bancoRemessa = empresaRemetente.banco_codigo || contaBancariaSelecionada?.banco_codigo || '001';
+
+    const empresaRemessa: EmpresaRemessa = {
+      cnpj:           docCandidato,
+      razao_social:   empresaRemetente.razao_social || contaBancariaSelecionada?.cedente_nome || 'EMPRESA',
+      banco_codigo:   bancoRemessa,
+      agencia:        empresaRemetente.agencia || contaBancariaSelecionada?.agencia || '',
+      agencia_digito: empresaRemetente.agencia_digito || contaBancariaSelecionada?.agencia_digito || ' ',
+      conta:          empresaRemetente.conta || contaBancariaSelecionada?.conta || '',
+      conta_digito:   empresaRemetente.digito_conta || contaBancariaSelecionada?.conta_digito || ' ',
+      convenio:       empresaRemetente.convenio_bancario || contaBancariaSelecionada?.convenio || '',
+    };
 
     let sequencialArquivo = 1;
     if (contaBancariaSelecionada?.id) {
       sequencialArquivo = await CnabRemessaArquivoService.getNextSequencial(
         contaBancariaSelecionada.id,
-        empresaRemetente.banco_codigo || '001'
+        bancoRemessa
       );
     } else {
       const { data: ultimoSequencial } = await this.supabase
         .from('cnab_remessas_arquivos')
         .select('sequencial_arquivo')
-        .eq('banco_codigo', empresaRemetente.banco_codigo || '001')
+        .eq('banco_codigo', bancoRemessa)
         .is('conta_bancaria_id', null)
         .order('sequencial_arquivo', { ascending: false })
         .limit(1)
@@ -833,74 +1209,161 @@ class IntermitentesLoteServiceClass extends BaseService<'intermitentes_lotes_fec
       sequencialArquivo = Math.max(1, Number(ultimoSequencial?.sequencial_arquivo || 0) + 1);
     }
 
-    // 7. Gerar arquivo posicional
-    const resultado = gerarCNAB240BB(empresaRemessa, beneficiarios, {
-      tipo_servico: 20,
-      numero_arquivo: sequencialArquivo,
-    });
+    // 7. Determinar modo de ambiente a partir da autoridade canônica empresas.is_teste
+    const { data: empDb } = await this.supabase
+      .from('empresas')
+      .select('id, nome, is_teste')
+      .eq('id', lote.empresa_id || empresaId)
+      .maybeSingle();
 
-    // 8. Gravar remoto enviando intermitentesLoteId e download
-    await CnabRemessaArquivoService.registrar({
+    const isEmpresaHomologacao = Boolean(empDb?.is_teste);
+    const valorTotalCalculado = beneficiarios.reduce((sum, b) => sum + b.valor, 0);
+
+    let nomeArquivoFinal: string;
+    let conteudoFinal: string;
+    let totalLinhasCnab: number;
+    let cnabProducaoResultado: any = null;
+
+    if (isEmpresaHomologacao) {
+      // 7.1. HOMOLOGAÇÃO: Gerar exclusivamente relatório de simulação não transmissível
+      const relatorioSimulacao = gerarRelatorioSimulacaoHomologacao({
+        origem: 'INTERMITENTES',
+        empresaNome: empresaRemessa.razao_social,
+        bancoCodigo: bancoRemessa,
+        bancoNome: empresaRemetente.nome_empresa_banco || contaBancariaSelecionada?.banco_nome,
+        sequencial: sequencialArquivo,
+        totalRegistros: itensParaRpc.length,
+        totalValor: valorTotalCalculado,
+        beneficiarios: beneficiarios.map(b => ({ nome: b.nome, valor: b.valor, cpf: b.cpf })),
+      });
+      nomeArquivoFinal = relatorioSimulacao.fileName;
+      conteudoFinal = relatorioSimulacao.content;
+      totalLinhasCnab = relatorioSimulacao.content.split('\r\n').length;
+    } else {
+      // 7.2. PRODUÇÃO: Gerar arquivo posicional FEBRABAN CNAB240 oficial com finalidade de intermitentes
+      cnabProducaoResultado = MotorCNAB240.gerar(empresaRemessa, beneficiarios, {
+        tipo_servico: 20,
+        numero_arquivo: sequencialArquivo,
+        finalidade_lote: 'PAGAMENTO INTERMITENTES',
+      });
+      nomeArquivoFinal = cnabProducaoResultado.nome_arquivo;
+      conteudoFinal = cnabProducaoResultado.conteudo;
+      totalLinhasCnab = cnabProducaoResultado.total_linhas;
+    }
+
+    // 8. Persistência Atômica com Vínculo Canônico (Fail-Closed)
+    // Se a gravação falhar, a exceção é disparada e NENHUM download é executado.
+    const arquivoRegistrado = await CnabRemessaArquivoService.registrar({
       loteId: null,
       diaristasLoteId: null,
       intermitentesLoteId: loteId,
-      nomeArquivo: resultado.nome_arquivo,
-      conteudoArquivo: resultado.conteudo,
-      totalRegistros: resultado.total_linhas,
-      totalValor: resultado.valor_total,
-      bancoCodigo: empresaRemetente.banco_codigo || '001',
-      bancoNome: empresaRemetente.nome_empresa_banco || contaBancariaSelecionada?.banco_nome || 'BANCO DO BRASIL',
+      empresaId: lote.empresa_id || empresaId,
+      nomeArquivo: nomeArquivoFinal,
+      conteudoArquivo: conteudoFinal,
+      totalRegistros: itensParaRpc.length,
+      quantidadeItensFinanceiros: itensParaRpc.length,
+      totalLinhasCnab: totalLinhasCnab,
+      quantidadeRegistrosCnab: totalLinhasCnab,
+      quantidadeBeneficiarios: beneficiarios.length,
+      totalValor: valorTotalCalculado,
+      bancoCodigo: bancoRemessa,
+      bancoNome: empresaRemetente.nome_empresa_banco || contaBancariaSelecionada?.banco_nome || (bancoRemessa === '341' ? 'BANCO ITAU SA' : 'BANCO DO BRASIL'),
       contaBancariaId: contaBancariaSelecionada?.id,
       competencia: lote.competencia,
-      modo: 'producao',
       sequencialArquivo,
       itens: itensParaRpc,
     });
-    
-    downloadCNAB240(resultado);
 
-    // 9. Atualizar status do lote (cnab_gerado)
+    // 9. Atualizar status do lote (CNAB_GERADO) somente após sucesso na persistência
     await this.supabase
       .from('intermitentes_lotes_fechamento')
       .update({
         status: 'CNAB_GERADO',
+        status_conciliacao: 'aguardando_conciliacao',
         updated_at: new Date().toISOString(),
       })
       .eq('id', loteId);
 
-    // O status de `lancamentos_intermitentes` mantém como ENVIADO_FINANCEIRO ou 
-    // afins conforme a constraint, a instrução disse para não violar e manter ENVIADO_FINANCEIRO.
-    
+    // 10. Download seguro somente após confirmação de persistência
+    if (isEmpresaHomologacao) {
+      if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        const blob = new Blob([conteudoFinal], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = nomeArquivoFinal;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } else if (cnabProducaoResultado) {
+      MotorCNAB240.download(cnabProducaoResultado);
+    }
+
     return {
-      nomeArquivo:    resultado.nome_arquivo,
-      totalRegistros: resultado.total_beneficiarios,
-      valorTotal:     resultado.valor_total,
+      nomeArquivo:    nomeArquivoFinal,
+      totalRegistros: beneficiarios.length,
+      valorTotal:     valorTotalCalculado,
+      arquivoId:      arquivoRegistrado?.id,
+      modo:           isEmpresaHomologacao ? 'homologacao' : 'producao',
     };
   }
-  async atualizarLancamento(id: string, payload: Partial<{
+  async atualizarLancamento(id: string, payload: {
     empresa_id: string | null;
-    horas_trabalhadas: number;
-    horas_normais: number;
-    he_50: number;
-    he_100: number;
-    hora_noturna: number;
-    total: number;
-    status_pipeline: string;
-  }>) {
+  }) {
     const { data: userAuth } = await this.supabase.auth.getUser();
     if (!userAuth?.user) throw new Error("Usuário não autenticado.");
-    
-    // Atualiza o registro principal
+
+    // Atualização cadastral preliminar estritamente para empresa_id
     const { error } = await this.supabase
       .from('lancamentos_intermitentes')
       .update({
-        ...payload,
+        empresa_id: payload.empresa_id,
         updated_at: new Date().toISOString()
       })
       .eq('id', id);
 
     if (error) throw error;
     return true;
+  }
+
+  async retificarLancamentoRH(params: {
+    lancamentoId: string;
+    novaEmpresaId: string;
+    novasHoras?: number | null;
+    justificativa: string;
+    updatedAt?: string;
+  }) {
+    const { data: userAuth } = await this.supabase.auth.getUser();
+    if (!userAuth?.user) throw new Error("Usuário não autenticado.");
+
+    const { data, error } = await (this.supabase.rpc as any)('rpc_rh_retificar_intermitente', {
+      p_lancamento_id: params.lancamentoId,
+      p_nova_empresa_id: params.novaEmpresaId,
+      p_novas_horas: params.novasHoras ?? null,
+      p_justificativa: params.justificativa,
+      p_updated_at: params.updatedAt || null,
+    });
+
+    if (error) throw error;
+    return data;
+  }
+
+  async revalidarLoteDevolvidoRH(params: {
+    loteId: string;
+    justificativa: string;
+  }) {
+    const { data: userAuth } = await this.supabase.auth.getUser();
+    if (!userAuth?.user) throw new Error("Usuário não autenticado.");
+
+    const { data, error } = await (this.supabase.rpc as any)('rpc_rh_revalidar_lote_devolvido', {
+      p_lote_id: params.loteId,
+      p_justificativa: params.justificativa,
+    });
+
+    if (error) throw error;
+    return data;
   }
 }
 

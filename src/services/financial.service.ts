@@ -159,7 +159,31 @@ export const CNABService = {
   },
 
   async generateRemessa(params: { competencia: string; empresaId: string; contaId: string; rhLoteId?: string; modo?: 'homologacao' | 'producao' }) {
-    const { competencia, empresaId, contaId, rhLoteId, modo = 'producao' } = params;
+    const { competencia, empresaId, contaId, rhLoteId } = params;
+
+    if (!empresaId) {
+      throw new Error('Identificador da empresa é obrigatório para gerar remessa.');
+    }
+
+    // Determinação estrita e canônica do modo via empresas.is_teste (Fail-Closed)
+    // A autoridade de empresas.is_teste prevalece absolutamente sobre qualquer parâmetro recebido
+    const { data: empData, error: empError } = await supabase
+      .from('empresas')
+      .select('id, is_teste')
+      .eq('id', empresaId)
+      .maybeSingle();
+
+    if (empError) {
+      throw new Error(`Falha técnica ao verificar classificação da empresa: ${empError.message}`);
+    }
+    if (!empData) {
+      throw new Error(`Falha de Segurança: Empresa ${empresaId} não encontrada no sistema.`);
+    }
+    if (typeof empData.is_teste !== 'boolean') {
+      throw new Error(`Falha de Integridade: Empresa ${empresaId} possui classificação de ambiente indefinida (is_teste nulo). Operação abortada.`);
+    }
+
+    const modoCanonico: 'homologacao' | 'producao' = empData.is_teste ? 'homologacao' : 'producao';
 
     let faturasMock: any[] = [];
     if (rhLoteId) {
@@ -216,11 +240,19 @@ export const CNABService = {
         competencia,
         contaBancariaId: contaId,
         rhLoteId, // Pass this to the writer
-        modo,
+        modo: modoCanonico,
         salvarConteudo: true,
       });
-    } catch (error) {
-      await LoteRemessaService.update(lote.id, { status: 'erro' });
+
+      if (!result?.arquivoId || result.arquivoId === 'nao-registrado') {
+        throw new Error('Falha de persistência CNAB: O arquivo de remessa não possui confirmação de gravação no banco de dados.');
+      }
+    } catch (error: any) {
+      try {
+        await supabase.from('lotes_remessa').update({ status: 'erro' }).eq('id', lote.id);
+      } catch {
+        // fail-safe
+      }
       throw error;
     }
 
@@ -235,7 +267,7 @@ export const CNABService = {
           total_valor: result.totalValor,
           total_linhas: result.totalLinhas,
           hash: result.hash.substring(0, 16) + '...',
-          modo,
+          modo: result.modo || modoCanonico,
         }),
       });
     } catch {
@@ -249,6 +281,7 @@ export const CNABService = {
       arquivoId: result.arquivoId,
       sequencial: result.sequencial,
       hash: result.hash,
+      modo: result.modo,
       inconsistencias: result.inconsistencias,
     };
   },
