@@ -238,110 +238,49 @@ const Cadastro = () => {
     setActivating(true);
 
     try {
-      const cleanEmail = invitationData.email.trim().toLowerCase();
       const cleanCode = code.replace(/\D/g, "").slice(0, 6);
 
-      // Tentativa primária: Backend Edge Function (idempotente)
-      let activatedViaEdgeFunction = false;
-      try {
-        const efUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sec03-activate-account`;
-        const efResponse = await fetch(efUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+      // Invocação oficial da Edge Function com SDK do Supabase
+      // O client Supabase injeta automaticamente apikey e Authorization anon necessários pelo Gateway
+      const { data: efResult, error: efError } = await supabase.functions.invoke(
+        "sec03-activate-account",
+        {
+          body: {
             action: "activate",
             token,
             code: cleanCode,
             password,
             verification_proof: verificationProof,
-          }),
-        });
-
-        if (efResponse.ok) {
-          const efResult = await efResponse.json();
-          if (efResult.success) {
-            activatedViaEdgeFunction = true;
-            if (efResult.session) {
-              await supabase.auth.setSession(efResult.session);
-            }
-
-            const redirectTarget = efResult.redirect_to || (invitationData.role === "encarregado" ? "/login/operacional" : "/");
-            toast.success(efResult.message || "Conta ativada com sucesso!");
-            setTimeout(() => navigate(redirectTarget), 1200);
-            return;
-          }
-        }
-      } catch (efErr) {
-        // Fallback local se Edge Runtime não estiver executando na porta HTTP
-        console.warn("[Onboarding] Edge Function offline ou inacessível. Executando ativação local assistida:", efErr);
-      }
-
-      // Fallback local caso Edge Function não esteja servindo
-      if (!activatedViaEdgeFunction) {
-        // 1. Criar ou autenticar usuário no Supabase Auth
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: cleanEmail,
-          password: password,
-          options: {
-            data: {
-              full_name: invitationData.fullName,
-              role: invitationData.role,
-            },
           },
-        });
+        }
+      );
 
-        const alreadyRegistered =
-          Boolean(authError) &&
-          typeof authError?.message === "string" &&
-          authError.message.toLowerCase().includes("user already registered");
-
-        let session = authData?.session || null;
-
-        if (!session) {
-          const { data: loginData, error: loginError } =
-            await supabase.auth.signInWithPassword({
-              email: cleanEmail,
-              password: password,
-            });
-
-          if (loginError) {
-            if (alreadyRegistered) {
-              throw new Error(
-                "Este e-mail já possui cadastro no sistema. Entre com a senha existente para vincular a empresa."
-              );
-            }
-            throw new Error("Conta provisionada, mas a autenticação imediata falhou. Tente fazer login.");
+      if (efError) {
+        let errorMsg = efError.message || "Falha na ativação da conta.";
+        try {
+          if (efError.context && typeof efError.context.json === "function") {
+            const errBody = await efError.context.json();
+            if (errBody?.message) errorMsg = errBody.message;
           }
-
-          session = loginData.session;
-        }
-
-        if (!session) {
-          throw new Error("Não foi possível iniciar a sessão para concluir o vínculo.");
-        }
-
-        // 2. Concluir vínculo relacional no PostgreSQL (exige desafio verificado há < 15 min)
-        const { error: acceptError } = await supabase.rpc("accept_tenant_invitation", {
-          p_token: token,
-          p_user_id: session.user.id,
-          p_verification_proof: verificationProof,
-        });
-
-        if (acceptError) {
-          throw new Error(acceptError.message || "Falha ao aceitar convite no banco de dados.");
-        }
-
-        const redirectPath =
-          invitationData.role === "encarregado" ? "/login/operacional" : "/";
-
-        toast.success(
-          invitationData.role === "encarregado"
-            ? "Conta ativada com sucesso! Use o portal operacional para entrar."
-            : "Conta ativada com sucesso! Redirecionando..."
-        );
-
-        setTimeout(() => navigate(redirectPath), 1500);
+        } catch (_) {}
+        throw new Error(errorMsg);
       }
+
+      if (!efResult?.success) {
+        throw new Error(efResult?.message || "Não foi possível concluir a ativação.");
+      }
+
+      // Sessão emitida e assinada pelo backend de produção
+      if (efResult.session) {
+        await supabase.auth.setSession(efResult.session);
+      }
+
+      const redirectTarget =
+        efResult.redirect_to ||
+        (invitationData.role === "encarregado" ? "/login/operacional" : "/");
+
+      toast.success(efResult.message || "Conta ativada com sucesso!");
+      setTimeout(() => navigate(redirectTarget), 1200);
     } catch (err: any) {
       console.error("[Onboarding] Erro na ativação:", err);
       toast.error(err.message || "Erro ao ativar conta.");

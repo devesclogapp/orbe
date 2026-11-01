@@ -37,27 +37,62 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+export interface DialogContentProps
+  extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
+  disableDirtyCheck?: boolean;
+  isDirty?: boolean;
+  onAbandon?: () => void;
+}
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, onInteractOutside, onEscapeKeyDown, onChange, onInput, ...props }, ref) => {
-  const [isDirty, setIsDirty] = React.useState(false);
-  const [showConfirm, setShowConfirm] = React.useState(false);
-  const closeRef = React.useRef<HTMLButtonElement>(null);
+  DialogContentProps
+>(
+  (
+    {
+      className,
+      children,
+      onInteractOutside,
+      onEscapeKeyDown,
+      onChange,
+      onInput,
+      disableDirtyCheck = false,
+      isDirty: externalIsDirty,
+      onAbandon,
+      ...props
+    },
+    ref,
+  ) => {
+    const [internalIsDirty, setInternalIsDirty] = React.useState(false);
+    const [showConfirm, setShowConfirm] = React.useState(false);
+    const closeRef = React.useRef<HTMLButtonElement>(null);
 
-  const handleIntercept = (e: Event) => {
-    if (isDirty) {
-      e.preventDefault();
-      setShowConfirm(true);
-    }
-  };
+    const isDirty = disableDirtyCheck
+      ? false
+      : typeof externalIsDirty === "boolean"
+        ? externalIsDirty
+        : internalIsDirty;
 
-  const handleManualDirtyCheck = (e: React.SyntheticEvent) => {
-    const target = e.target as HTMLElement;
-    if (target && !target.closest("[data-ignore-dirty]")) {
-      setIsDirty(true);
-    }
-  };
+    React.useEffect(() => {
+      if (externalIsDirty === false) {
+        setInternalIsDirty(false);
+      }
+    }, [externalIsDirty]);
+
+    const handleIntercept = (e: Event) => {
+      if (isDirty) {
+        e.preventDefault();
+        setShowConfirm(true);
+      }
+    };
+
+    const handleManualDirtyCheck = (e: React.SyntheticEvent) => {
+      if (disableDirtyCheck) return;
+      const target = e.target as HTMLElement;
+      if (target && !target.closest("[data-ignore-dirty]")) {
+        setInternalIsDirty(true);
+      }
+    };
 
   return (
     <>
@@ -118,7 +153,8 @@ const DialogContent = React.forwardRef<
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 setShowConfirm(false);
-                setIsDirty(false);
+                setInternalIsDirty(false);
+                onAbandon?.();
                 setTimeout(() => closeRef.current?.click(), 0);
               }}
             >

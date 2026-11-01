@@ -134,6 +134,7 @@ const UsuariosGestao = () => {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [resultOpen, setResultOpen] = useState(false);
+  const [isFormDirty, setIsFormDirty] = useState(false);
   const [form, setForm] = useState<InviteFormState>(emptyInviteForm);
   const [editingRow, setEditingRow] = useState<AccessOverviewRow | null>(null);
   const [generatedLink, setGeneratedLink] = useState("");
@@ -205,6 +206,7 @@ const UsuariosGestao = () => {
         ? rawMsg.replace("/cadastro?token=", `${window.location.origin}/cadastro?token=`)
         : `Olá, ${invite.full_name || "colaborador"}!\n\nVocê foi convidado para acessar a plataforma ORBE pela empresa ${invite.tenant_name || ""}.\n\nPara ativar sua conta com segurança, siga os passos abaixo:\n\n1. Acesse o link de ativação:\n${link}\n\n2. Informe o seu Código de Ativação temporário:\n${invite.code}\n\n3. Crie sua senha de acesso pessoal.\n\nAtenção: Por razões de segurança, este código expira em 10 minutos. Caso você não reconheça este convite, desconsidere esta mensagem.`;
       setGeneratedMessage(fullUrlMessage);
+      setIsFormDirty(false);
       setResultOpen(true);
       setDialogOpen(false);
       setEditingRow(null);
@@ -281,6 +283,7 @@ const UsuariosGestao = () => {
       return invite;
     },
     onSuccess: async () => {
+      setIsFormDirty(false);
       await queryClient.invalidateQueries({ queryKey: ["admin_user_access_overview"] });
       setDialogOpen(false);
       setEditingRow(null);
@@ -310,6 +313,7 @@ const UsuariosGestao = () => {
       if (error) throw error;
     },
     onSuccess: async () => {
+      setIsFormDirty(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["admin_user_access_overview"] }),
         refetchAccess(),
@@ -381,6 +385,7 @@ const UsuariosGestao = () => {
   const handleOpenNewInvite = () => {
     setEditingRow(null);
     setForm(emptyInviteForm());
+    setIsFormDirty(false);
     setDialogOpen(true);
   };
 
@@ -397,6 +402,7 @@ const UsuariosGestao = () => {
       expiresAt: row.expires_at ? row.expires_at.slice(0, 10) : defaultExpiryDate(),
       permissions: normalizePermissionMatrix(row.permissions, normalizedRole),
     });
+    setIsFormDirty(false);
     setDialogOpen(true);
   };
 
@@ -466,6 +472,7 @@ const UsuariosGestao = () => {
 
   const applyPreset = (role: string) => {
     const normalizedRole = normalizeRole(role);
+    setIsFormDirty(true);
     setForm((current) => ({
       ...current,
       preset: normalizedRole,
@@ -478,6 +485,7 @@ const UsuariosGestao = () => {
     action: (typeof ACCESS_ACTIONS)[number],
     checked: boolean,
   ) => {
+    setIsFormDirty(true);
     setForm((current) => ({
       ...current,
       permissions: {
@@ -799,7 +807,18 @@ const UsuariosGestao = () => {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
+        <DialogContent
+          className="max-h-[90vh] overflow-y-auto sm:max-w-5xl"
+          isDirty={isFormDirty}
+          onChange={() => setIsFormDirty(true)}
+          onInput={() => setIsFormDirty(true)}
+          onAbandon={() => {
+            setIsFormDirty(false);
+            setDialogOpen(false);
+            setEditingRow(null);
+            setForm(emptyInviteForm());
+          }}
+        >
           <DialogHeader>
             <DialogTitle>
               {editingRow
@@ -997,6 +1016,13 @@ const UsuariosGestao = () => {
             <Button
               variant="ghost"
               onClick={() => {
+                if (isFormDirty) {
+                  const confirmed = window.confirm(
+                    "Você possui alterações não salvas. Se sair agora, todas as informações preenchidas serão perdidas. Deseja realmente sair?",
+                  );
+                  if (!confirmed) return;
+                }
+                setIsFormDirty(false);
                 setDialogOpen(false);
                 setEditingRow(null);
                 setForm(emptyInviteForm());
@@ -1013,7 +1039,7 @@ const UsuariosGestao = () => {
       </Dialog>
 
       <Dialog open={resultOpen} onOpenChange={setResultOpen}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="sm:max-w-xl" disableDirtyCheck>
           <DialogHeader>
             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
               <Check className="h-5 w-5" />
