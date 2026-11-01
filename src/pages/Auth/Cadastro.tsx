@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { ACCESS_ROLE_LABELS, normalizeRole } from "@/lib/access-control";
+import { ACCESS_ROLE_LABELS, getDefaultRouteForRole, normalizeRole } from "@/lib/access-control";
 import { supabase } from "@/lib/supabase";
 
 interface InvitationData {
@@ -276,8 +276,9 @@ const Cadastro = () => {
       }
 
       const redirectTarget =
-        efResult.redirect_to ||
-        (invitationData.role === "encarregado" ? "/login/operacional" : "/");
+        efResult.redirect_to && efResult.redirect_to !== "/"
+          ? efResult.redirect_to
+          : getDefaultRouteForRole(invitationData.role);
 
       toast.success(efResult.message || "Conta ativada com sucesso!");
       setTimeout(() => navigate(redirectTarget), 1200);

@@ -299,6 +299,12 @@ export function getDefaultRouteForRole(role?: string | null): string {
   if (normalizedRole === "encarregado") {
     return "/producao";
   }
+  if (normalizedRole === "rh") {
+    return "/rh/aprovacoes";
+  }
+  if (normalizedRole === "financeiro") {
+    return "/financeiro";
+  }
   return "/operacional/dashboard";
 }
 
@@ -310,7 +316,13 @@ export function getAccessDeniedFallbackRoute(role?: string | null): string {
   if (normalizedRole === "encarregado") {
     return "/producao";
   }
-  return "/central";
+  if (normalizedRole === "rh") {
+    return "/rh/aprovacoes";
+  }
+  if (normalizedRole === "financeiro") {
+    return "/financeiro";
+  }
+  return "/operacional/dashboard";
 }
 
 /**

@@ -6,6 +6,7 @@ import { useOnboarding } from "@/contexts/OnboardingContext";
 import {
     getRouteAccessRule,
     getAccessDeniedFallbackRoute,
+    getDefaultRouteForRole,
     isRouteForbiddenForRole,
 } from "@/lib/access-control";
 
@@ -103,6 +104,18 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     // Bloqueio explícito por perfil (ex: Encarregado tentando acessar /central)
     if (isRouteForbiddenForRole(role, location.pathname)) {
         const fallback = getAccessDeniedFallbackRoute(role);
+        if (fallback === location.pathname) {
+            return (
+                <div className="flex min-h-screen items-center justify-center bg-background p-6 text-center">
+                    <div className="max-w-md rounded-2xl border border-border bg-card p-8 shadow-sm">
+                        <h1 className="text-xl font-semibold text-foreground">Acesso restrito</h1>
+                        <p className="mt-3 text-sm text-muted-foreground">
+                            Esta área é restrita e não está disponível para o seu perfil.
+                        </p>
+                    </div>
+                </div>
+            );
+        }
         return <Navigate to={fallback} replace />;
     }
 
@@ -134,6 +147,31 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
         }
 
         const fallback = getAccessDeniedFallbackRoute(role);
+        // Proteção anti-loop / anti-tela branca: se o fallback for a própria rota atual, exibe tela explicativa
+        if (fallback === location.pathname) {
+            return (
+                <div className="flex min-h-screen items-center justify-center bg-background p-6 text-center">
+                    <div className="max-w-md rounded-2xl border border-border bg-card p-8 shadow-sm">
+                        <h1 className="text-xl font-semibold text-foreground">Acesso restrito</h1>
+                        <p className="mt-3 text-sm text-muted-foreground">
+                            Seu perfil ({role ? role.toUpperCase() : "usuário"}) não possui permissão para acessar este módulo.
+                        </p>
+                        <div className="mt-6 flex flex-col gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    window.location.href = getDefaultRouteForRole(role);
+                                }}
+                                className="w-full rounded-lg bg-primary py-2 px-4 text-sm font-semibold text-primary-foreground shadow hover:opacity-90 transition-opacity"
+                            >
+                                Ir para tela inicial do meu perfil
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         return <Navigate to={fallback} replace />;
     }
 

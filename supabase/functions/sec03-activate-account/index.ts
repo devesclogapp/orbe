@@ -389,7 +389,14 @@ serve(async (req) => {
         // Falha no login imediato não aborta a ativação; o usuário fará login manual
       }
 
-      const redirectPath = invite.role === "encarregado" ? "/login/operacional" : "/";
+      let redirectPath = "/operacional/dashboard";
+      if (invite.role === "encarregado") {
+        redirectPath = "/login/operacional";
+      } else if (invite.role === "rh") {
+        redirectPath = "/rh/aprovacoes";
+      } else if (invite.role === "financeiro") {
+        redirectPath = "/financeiro";
+      }
 
       return new Response(
         JSON.stringify({
