@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
 import { useOnboardingCallback } from "@/hooks/useOnboardingCallback";
+import { useAccessControl } from "@/contexts/AccessControlContext";
 import { OnboardingSuccessModal } from "@/components/onboarding/OnboardingSuccessModal";
 import { StatusChip } from "@/components/painel/StatusChip";
 import { Badge } from "@/components/ui/badge";
@@ -113,6 +114,11 @@ const Colaboradores = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
+  const { role, canAccess } = useAccessControl();
+
+  const canAccessCentralCadastros = role === "admin" || canAccess("central_de_cadastros", "ver");
+  const canCreateColaborador = role === "admin" || canAccess("central_de_cadastros", "criar") || role === "rh";
+  const canDeleteColaborador = role === "admin" || canAccess("central_de_cadastros", "excluir");
   const { isOnboardingReturn, handleOnboardingReturn, showSuccessModal, setShowSuccessModal } = useOnboardingCallback();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(1);
@@ -583,15 +589,17 @@ const Colaboradores = () => {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-xs font-medium gap-1.5"
-                onClick={() => navigate("/cadastros?tab=colaboradores")}
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Central de Cadastros
-              </Button>
+              {canAccessCentralCadastros && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs font-medium gap-1.5"
+                  onClick={() => navigate("/cadastros?tab=colaboradores")}
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Central de Cadastros
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -601,13 +609,15 @@ const Colaboradores = () => {
                 <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
                 Atualizar
               </Button>
-              <Button
-                size="sm"
-                className="h-8 text-xs font-medium gap-1.5 font-display font-semibold"
-                onClick={handleCreate}
-              >
-                <Plus className="h-3.5 w-3.5" /> Novo colaborador
-              </Button>
+              {canCreateColaborador && (
+                <Button
+                  size="sm"
+                  className="h-8 text-xs font-medium gap-1.5 font-display font-semibold"
+                  onClick={handleCreate}
+                >
+                  <Plus className="h-3.5 w-3.5" /> Novo colaborador
+                </Button>
+              )}
             </div>
           </div>
         </section>
@@ -884,9 +894,11 @@ const Colaboradores = () => {
                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => handleEdit(c)}>
                                   <Pencil className="h-3.5 w-3.5" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(c.id)}>
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
+                                {canDeleteColaborador && (
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(c.id)}>
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
                               </div>
                             </td>
                           </tr>

@@ -1,6 +1,8 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAccessControl } from "@/contexts/AccessControlContext";
+import { getAccessDeniedFallbackRoute } from "@/lib/access-control";
 import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import {
@@ -233,6 +235,18 @@ const Configuracoes = () => {
   const queryClient = useQueryClient();
   const { theme, setTheme, defaultTab, setDefaultTab } = usePreferences();
   const { user, updateProfile } = useAuth();
+  const { role, canAccess } = useAccessControl();
+
+  // Proteção de segurança estrita em nível de página (Fail-Closed)
+  useEffect(() => {
+    if (role && role !== "admin" && !canAccess("governanca", "ver")) {
+      navigate(getAccessDeniedFallbackRoute(role), { replace: true });
+    }
+  }, [role, canAccess, navigate]);
+
+  if (role && role !== "admin" && !canAccess("governanca", "ver")) {
+    return null;
+  }
 
   const [activeTab, setActiveTab] = useState(queryTab || "preferencias");
   const [isEditingName, setIsEditingName] = useState(false);

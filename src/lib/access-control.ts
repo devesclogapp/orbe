@@ -148,16 +148,25 @@ export const ACCESS_MODULE_LABELS: Record<AccessModule, string> = {
 
 export const DEFAULT_INVITE_EXPIRATION_DAYS = 7;
 
-export const ROUTE_ACCESS_RULES: Array<{
+export interface RouteAccessRule {
   prefix: string;
   module: AccessModule;
   action?: AccessAction;
-}> = [
+  allowedRoles?: AccessRole[];
+  allowedModules?: AccessModule[];
+}
+
+export const ROUTE_ACCESS_RULES: RouteAccessRule[] = [
   { prefix: "/financeiro/faturamento", module: "faturamento" },
   { prefix: "/financeiro/regras", module: "regras_de_calculo" },
   { prefix: "/financeiro/remessa", module: "pagamentos_remessas" },
   { prefix: "/financeiro/retorno", module: "pagamentos_remessas" },
-  { prefix: "/colaboradores", module: "central_de_cadastros" },
+  {
+    prefix: "/colaboradores",
+    module: "central_de_cadastros",
+    allowedRoles: ["admin", "rh"],
+    allowedModules: ["central_de_cadastros", "processamento_rh", "pontos_recebidos", "banco_de_horas"],
+  },
   { prefix: "/empresas", module: "central_de_cadastros" },
   { prefix: "/transportadoras", module: "central_de_cadastros" },
   { prefix: "/fornecedores", module: "central_de_cadastros" },
@@ -197,6 +206,12 @@ export const ROUTE_ACCESS_RULES: Array<{
   { prefix: "/financeiro", module: "central_financeira" },
   { prefix: "/bancario", module: "pagamentos_remessas" },
   { prefix: "/relatorios", module: "central_de_relatorios" },
+  { prefix: "/configuracoes", module: "governanca" },
+  { prefix: "/diag-tenant", module: "governanca" },
+  { prefix: "/clt/pontos", module: "pontos_recebidos" },
+  { prefix: "/clt/banco-horas", module: "banco_de_horas" },
+  { prefix: "/processamento/reprocessamentos", module: "processamento_rh" },
+  { prefix: "/operacional/pipeline", module: "central_operacional" },
   { prefix: "/governanca/perfis", module: "governanca" },
   { prefix: "/governanca/auditoria", module: "governanca" },
   { prefix: "/governanca/automacao", module: "automacao_operacional" },
@@ -338,6 +353,17 @@ export function isRouteForbiddenForRole(role: string | null | undefined, pathnam
     }
     // /inconsistencias e sub-rotas são de auditoria transversal e bloqueadas para encarregado
     if (pathname === "/inconsistencias" || pathname.startsWith("/inconsistencias/")) {
+      return true;
+    }
+    // /configuracoes é painel administrativo e estritamente bloqueado para encarregado
+    if (pathname === "/configuracoes" || pathname.startsWith("/configuracoes/")) {
+      return true;
+    }
+  }
+
+  if (normalizedRole === "rh") {
+    // /configuracoes é painel administrativo e estritamente bloqueado para perfil RH
+    if (pathname === "/configuracoes" || pathname.startsWith("/configuracoes/")) {
       return true;
     }
   }

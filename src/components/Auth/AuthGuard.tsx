@@ -8,6 +8,7 @@ import {
     getAccessDeniedFallbackRoute,
     getDefaultRouteForRole,
     isRouteForbiddenForRole,
+    normalizeRole,
 } from "@/lib/access-control";
 
 interface AuthGuardProps {
@@ -120,7 +121,13 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
     }
 
     const rule = getRouteAccessRule(location.pathname);
-    if (rule && role !== "admin" && !canAccess(rule.module, rule.action)) {
+    const roleNormalized = normalizeRole(role);
+    const isRoleExplicitlyAllowed = Boolean(rule?.allowedRoles?.includes(roleNormalized));
+    const isModuleAllowed = rule ? canAccess(rule.module, rule.action) : false;
+    const isAnyAllowedModule = Boolean(rule?.allowedModules?.some((mod) => canAccess(mod, rule.action)));
+    const hasRouteAccess = !rule || role === "admin" || isRoleExplicitlyAllowed || isModuleAllowed || isAnyAllowedModule;
+
+    if (!hasRouteAccess) {
         if (location.pathname === "/onboarding") {
             return (
                 <div className="flex min-h-screen items-center justify-center bg-background p-6 text-center">
