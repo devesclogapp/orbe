@@ -1,0 +1,150 @@
+{
+  "profile": "RH",
+  "timestamp": "2026-11-03T13:34:08.035Z",
+  "tests": [
+    {
+      "testId": "RH-01",
+      "title": "Login Perfil RH",
+      "status": "PASS",
+      "details": "URL após login: https://orbe-nu.vercel.app/rh/aprovacoes",
+      "evidencePath": "scratch/e2e_prod_captures/rh_01_pos_login.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "RH-02",
+      "title": "Central de Aprovações RH",
+      "status": "PASS",
+      "details": "URL: https://orbe-nu.vercel.app/rh/aprovacoes",
+      "evidencePath": "scratch/e2e_prod_captures/rh_02_central_aprovacoes.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "RH-03",
+      "title": "Restrição de Aprovação (Sem processamento_rh:aprovar)",
+      "status": "PASS",
+      "details": "Botões de aprovação ativos encontrados: false. Restrição RBAC mantida: true",
+      "evidencePath": "scratch/e2e_prod_captures/rh_03_restricao_aprovacao.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "RH-04",
+      "title": "Ponto e Jornadas CLT",
+      "status": "PASS",
+      "details": "URL: https://orbe-nu.vercel.app/clt/pontos",
+      "evidencePath": "scratch/e2e_prod_captures/rh_04_ponto_clt.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "RH-05",
+      "title": "Fechamento Mensal CLT",
+      "status": "PASS",
+      "details": "URL: https://orbe-nu.vercel.app/banco-horas/fechamento",
+      "evidencePath": "scratch/e2e_prod_captures/rh_05_fechamento_mensal.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "RH-06",
+      "title": "Consulta de Colaboradores",
+      "status": "FAIL",
+      "details": "URL: https://orbe-nu.vercel.app/rh/aprovacoes",
+      "evidencePath": "scratch/e2e_prod_captures/rh_06_colaboradores.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "RH-07",
+      "title": "Intermitentes Jornadas e Lotes Devolvidos",
+      "status": "FAIL",
+      "details": "URL: https://orbe-nu.vercel.app/rh/aprovacoes",
+      "evidencePath": "scratch/e2e_prod_captures/rh_07b_intermitentes_lotes.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "RH-08",
+      "title": "Central de Inconsistências para RH",
+      "status": "PASS",
+      "details": "URL: https://orbe-nu.vercel.app/inconsistencias",
+      "evidencePath": "scratch/e2e_prod_captures/rh_08_inconsistencias.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "RH-09",
+      "title": "Painel de Diaristas Validação RH",
+      "status": "FAIL",
+      "details": "URL: https://orbe-nu.vercel.app/rh/aprovacoes",
+      "evidencePath": "scratch/e2e_prod_captures/rh_09_diaristas_rh.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "RH-GUARD-financeiro",
+      "title": "Bloqueio de Rota RH: Financeiro Despesas",
+      "status": "PASS",
+      "details": "Destino: https://orbe-nu.vercel.app/rh/aprovacoes (Bloqueado: true)",
+      "evidencePath": "scratch/e2e_prod_captures/rh_10_guard__financeiro.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "RH-GUARD-financeirodre",
+      "title": "Bloqueio de Rota RH: DRE Financeiro",
+      "status": "PASS",
+      "details": "Destino: https://orbe-nu.vercel.app/rh/aprovacoes (Bloqueado: true)",
+      "evidencePath": "scratch/e2e_prod_captures/rh_10_guard__financeiro_dre.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "RH-GUARD-financeiroreceitas",
+      "title": "Bloqueio de Rota RH: Receitas Financeiras",
+      "status": "PASS",
+      "details": "Destino: https://orbe-nu.vercel.app/rh/aprovacoes (Bloqueado: true)",
+      "evidencePath": "scratch/e2e_prod_captures/rh_10_guard__financeiro_receitas.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "RH-GUARD-bancario",
+      "title": "Bloqueio de Rota RH: Central Bancária / CNAB",
+      "status": "PASS",
+      "details": "Destino: https://orbe-nu.vercel.app/rh/aprovacoes (Bloqueado: true)",
+      "evidencePath": "scratch/e2e_prod_captures/rh_10_guard__bancario.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "RH-GUARD-configuracoes",
+      "title": "Bloqueio de Rota RH: Configurações Globais",
+      "status": "FAIL",
+      "details": "Destino: https://orbe-nu.vercel.app/configuracoes (Bloqueado: false)",
+      "evidencePath": "scratch/e2e_prod_captures/rh_10_guard__configuracoes.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "RH-11",
+      "title": "Responsividade Tablet e Mobile em Aprovações RH",
+      "status": "PASS",
+      "details": "Capturas em 768x1024 e 390x844",
+      "evidencePath": "scratch/e2e_prod_captures/rh_11_mobile_aprovacoes.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "RH-12",
+      "title": "Logout RH",
+      "status": "PASS",
+      "details": "URL após logout: https://orbe-nu.vercel.app/login",
+      "evidencePath": "scratch/e2e_prod_captures/rh_12_pos_logout.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    }
+  ]
+}
