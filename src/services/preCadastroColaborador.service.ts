@@ -371,15 +371,22 @@ export async function ensurePreCadastrosFromImportedPontos<T extends PontoPreCad
 
     const nome = row.nome_colaborador?.trim() || "";
     let empresaId = row.empresa_id || null;
-    const empresaNome = (row as any).empresa_nome?.trim() || "";
+    const rawEmpresaNome = (row as any).empresa_nome;
+    const empresaNome = typeof rawEmpresaNome === "string" ? rawEmpresaNome.trim() : "";
+    const cleanCompanyText = normalizeCompanyText(empresaNome);
     const cpf = normalizeCpf(row.cpf_colaborador);
     const matricula = normalizeMatricula(row.matricula_colaborador);
     const nomeNormalizado = normalizeText(nome);
 
+    // Valida se empresaId existente pertence às empresas legítimas cadastradas no tenant
+    if (empresaId && !empresas.some((e) => e.id === empresaId)) {
+      empresaId = null;
+    }
+
     // -----------------------------------------------------------
     // Resolve empresa_id from empresa_nome when missing
     // -----------------------------------------------------------
-    if (!empresaId && empresaNome) {
+    if (!empresaId && cleanCompanyText) {
       // 1. Tenta correspondência estrita com empresa existente e legitimamente cadastrada
       const found = findEmpresaByName(empresaNome, empresaLookup);
       if (found) {
@@ -394,9 +401,9 @@ export async function ensurePreCadastrosFromImportedPontos<T extends PontoPreCad
     if (!empresaId) {
       // Registro não resolvido: encaminhar como pendente/inconsistente sem criar empresa fictícia
       // e sem vincular a nenhuma empresa incorreta.
-      const motivo = empresaNome
-        ? `Empresa/Departamento não reconhecido: "${empresaNome}". Requer cadastro prévio da empresa ou mapeamento de departamento.`
-        : "Registro sem identificação de empresa ou departamento vinculador.";
+      const motivo = !empresaNome || !cleanCompanyText
+        ? "Registro com departamento/empresa ausente ou malformado (sem caracteres alfanuméricos válidos)."
+        : `Empresa/Departamento não reconhecido: "${empresaNome}". Requer cadastro prévio da empresa ou mapeamento de departamento.`;
 
       (row as any).empresa_id = null;
       (row as any).status_processamento = "INCONSISTENTE";
