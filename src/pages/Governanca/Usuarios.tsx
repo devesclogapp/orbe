@@ -881,12 +881,16 @@ const UsuariosGestao = () => {
                 <Label>Função</Label>
                 <Select
                   value={form.role}
-                  onValueChange={(value) =>
+                  onValueChange={(value) => {
+                    const normalized = normalizeRole(value);
+                    setIsFormDirty(true);
                     setForm((current) => ({
                       ...current,
-                      role: value,
-                    }))
-                  }
+                      role: normalized,
+                      preset: normalized,
+                      permissions: buildPresetPermissions(normalized),
+                    }));
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
