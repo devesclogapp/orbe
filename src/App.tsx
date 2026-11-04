@@ -269,7 +269,9 @@ const App = () => (
                             <Route path="/financeiro/contas-bancarias" element={<AuthGuard><ContasBancarias /></AuthGuard>} />
 
                             {/* Portal Cliente V3 */}
+                            <Route path="/cliente" element={<Navigate to="/cliente/dashboard" replace />} />
                             <Route path="/cliente/dashboard" element={<PortalGuard><ClientDashboard /></PortalGuard>} />
+                            <Route path="/cliente/operacoes" element={<PortalGuard><ClientReports /></PortalGuard>} />
                             <Route path="/cliente/relatorios" element={<PortalGuard><ClientReports /></PortalGuard>} />
                             <Route path="/cliente/aprovacoes" element={<PortalGuard><ClientApprovals /></PortalGuard>} />
 

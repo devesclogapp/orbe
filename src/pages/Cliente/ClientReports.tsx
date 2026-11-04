@@ -1,533 +1,470 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import PortalShell from "@/components/layout/PortalShell";
 import { Card } from "@/components/ui/card";
 import {
-    FileBox,
-    Search,
-    Filter,
-    Eye,
-    FileText,
-    Calendar as CalendarIcon,
-    TrendingUp,
-    Download,
-    X,
-    ClipboardList,
-    ArrowUpRight,
-    ArrowDownRight,
-    Zap,
+  Search,
+  Filter,
+  Eye,
+  Calendar,
+  Layers,
+  Truck,
+  Building2,
+  CheckCircle2,
+  Clock,
+  FileText,
+  RotateCcw,
+  ChevronLeft,
+  ChevronRight,
+  Inbox,
+  X,
+  FileCheck2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useQuery } from "@tanstack/react-query";
-import { PortalService, FaturaService } from "@/services/financial.service";
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-    DropdownMenuSeparator,
-    DropdownMenuLabel,
-} from "@/components/ui/dropdown-menu";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
-    Sheet,
-    SheetContent,
-    SheetHeader,
-    SheetTitle,
-    SheetDescription,
-} from "@/components/ui/sheet";
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
-import { Calendar } from "@/components/ui/calendar";
-import { toast } from "sonner";
-import { format, isWithinInterval, startOfDay, endOfDay } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { DateRange } from "react-day-picker";
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from "recharts";
+import { useQuery } from "@tanstack/react-query";
+import {
+  PortalOperacionalService,
+  PortalOperacaoItem,
+} from "@/services/portal/portalOperacional.service";
+import { useClient } from "@/contexts/ClientContext";
 
-const statusLabel: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "warning" | "success" | "destructive" }> = {
-    pendente: { label: "Pendente", variant: "warning" },
-    aprovado: { label: "Aprovado", variant: "success" },
-    rejeitado: { label: "Em Revisão", variant: "destructive" },
-    pago: { label: "Pago", variant: "secondary" },
-};
+export const ClientReports = () => {
+  const { cliente, selectedAdminEmpresaId } = useClient();
 
-const ClientReports = () => {
-    const [search, setSearch] = useState("");
-    const [statusFilter, setStatusFilter] = useState<string>("all");
-    const [selectedRelatorio, setSelectedRelatorio] = useState<any | null>(null);
-    const [analyticsRelatorio, setAnalyticsRelatorio] = useState<any | null>(null);
-    const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+  // Estados de Filtros
+  const [dataInicio, setDataInicio] = useState<string>("");
+  const [dataFim, setDataFim] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState<string>("");
 
-    const { data: consolidados = [], isLoading } = useQuery({
-        queryKey: ["portal_consolidados"],
-        queryFn: () => PortalService.getConsolidados(),
-    });
+  // Paginação
+  const pageSize = 15;
+  const [page, setPage] = useState<number>(0);
 
-    const { data: faturasDetalhe = [], isLoading: loadingDetalhe } = useQuery({
-        queryKey: ["faturas_competencia", selectedRelatorio?.competencia],
-        queryFn: () => FaturaService.getByCompetencia(selectedRelatorio.competencia),
-        enabled: !!selectedRelatorio?.competencia,
-    });
+  // Operação selecionada para o modal de detalhes
+  const [selectedOp, setSelectedOp] = useState<PortalOperacaoItem | null>(null);
 
-    const formatCurrency = (value: number) =>
-        new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+  // Consulta de Operações através do serviço seguro
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: [
+      "portal_cliente_operacoes_list",
+      dataInicio,
+      dataFim,
+      statusFilter,
+      page,
+      selectedAdminEmpresaId,
+    ],
+    queryFn: () =>
+      PortalOperacionalService.fetchOperacoes(
+        {
+          dataInicio: dataInicio || null,
+          dataFim: dataFim || null,
+          status: statusFilter === "all" ? null : statusFilter,
+          limit: pageSize,
+          offset: page * pageSize,
+        },
+        selectedAdminEmpresaId,
+      ),
+  });
 
-    const filtered = useMemo(() => {
-        return consolidados.filter((c: any) => {
-            const matchesSearch = !search || c.competencia?.toLowerCase().includes(search.toLowerCase());
-            const matchesStatus = statusFilter === "all" || c.status === statusFilter;
+  const rawItens: PortalOperacaoItem[] = data?.itens || [];
+  const totalCount = data?.total || 0;
+  const totalPages = Math.ceil(totalCount / pageSize);
 
-            let matchesDate = true;
-            if (dateRange?.from && dateRange?.to) {
-                const reportDate = new Date(c.created_at);
-                matchesDate = isWithinInterval(reportDate, {
-                    start: startOfDay(dateRange.from),
-                    end: endOfDay(dateRange.to)
-                });
-            } else if (dateRange?.from) {
-                const reportDate = new Date(c.created_at);
-                matchesDate = reportDate >= startOfDay(dateRange.from);
-            }
+  // Filtro de busca textual em memória (NF, Placa, Transportadora, Fornecedor, Produto)
+  const itens = useMemo(() => {
+    if (!searchTerm.trim()) return rawItens;
+    const term = searchTerm.toLowerCase();
+    return rawItens.filter(
+      (op) =>
+        op.nf_numero?.toLowerCase().includes(term) ||
+        op.placa?.toLowerCase().includes(term) ||
+        op.transportadora_nome?.toLowerCase().includes(term) ||
+        op.fornecedor_nome?.toLowerCase().includes(term) ||
+        op.produto_nome?.toLowerCase().includes(term) ||
+        op.tipo_servico_nome?.toLowerCase().includes(term) ||
+        op.ctrc?.toLowerCase().includes(term),
+    );
+  }, [rawItens, searchTerm]);
 
-            return matchesSearch && matchesStatus && matchesDate;
-        });
-    }, [consolidados, search, statusFilter, dateRange]);
+  const handleResetFilters = () => {
+    setDataInicio("");
+    setDataFim("");
+    setStatusFilter("all");
+    setSearchTerm("");
+    setPage(0);
+  };
 
-    // Últimos 4 para os cards de destaque
-    const destaques = filtered.slice(0, 4);
+  const formatHora = (hora: string | null) => {
+    if (!hora) return "—";
+    return hora.slice(0, 5);
+  };
 
-    // Preparar dados para o gráfico de analytics
-    const chartData = useMemo(() => {
-        return [...consolidados]
-            .reverse() // Do mais antigo para o mais novo
-            .map(c => ({
-                name: c.competencia,
-                total: Number(c.valor_total || 0)
-            }))
-            .slice(-6); // Últimos 6 meses
-    }, [consolidados]);
-
-    const calculateGrowth = (competencia: string) => {
-        const index = consolidados.findIndex(c => c.competencia === competencia);
-        if (index === -1 || index === consolidados.length - 1) return null;
-
-        const current = Number(consolidados[index].valor_total);
-        const previous = Number(consolidados[index + 1].valor_total);
-
-        if (previous === 0) return null;
-        const diff = ((current - previous) / previous) * 100;
-        return diff;
-    };
-
-    const handleDownload = (competencia: string) => {
-        toast.success(`Download solicitado: Fechamento ${competencia}`, {
-            description: "O arquivo PDF será gerado em instantes.",
-        });
-    };
-
-    return (
-        <PortalShell title="Relatórios e Documentos">
-            <div className="space-y-6">
-                {/* Filters */}
-                <div className="flex flex-wrap gap-4 items-center justify-between">
-                    <div className="flex items-center gap-3 bg-card border border-border px-4 py-2.5 rounded-xl flex-1 max-w-md shadow-sm">
-                        <Search className="w-5 h-5 text-muted-foreground" />
-                        <input
-                            type="text"
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            placeholder="Pesquisar por competência..."
-                            className="bg-transparent border-none outline-none text-sm w-full font-medium"
-                        />
-                    </div>
-                    <div className="flex gap-2">
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="outline" className="rounded-xl border-border font-bold gap-2">
-                                    <Filter className="w-4 h-4" />
-                                    {statusFilter === "all" ? "Status" : statusLabel[statusFilter]?.label || "Status"}
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48 rounded-xl border-border">
-                                <DropdownMenuLabel>Filtrar por Status</DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => setStatusFilter("all")}>Todos</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setStatusFilter("aprovado")}>Aprovado</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setStatusFilter("pendente")}>Pendente</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setStatusFilter("pago")}>Pago</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setStatusFilter("rejeitado")}>Em Revisão</DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button variant="outline" className="rounded-xl border-border font-bold gap-2 min-w-[140px] transition-all">
-                                    <CalendarIcon className="w-4 h-4" />
-                                    {dateRange?.from ? (
-                                        dateRange.to ? (
-                                            <>
-                                                {format(dateRange.from, "dd/MM", { locale: ptBR })} - {format(dateRange.to, "dd/MM", { locale: ptBR })}
-                                            </>
-                                        ) : (
-                                            format(dateRange.from, "dd/MM", { locale: ptBR })
-                                        )
-                                    ) : (
-                                        "Período"
-                                    )}
-                                    {dateRange?.from && (
-                                        <X
-                                            className="ml-1 w-3 h-3 hover:text-destructive transition-colors"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setDateRange(undefined);
-                                            }}
-                                        />
-                                    )}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0 rounded-2xl border-border shadow-xl" align="end">
-                                <Calendar
-                                    initialFocus
-                                    mode="range"
-                                    defaultMonth={dateRange?.from}
-                                    selected={dateRange}
-                                    onSelect={setDateRange}
-                                    numberOfMonths={2}
-                                    locale={ptBR}
-                                />
-                                <div className="p-3 border-t border-border flex justify-end gap-2 bg-muted/20">
-                                    <Button size="sm" variant="ghost" onClick={() => setDateRange(undefined)}>Limpar</Button>
-                                    <Button size="sm" className="bg-brand hover:bg-brand/90 font-bold">Aplicar Filtro</Button>
-                                </div>
-                            </PopoverContent>
-                        </Popover>
-                    </div>
-                </div>
-
-                {/* Cards de destaque */}
-                {isLoading ? (
-                    <div className="text-center py-12 text-muted-foreground text-sm">Carregando consolidados...</div>
-                ) : destaques.length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground border border-dashed rounded-2xl">
-                        <FileBox className="w-12 h-12 mx-auto mb-3 opacity-10" />
-                        <p className="font-bold text-foreground">Nenhum relatório encontrado.</p>
-                        <p className="text-sm">Tente ajustar seus filtros de busca ou status.</p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        {destaques.map((c: any) => {
-                            const st = statusLabel[c.status] || { label: c.status, variant: "secondary" as const };
-                            return (
-                                <Card key={c.id} className="p-5 border-border bg-card shadow-sm group hover:shadow-md transition-all relative overflow-hidden">
-                                    <div className="w-12 h-12 bg-muted text-muted-foreground rounded-xl flex items-center justify-center mb-4 group-hover:bg-primary/5 group-hover:text-brand transition-colors">
-                                        <FileText className="w-6 h-6" />
-                                    </div>
-                                    <h4 className="font-bold text-foreground text-sm mb-1">
-                                        Fechamento — {c.competencia}
-                                    </h4>
-                                    <p className="text-xs text-muted-foreground mb-4">
-                                        {formatCurrency(Number(c.valor_total || 0))}
-                                    </p>
-                                    <div className="flex items-center justify-between pt-4 border-t border-border/50">
-                                        <Badge variant={st.variant} className="text-[10px]">{st.label}</Badge>
-                                        <div className="flex gap-1">
-                                            <button
-                                                onClick={() => setAnalyticsRelatorio(c)}
-                                                className="text-muted-foreground hover:text-brand hover:bg-brand/10 p-1.5 rounded-lg transition-colors"
-                                                title="Analytics"
-                                            >
-                                                <TrendingUp className="w-4 h-4" />
-                                            </button>
-                                            <button
-                                                onClick={() => setSelectedRelatorio(c)}
-                                                className="text-muted-foreground hover:text-foreground hover:bg-muted p-1.5 rounded-lg transition-colors"
-                                                title="Visualizar"
-                                            >
-                                                <Eye className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                </Card>
-                            );
-                        })}
-                    </div>
-                )}
-
-                {/* Tabela completa */}
-                {!isLoading && filtered.length > 0 && (
-                    <Card className="border-border bg-card shadow-sm overflow-hidden">
-                        <div className="p-6 border-b border-border/50 flex items-center justify-between">
-                            <h3 className="font-bold text-foreground">Todos os Fechamentos</h3>
-                            <span className="text-xs text-muted-foreground font-medium">Exibindo {filtered.length} resultados</span>
-                        </div>
-                        <Table>
-                            <TableHeader className="bg-muted/30">
-                                <TableRow className="border-border hover:bg-transparent">
-                                    <TableHead className="font-bold text-muted-foreground uppercase text-[10px]">Competência</TableHead>
-                                    <TableHead className="font-bold text-muted-foreground uppercase text-[10px]">Valor Total</TableHead>
-                                    <TableHead className="font-bold text-muted-foreground uppercase text-[10px]">Status</TableHead>
-                                    <TableHead className="font-bold text-muted-foreground uppercase text-[10px]">Publicado em</TableHead>
-                                    <TableHead className="font-bold text-muted-foreground uppercase text-[10px] text-right">Ações</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {filtered.map((c: any) => {
-                                    const st = statusLabel[c.status] || { label: c.status, variant: "secondary" as const };
-                                    return (
-                                        <TableRow key={c.id} className="hover:bg-muted/20 border-border transition-colors">
-                                            <TableCell>
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 bg-muted text-muted-foreground rounded flex items-center justify-center">
-                                                        <FileBox className="w-4 h-4" />
-                                                    </div>
-                                                    <span className="font-bold text-foreground text-sm">
-                                                        Fechamento {c.competencia}
-                                                    </span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="font-display font-semibold text-sm">
-                                                {formatCurrency(Number(c.valor_total || 0))}
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge variant={st.variant} className="text-[10px]">
-                                                    {st.label}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell className="text-sm text-muted-foreground">
-                                                {new Date(c.created_at).toLocaleDateString("pt-BR")}
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <div className="flex justify-end gap-2">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-9 w-9 text-muted-foreground hover:text-foreground border border-transparent hover:border-border"
-                                                        onClick={() => setSelectedRelatorio(c)}
-                                                    >
-                                                        <Eye className="w-4 h-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-9 w-9 text-muted-foreground hover:text-brand border border-transparent hover:border-brand/20"
-                                                        onClick={() => handleDownload(c.competencia)}
-                                                    >
-                                                        <Download className="w-4 h-4" />
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    );
-                                })}
-                            </TableBody>
-                        </Table>
-                    </Card>
-                )}
+  return (
+    <PortalShell title="Consulta de Operações Realizadas">
+      <div className="space-y-6">
+        {/* Painel de Filtros */}
+        <Card className="p-5 border-border bg-card shadow-sm rounded-3xl space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            {/* Campo de Busca Rápida */}
+            <div className="relative flex-1 min-w-[260px]">
+              <Search className="w-4 h-4 text-muted-foreground absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <Input
+                placeholder="Buscar por NF, Placa, Transportadora ou Carga..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 h-10 rounded-2xl bg-background border-border text-xs sm:text-sm"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
 
-            {/* Detalhamento Sheet */}
-            <Sheet open={!!selectedRelatorio} onOpenChange={() => setSelectedRelatorio(null)}>
-                <SheetContent side="right" className="sm:max-w-xl w-full p-0 border-l border-border bg-card">
-                    <div className="flex flex-col h-full">
-                        <SheetHeader className="p-8 border-b border-border bg-muted/20">
-                            <div className="mb-6">
-                                <Badge variant={statusLabel[selectedRelatorio?.status]?.variant} className="uppercase tracking-widest text-[10px] font-bold px-3 py-1">
-                                    {statusLabel[selectedRelatorio?.status]?.label}
-                                </Badge>
-                            </div>
-                            <SheetTitle className="text-3xl font-black font-display text-foreground mb-2">
-                                Fechamento {selectedRelatorio?.competencia}
-                            </SheetTitle>
-                            <SheetDescription className="text-sm text-muted-foreground font-medium">
-                                Detalhamento de faturas e consolidação operacional do período.
-                            </SheetDescription>
-                        </SheetHeader>
+            {/* Filtros Estruturados */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">De:</span>
+                <Input
+                  type="date"
+                  value={dataInicio}
+                  onChange={(e) => {
+                    setDataInicio(e.target.value);
+                    setPage(0);
+                  }}
+                  className="h-10 text-xs w-[135px] rounded-2xl bg-background border-border"
+                />
+              </div>
 
-                        <div className="flex-1 overflow-y-auto px-8 py-8 space-y-8">
-                            {/* Resumo */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
-                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Valor do Fechamento</span>
-                                    <span className="text-xl font-black text-foreground">{formatCurrency(Number(selectedRelatorio?.valor_total || 0))}</span>
-                                </div>
-                                <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
-                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Média por Item</span>
-                                    <span className="text-xl font-black text-foreground">
-                                        {faturasDetalhe.length > 0
-                                            ? formatCurrency(Number(selectedRelatorio?.valor_total || 0) / faturasDetalhe.length)
-                                            : "R$ 0,00"}
-                                    </span>
-                                </div>
-                            </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Até:</span>
+                <Input
+                  type="date"
+                  value={dataFim}
+                  onChange={(e) => {
+                    setDataFim(e.target.value);
+                    setPage(0);
+                  }}
+                  className="h-10 text-xs w-[135px] rounded-2xl bg-background border-border"
+                />
+              </div>
 
-                            {/* Tabela de Faturas */}
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <h4 className="font-bold text-foreground flex items-center gap-2">
-                                        <ClipboardList className="w-4 h-4 text-brand" />
-                                        Faturas do Intervalo
-                                    </h4>
-                                    <Badge variant="outline" className="rounded-md">{faturasDetalhe.length} itens</Badge>
-                                </div>
+              <Select
+                value={statusFilter}
+                onValueChange={(val) => {
+                  setStatusFilter(val);
+                  setPage(0);
+                }}
+              >
+                <SelectTrigger className="h-10 w-[140px] text-xs rounded-2xl bg-background border-border">
+                  <SelectValue placeholder="Status..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os status</SelectItem>
+                  <SelectItem value="processado">Concluído</SelectItem>
+                  <SelectItem value="fechado">Faturado</SelectItem>
+                </SelectContent>
+              </Select>
 
-                                {loadingDetalhe ? (
-                                    <div className="py-20 text-center text-sm text-muted-foreground">Carregando itens...</div>
-                                ) : faturasDetalhe.length === 0 ? (
-                                    <div className="py-20 text-center text-sm text-muted-foreground bg-muted/20 rounded-xl border border-dashed border-border/50">
-                                        Nenhuma fatura encontrada.
-                                    </div>
-                                ) : (
-                                    <div className="border border-border rounded-xl overflow-hidden shadow-sm">
-                                        <Table>
-                                            <TableHeader className="bg-muted/50">
-                                                <TableRow className="border-border">
-                                                    <TableHead className="text-[10px] font-bold uppercase py-3">Colaborador</TableHead>
-                                                    <TableHead className="text-[10px] font-bold uppercase py-3 text-right">Valor</TableHead>
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {faturasDetalhe.map((f: any) => (
-                                                    <TableRow key={f.id} className="border-border hover:bg-muted/10">
-                                                        <TableCell className="text-xs font-bold text-foreground py-3">
-                                                            {f.colaboradores?.nome || "Colaborador não identificado"}
-                                                        </TableCell>
-                                                        <TableCell className="text-xs text-right font-display font-bold py-3">
-                                                            {formatCurrency(Number(f.valor))}
-                                                        </TableCell>
-                                                    </TableRow>
-                                                ))}
-                                            </TableBody>
-                                        </Table>
-                                    </div>
-                                )}
-                            </div>
+              {(dataInicio || dataFim || statusFilter !== "all" || searchTerm) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetFilters}
+                  className="h-10 gap-1.5 text-xs text-muted-foreground hover:text-foreground rounded-2xl"
+                  title="Limpar todos os filtros"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Limpar
+                </Button>
+              )}
+            </div>
+          </div>
+        </Card>
+
+        {/* Tabela de Operações */}
+        <Card className="border-border bg-card shadow-sm rounded-3xl overflow-hidden flex flex-col">
+          <div className="p-5 border-b border-border flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-foreground text-sm sm:text-base">
+                Registros de Operações
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Total de {totalCount} registro(s) localizado(s) para sua empresa.
+              </p>
+            </div>
+
+            <Badge variant="outline" className="text-xs font-semibold">
+              Página {totalPages === 0 ? 0 : page + 1} de {totalPages}
+            </Badge>
+          </div>
+
+          <div className="overflow-x-auto">
+            {isLoading ? (
+              <div className="p-16 text-center text-sm text-muted-foreground flex flex-col items-center gap-3">
+                <div className="w-7 h-7 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+                <span>Carregando operações...</span>
+              </div>
+            ) : itens.length === 0 ? (
+              <div className="p-16 text-center space-y-3">
+                <Inbox className="w-10 h-10 text-muted-foreground mx-auto stroke-1" />
+                <h4 className="text-sm font-semibold text-foreground">
+                  Nenhuma operação encontrada
+                </h4>
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                  {dataInicio || dataFim || statusFilter !== "all" || searchTerm
+                    ? "Tente ajustar os filtros de busca para visualizar outros períodos."
+                    : "As atividades operacionais validadas pela ESC LOG aparecerão aqui automaticamente."}
+                </p>
+              </div>
+            ) : (
+              <table className="min-w-full text-xs">
+                <thead className="bg-muted/30 text-left">
+                  <tr>
+                    <th className="px-5 py-3.5 font-medium text-muted-foreground">Data</th>
+                    <th className="px-4 py-3.5 font-medium text-muted-foreground">Serviço</th>
+                    <th className="px-4 py-3.5 font-medium text-muted-foreground">Carga / Produto</th>
+                    <th className="px-4 py-3.5 font-medium text-muted-foreground text-right">Qtd</th>
+                    <th className="px-4 py-3.5 font-medium text-muted-foreground">Transportadora</th>
+                    <th className="px-4 py-3.5 font-medium text-muted-foreground">Placa</th>
+                    <th className="px-4 py-3.5 font-medium text-muted-foreground">NF / CTRC</th>
+                    <th className="px-4 py-3.5 font-medium text-muted-foreground">Horários</th>
+                    <th className="px-4 py-3.5 font-medium text-muted-foreground">Status</th>
+                    <th className="px-5 py-3.5 font-medium text-muted-foreground text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {itens.map((op) => (
+                    <tr key={op.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-5 py-4 font-semibold text-foreground whitespace-nowrap">
+                        {new Date(op.data_operacao + "T00:00:00").toLocaleDateString("pt-BR")}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <span className="font-semibold text-foreground">{op.tipo_servico_nome}</span>
+                      </td>
+                      <td className="px-4 py-4 text-muted-foreground">
+                        <div className="font-medium text-foreground truncate max-w-[170px]" title={op.produto_nome}>
+                          {op.produto_nome}
                         </div>
-
-                        <div className="p-8 border-t border-border bg-card flex gap-3">
-                            <Button className="flex-1 rounded-xl bg-brand hover:bg-brand/90 font-bold h-12 shadow-md shadow-brand/20" onClick={() => handleDownload(selectedRelatorio?.competencia)}>
-                                <Download className="w-4 h-4 mr-2" /> Baixar PDF Completo
-                            </Button>
+                        {op.fornecedor_nome && op.fornecedor_nome !== "-" && (
+                          <div className="text-[10px] text-muted-foreground truncate max-w-[170px]" title={op.fornecedor_nome}>
+                            Forn: {op.fornecedor_nome}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-right font-mono font-bold text-foreground whitespace-nowrap">
+                        {Number(op.quantidade || 0).toLocaleString("pt-BR")}
+                      </td>
+                      <td className="px-4 py-4 text-muted-foreground whitespace-nowrap">
+                        <div className="truncate max-w-[150px]" title={op.transportadora_nome}>
+                          {op.transportadora_nome}
                         </div>
-                    </div>
-                </SheetContent>
-            </Sheet>
+                      </td>
+                      <td className="px-4 py-4 font-mono text-muted-foreground whitespace-nowrap uppercase">
+                        {op.placa}
+                      </td>
+                      <td className="px-4 py-4 font-mono text-muted-foreground whitespace-nowrap">
+                        <div>NF: {op.nf_numero}</div>
+                        {op.ctrc && op.ctrc !== "-" && (
+                          <div className="text-[10px] text-muted-foreground">CT: {op.ctrc}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 font-mono text-muted-foreground whitespace-nowrap">
+                        {formatHora(op.horario_inicio)} - {formatHora(op.horario_fim)}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400"
+                        >
+                          <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600 shrink-0" />
+                          {op.status_operacional}
+                        </Badge>
+                      </td>
+                      <td className="px-5 py-4 text-center whitespace-nowrap">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 gap-1 text-xs rounded-xl border-border/80 hover:bg-muted/50"
+                          onClick={() => setSelectedOp(op)}
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          Detalhes
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
 
-            {/* Analytics Dialog */}
-            <Dialog open={!!analyticsRelatorio} onOpenChange={() => setAnalyticsRelatorio(null)}>
-                <DialogContent className="sm:max-w-2xl rounded-2xl border-border bg-card">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-2xl font-black font-display">
-                            <TrendingUp className="w-6 h-6 text-brand" />
-                            Performance e Tendências
-                        </DialogTitle>
-                        <DialogDescription>
-                            Análise comparativa da competência {analyticsRelatorio?.competencia} em relação ao histórico.
-                        </DialogDescription>
-                    </DialogHeader>
+          {/* Rodapé com Paginação */}
+          {totalPages > 1 && (
+            <div className="p-4 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
+              <span>
+                Mostrando {page * pageSize + 1} a {Math.min((page + 1) * pageSize, totalCount)} de {totalCount} registros
+              </span>
 
-                    <div className="space-y-8 py-4">
-                        {/* KPIs de Tendência */}
-                        <div className="grid grid-cols-3 gap-4">
-                            <div className="p-4 rounded-xl bg-muted/30 border border-border/50">
-                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Crescimento</span>
-                                <div className="flex items-center gap-1">
-                                    {calculateGrowth(analyticsRelatorio?.competencia) !== null ? (
-                                        <>
-                                            {Number(calculateGrowth(analyticsRelatorio?.competencia)) >= 0 ? (
-                                                <ArrowUpRight className="w-4 h-4 text-success" />
-                                            ) : (
-                                                <ArrowDownRight className="w-4 h-4 text-destructive" />
-                                            )}
-                                            <span className={`text-lg font-black ${Number(calculateGrowth(analyticsRelatorio?.competencia)) >= 0 ? 'text-success' : 'text-destructive'}`}>
-                                                {Math.abs(Number(calculateGrowth(analyticsRelatorio?.competencia))).toFixed(1)}%
-                                            </span>
-                                        </>
-                                    ) : (
-                                        <span className="text-lg font-black text-muted-foreground">—</span>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="p-4 rounded-xl bg-muted/30 border border-border/50 col-span-2">
-                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Status da Eficiência</span>
-                                <div className="flex items-center gap-2">
-                                    <Zap className="w-4 h-4 text-warning" />
-                                    <span className="text-sm font-bold text-foreground">Operação otimizada. Custos 4% abaixo da média anual.</span>
-                                </div>
-                            </div>
-                        </div>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => Math.max(p - 1, 0))}
+                  className="h-8 gap-1 rounded-xl"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  Anterior
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage((p) => Math.min(p + 1, totalPages - 1))}
+                  className="h-8 gap-1 rounded-xl"
+                >
+                  Próxima
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+      </div>
 
-                        {/* Gráfico */}
-                        <div className="space-y-3">
-                            <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest pl-1">Evolução do Faturamento (6 meses)</h4>
-                            <div className="h-[240px] w-full bg-muted/10 rounded-xl border border-border/50 p-4">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={chartData}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.5} />
-                                        <XAxis
-                                            dataKey="name"
-                                            axisLine={false}
-                                            tickLine={false}
-                                            fontSize={10}
-                                            fontWeight={600}
-                                            tick={{ fill: 'hsl(var(--muted-foreground))' }}
-                                        />
-                                        <YAxis hide />
-                                        <Tooltip
-                                            cursor={{ fill: 'hsl(var(--muted))', opacity: 0.4 }}
-                                            contentStyle={{
-                                                borderRadius: '12px',
-                                                border: '1px solid hsl(var(--border))',
-                                                boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                                                fontSize: '12px',
-                                                fontWeight: 'bold'
-                                            }}
-                                            formatter={(value: number) => [formatCurrency(value), "Valor"]}
-                                        />
-                                        <Bar dataKey="total" radius={[6, 6, 0, 0]} barSize={40}>
-                                            {chartData.map((entry, index) => (
-                                                <Cell
-                                                    key={`cell-${index}`}
-                                                    fill={entry.name === analyticsRelatorio?.competencia ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))'}
-                                                    fillOpacity={entry.name === analyticsRelatorio?.competencia ? 1 : 0.3}
-                                                />
-                                            ))}
-                                        </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
+      {/* Modal de Detalhamento da Operação */}
+      <Dialog open={Boolean(selectedOp)} onOpenChange={(open) => !open && setSelectedOp(null)}>
+        <DialogContent className="max-w-2xl rounded-3xl" disableDirtyCheck>
+          <DialogHeader>
+            <div className="flex items-center gap-2 text-primary mb-1">
+              <FileCheck2 className="w-5 h-5" />
+              <DialogTitle className="text-lg font-bold">Detalhamento da Operação</DialogTitle>
+            </div>
+            <DialogDescription>
+              Dados operacionais certificados pela ESC LOG para esta atividade.
+            </DialogDescription>
+          </DialogHeader>
 
-                        <div className="flex justify-end gap-3 pt-2">
-                            <Button variant="outline" className="rounded-xl border-border font-bold" onClick={() => setAnalyticsRelatorio(null)}>
-                                Fechar Análise
-                            </Button>
-                            <Button className="rounded-xl bg-brand font-bold" onClick={() => handleDownload(analyticsRelatorio?.competencia)}>
-                                Exportar Relatório Analítico
-                            </Button>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
-        </PortalShell>
-    );
+          {selectedOp && (
+            <div className="space-y-4 pt-2">
+              {/* Destaque Principal */}
+              <div className="rounded-2xl border border-border bg-muted/20 p-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                  <span className="text-[11px] font-medium text-muted-foreground uppercase">Data</span>
+                  <p className="text-sm font-bold text-foreground">
+                    {new Date(selectedOp.data_operacao + "T00:00:00").toLocaleDateString("pt-BR")}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[11px] font-medium text-muted-foreground uppercase">Volume</span>
+                  <p className="text-sm font-bold text-foreground font-mono">
+                    {Number(selectedOp.quantidade || 0).toLocaleString("pt-BR")} un
+                  </p>
+                </div>
+                <div>
+                  <span className="text-[11px] font-medium text-muted-foreground uppercase">Status</span>
+                  <div className="mt-0.5">
+                    <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">
+                      {selectedOp.status_operacional}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[11px] font-medium text-muted-foreground uppercase">Horário</span>
+                  <p className="text-sm font-semibold text-foreground font-mono">
+                    {formatHora(selectedOp.horario_inicio)} às {formatHora(selectedOp.horario_fim)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Informações de Carga e Transporte */}
+              <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+                <span className="text-xs font-bold text-foreground uppercase tracking-wider">
+                  Transporte & Identificação
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">Empresa Contratante:</span>
+                    <p className="font-semibold text-foreground">{selectedOp.empresa_nome}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Tipo de Serviço:</span>
+                    <p className="font-semibold text-foreground">{selectedOp.tipo_servico_nome}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Produto / Tipo de Carga:</span>
+                    <p className="font-semibold text-foreground">{selectedOp.produto_nome}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Transportadora:</span>
+                    <p className="font-semibold text-foreground">{selectedOp.transportadora_nome}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Fornecedor / Origem:</span>
+                    <p className="font-semibold text-foreground">{selectedOp.fornecedor_nome}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Placa do Veículo:</span>
+                    <p className="font-semibold text-foreground font-mono uppercase">{selectedOp.placa}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Nota Fiscal (NF):</span>
+                    <p className="font-semibold text-foreground font-mono">{selectedOp.nf_numero}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">CTRC:</span>
+                    <p className="font-semibold text-foreground font-mono">{selectedOp.ctrc}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Observações da Operação */}
+              {selectedOp.observacao ? (
+                <div className="rounded-2xl border border-border bg-muted/20 p-4 space-y-1">
+                  <span className="text-xs font-semibold text-foreground">Observações Operacionais</span>
+                  <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                    {selectedOp.observacao}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          <DialogFooter className="pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setSelectedOp(null)}
+              className="rounded-xl text-xs font-semibold"
+            >
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </PortalShell>
+  );
 };
 
 export default ClientReports;

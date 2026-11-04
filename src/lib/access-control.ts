@@ -48,7 +48,8 @@ export type AccessRole =
   | "financeiro"
   | "encarregado"
   | "gestor"
-  | "user";
+  | "user"
+  | "cliente";
 
 type PartialPermissionSet = Partial<Record<AccessAction, boolean>>;
 
@@ -59,6 +60,7 @@ export const ACCESS_ROLE_LABELS: Record<AccessRole, string> = {
   encarregado: "Encarregado",
   gestor: "Gestor",
   user: "Usuário",
+  cliente: "Cliente (Portal)",
 };
 
 const allowAllActions = (): PartialPermissionSet =>
@@ -110,6 +112,9 @@ export const ACCESS_PRESETS: Record<AccessRole, PermissionMatrix> = {
   user: {
     onboarding: allowActions(["ver"]),
   },
+  cliente: {
+    portal_do_cliente: allowActions(["ver"]),
+  },
 };
 
 export const ACCESS_PRESET_OPTIONS: Array<{ value: AccessRole; label: string }> = [
@@ -119,6 +124,7 @@ export const ACCESS_PRESET_OPTIONS: Array<{ value: AccessRole; label: string }> 
   { value: "encarregado", label: "Encarregado" },
   { value: "gestor", label: "Gestor" },
   { value: "user", label: "Personalizado" },
+  { value: "cliente", label: "Cliente (Portal)" },
 ];
 
 export const ACCESS_MODULE_LABELS: Record<AccessModule, string> = {
@@ -243,6 +249,7 @@ export function normalizeRole(role: string | null | undefined): AccessRole {
   if (normalized === "financeiro") return "financeiro";
   if (normalized === "encarregado") return "encarregado";
   if (normalized === "gestor") return "gestor";
+  if (normalized === "cliente") return "cliente";
 
   return "user";
 }
@@ -320,6 +327,9 @@ export function getDefaultRouteForRole(role?: string | null): string {
   if (normalizedRole === "financeiro") {
     return "/financeiro";
   }
+  if (normalizedRole === "cliente") {
+    return "/cliente/dashboard";
+  }
   return "/operacional/dashboard";
 }
 
@@ -336,6 +346,9 @@ export function getAccessDeniedFallbackRoute(role?: string | null): string {
   }
   if (normalizedRole === "financeiro") {
     return "/financeiro";
+  }
+  if (normalizedRole === "cliente") {
+    return "/cliente/dashboard";
   }
   return "/operacional/dashboard";
 }
@@ -366,6 +379,19 @@ export function isRouteForbiddenForRole(role: string | null | undefined, pathnam
     if (pathname === "/configuracoes" || pathname.startsWith("/configuracoes/")) {
       return true;
     }
+  }
+
+  if (normalizedRole === "cliente") {
+    // Bloqueia aprovação financeira para o cliente no MVP operacional
+    if (pathname === "/cliente/aprovacoes" || pathname.startsWith("/cliente/aprovacoes/")) {
+      return true;
+    }
+    // Permite rotas do portal do cliente
+    if (pathname === "/cliente" || pathname.startsWith("/cliente/")) {
+      return false;
+    }
+    // Bloqueia qualquer rota interna administrativa/RH/Financeira/Operacional
+    return true;
   }
   return false;
 }
