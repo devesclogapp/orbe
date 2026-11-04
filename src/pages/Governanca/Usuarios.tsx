@@ -1143,7 +1143,7 @@ const UsuariosGestao = () => {
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                        <span>Operações validadas: Apenas registros com status processado ou fechado</span>
+                        <span>Operações elegíveis: Apenas registros operacionais autorizados (Recebido, Aguardando Faturamento, Faturado e Concluído)</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
