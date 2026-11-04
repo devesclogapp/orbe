@@ -16,6 +16,9 @@ import {
   formatMinutosToHourString,
 } from "@/services/adapters/relatoriosOficialAdapter";
 import { EmpresaService } from "@/services/base.service";
+import { ContextualHelpProvider } from "@/contexts/ContextualHelpContext";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { ACCESS_PRESETS } from "@/lib/access-control";
 
 // Mock de contextos e serviços
 vi.mock("@/contexts/PreferencesContext", () => ({
@@ -188,6 +191,13 @@ describe("CONV-14: Migração UX04 → Central de Relatórios Oficial", () => {
     // Encarregado não acessa relatórios
     expect(checkReportAccess("r01-operacoes-volume", "encarregado")).toBe(false);
     expect(checkReportAccess("r03-faturamento-receitas", "encarregado")).toBe(false);
+
+    // Permissão de rota no nível de módulo no ACCESS_PRESETS
+    expect(ACCESS_PRESETS.rh.central_de_relatorios).toBeDefined();
+    expect(ACCESS_PRESETS.rh.central_de_relatorios.ver).toBe(true);
+    expect(ACCESS_PRESETS.rh.central_de_relatorios.exportar).toBe(true);
+    expect(ACCESS_PRESETS.financeiro.central_de_relatorios.ver).toBe(true);
+    expect(ACCESS_PRESETS.encarregado.central_de_relatorios).toBeUndefined();
   });
 
   // --------------------------------------------------------------------------
@@ -262,7 +272,11 @@ describe("CONV-14: Migração UX04 → Central de Relatórios Oficial", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/relatorios?empresa=emp-01&competencia=2026-09"]}>
-          <CentralRelatoriosOficial />
+          <TooltipProvider>
+          <ContextualHelpProvider>
+            <CentralRelatoriosOficial />
+          </ContextualHelpProvider>
+        </TooltipProvider>
         </MemoryRouter>
       </QueryClientProvider>
     );
@@ -314,9 +328,13 @@ describe("CONV-14: Migração UX04 → Central de Relatórios Oficial", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/relatorios/r01-operacoes-volume?empresa=emp-01&competencia=2026-09"]}>
-          <Routes>
-            <Route path="/relatorios/:reportId" element={<RelatorioVisualizadorOficial />} />
-          </Routes>
+          <TooltipProvider>
+          <ContextualHelpProvider>
+            <Routes>
+              <Route path="/relatorios/:reportId" element={<RelatorioVisualizadorOficial />} />
+            </Routes>
+          </ContextualHelpProvider>
+        </TooltipProvider>
         </MemoryRouter>
       </QueryClientProvider>
     );
@@ -345,9 +363,13 @@ describe("CONV-14: Migração UX04 → Central de Relatórios Oficial", () => {
     const { unmount } = render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/relatorios/r06-produtividade-individual"]}>
-          <Routes>
-            <Route path="/relatorios/:reportId" element={<RelatorioVisualizadorOficial />} />
-          </Routes>
+          <TooltipProvider>
+          <ContextualHelpProvider>
+            <Routes>
+              <Route path="/relatorios/:reportId" element={<RelatorioVisualizadorOficial />} />
+            </Routes>
+          </ContextualHelpProvider>
+        </TooltipProvider>
         </MemoryRouter>
       </QueryClientProvider>
     );
@@ -360,9 +382,13 @@ describe("CONV-14: Migração UX04 → Central de Relatórios Oficial", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={["/relatorios/r03-faturamento-receitas"]}>
-          <Routes>
-            <Route path="/relatorios/:reportId" element={<RelatorioVisualizadorOficial />} />
-          </Routes>
+          <TooltipProvider>
+          <ContextualHelpProvider>
+            <Routes>
+              <Route path="/relatorios/:reportId" element={<RelatorioVisualizadorOficial />} />
+            </Routes>
+          </ContextualHelpProvider>
+        </TooltipProvider>
         </MemoryRouter>
       </QueryClientProvider>
     );

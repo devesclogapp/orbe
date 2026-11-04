@@ -44,6 +44,7 @@ import Fechamento from "./pages/Fechamento";
 
 // Relatórios e Integração V4
 import CentralRelatoriosOficial from "./pages/Relatorios/CentralRelatoriosOficial";
+import CentralRelatoriosV2 from "./pages/Relatorios/CentralRelatoriosV2";
 import RelatorioVisualizadorOficial from "./pages/Relatorios/RelatorioVisualizadorOficial";
 import RelatoriosHub from "./pages/Relatorios/RelatoriosHub";
 import RelatorioDetalhe from "./pages/Relatorios/RelatorioDetalhe";
@@ -187,158 +188,160 @@ const App = () => (
                           <OperationalPipelinePresenter />
                           <ContextualHelpDrawer />
                           <ErrorBoundary>
-                          <Routes>
-                            {/* Public Auth Routes */}
-                            <Route path="/login" element={<Login />} />
-                            <Route path="/login/operacional" element={<LoginOperacional />} />
-                            <Route path="/cadastro" element={<Cadastro />} />
-                            <Route path="/app/convite" element={<Cadastro />} />
-                            <Route path="/esqueci-senha" element={<EsqueciSenha />} />
-                            <Route path="/redefinir-senha" element={<RedefinirSenha />} />
-                            <Route path="/verificar-email" element={<VerificarEmail />} />
+                            <Routes>
+                              {/* Public Auth Routes */}
+                              <Route path="/login" element={<Login />} />
+                              <Route path="/login/operacional" element={<LoginOperacional />} />
+                              <Route path="/cadastro" element={<Cadastro />} />
+                              <Route path="/app/convite" element={<Cadastro />} />
+                              <Route path="/esqueci-senha" element={<EsqueciSenha />} />
+                              <Route path="/redefinir-senha" element={<RedefinirSenha />} />
+                              <Route path="/verificar-email" element={<VerificarEmail />} />
 
-                            {/* Protected Routes */}
-                            {/* RH-01: ROTA CANÔNICA PONTO & JORNADAS CLT */}
-                            <Route path="/clt/pontos" element={<AuthGuard><PontoJornadasClt /></AuthGuard>} />
+                              {/* Protected Routes */}
+                              {/* RH-01: ROTA CANÔNICA PONTO & JORNADAS CLT */}
+                              <Route path="/clt/pontos" element={<AuthGuard><PontoJornadasClt /></AuthGuard>} />
 
-                            {/* ALIASES ROTAS CONTEXTUAIS (FASE 1A) */}
-                            <Route path="/diaristas/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="DIARISTA" lockedFlow={true} /></AuthGuard>} />
-                            <Route path="/intermitentes/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="INTERMITENTE" lockedFlow={true} /></AuthGuard>} />
-                            <Route path="/clt/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="PONTO" lockedFlow={true} /></AuthGuard>} />
-                            <Route path="/intermitentes/inconsistencias" element={<AuthGuard><Inconsistencias flowType="INTERMITENTE" lockedFlow={true} /></AuthGuard>} />
-                            <Route path="/clt/banco-horas" element={<AuthGuard><PainelGeralBH /></AuthGuard>} />
-                            <Route path="/operacoes-volume" element={<AuthGuard><Operacoes /></AuthGuard>} />
-                            <Route path="/operacoes-volume/nova" element={<AuthGuard><LancamentoProducao /></AuthGuard>} />
-                            <Route path="/operacoes-volume/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="OPERAÇÃO" lockedFlow={true} /></AuthGuard>} />
-                            <Route path="/servicos-extras/novo" element={<AuthGuard><ServicosExtrasLancamento /></AuthGuard>} />
-                            <Route path="/servicos-extras/lancamentos" element={<AuthGuard><ServicosExtrasRecebidos /></AuthGuard>} />
-                            <Route path="/servicos-extras/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="SERVIÇO EXTRA" lockedFlow={true} /></AuthGuard>} />
-                            <Route path="/custos-extras/novo" element={<AuthGuard><CustosExtrasLancamento /></AuthGuard>} />
-                            <Route path="/custos-extras/lancamentos" element={<AuthGuard><CustosExtrasRecebidos /></AuthGuard>} />
-                            <Route path="/custos-extras/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="CUSTO EXTRA" lockedFlow={true} /></AuthGuard>} />
-                            <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
-                            <Route path="/" element={<AuthGuard><RootRedirect /></AuthGuard>} />
-                            <Route path="/central" element={<AuthGuard><CentralOperacional /></AuthGuard>} />
-                            <Route path="/operacional" element={<AuthGuard><RootRedirect /></AuthGuard>} />
-                            <Route path="/operacional/dashboard" element={<AuthGuard><Dashboard /></AuthGuard>} />
-                            <Route path="/operacional/pontos" element={<AuthGuard><Pontos /></AuthGuard>} />
-                            <Route path="/operacional/operacoes" element={<AuthGuard><Operacoes /></AuthGuard>} />
-                            <Route path="/operacional/diaristas" element={<AuthGuard><RhDiaristasPainel /></AuthGuard>} />
-                            <Route path="/operacional/servicos-extras" element={<AuthGuard><ServicosExtrasRecebidos /></AuthGuard>} />
-                            <Route path="/operacional/custos-extras" element={<AuthGuard><CustosExtrasRecebidos /></AuthGuard>} />
-                            <Route path="/operacional/intermitentes" element={<AuthGuard><IntermitentesRecebidos /></AuthGuard>} />
-                            <Route path="/operacional/intermitentes/lotes" element={<AuthGuard><IntermitentesLotes /></AuthGuard>} />
-                            <Route path="/intermitentes/lotes" element={<AuthGuard><IntermitentesLotes /></AuthGuard>} />
-                            <Route path="/producao" element={<AuthGuard><LancamentoProducao /></AuthGuard>} />
-                            <Route path="/producao/diaristas" element={<AuthGuard><DiaristasLancamento /></AuthGuard>} />
-                            <Route path="/producao/custos-extras" element={<AuthGuard><CustosExtrasLancamento /></AuthGuard>} />
-                            <Route path="/producao/servicos-extras" element={<AuthGuard><ServicosExtrasLancamento /></AuthGuard>} />
-                            <Route path="/producao/servicos-especificos" element={<AuthGuard><ServicosEspecificosLancamento /></AuthGuard>} />
-                            <Route path="/rh/diaristas" element={<AuthGuard><AprovacoesRh /></AuthGuard>} />
-                            <Route path="/rh/aprovacoes" element={<AuthGuard><AprovacoesRh /></AuthGuard>} />
-                            <Route path="/rh/diaristas/cadastros" element={<AuthGuard><RhDiaristasGestao /></AuthGuard>} />
-                            <Route path="/processamento" element={<Navigate to="/operacional/operacoes" replace />} />
-                            <Route path="/processamento/legado" element={<Navigate to="/operacional/operacoes" replace />} />
-                            <Route path="/operacional/pipeline" element={<AuthGuard><PipelineOperacional /></AuthGuard>} />
-                            <Route path="/processamento/reprocessamentos" element={<AuthGuard><Reprocessamentos /></AuthGuard>} />
-                            <Route path="/cadastros" element={<AuthGuard><CentralCadastros /></AuthGuard>} />
-                            <Route path="/cadastros/regras-operacionais" element={<AuthGuard><RegrasOperacionais /></AuthGuard>} />
-                            <Route path="/colaboradores" element={<AuthGuard><Colaboradores /></AuthGuard>} />
-                            <Route path="/transportadoras" element={<AuthGuard><Transportadoras /></AuthGuard>} />
-                            <Route path="/fornecedores" element={<AuthGuard><Fornecedores /></AuthGuard>} />
-                            <Route path="/servicos" element={<AuthGuard><Servicos /></AuthGuard>} />
-                            <Route path="/empresas" element={<AuthGuard><Empresas /></AuthGuard>} />
-                            <Route path="/coletores" element={<AuthGuard><Coletores /></AuthGuard>} />
-                            <Route path="/importacoes" element={<AuthGuard><Importacoes /></AuthGuard>} />
-                            <Route path="/inconsistencias" element={<AuthGuard><Inconsistencias /></AuthGuard>} />
+                              {/* ALIASES ROTAS CONTEXTUAIS (FASE 1A) */}
+                              <Route path="/diaristas/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="DIARISTA" lockedFlow={true} /></AuthGuard>} />
+                              <Route path="/intermitentes/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="INTERMITENTE" lockedFlow={true} /></AuthGuard>} />
+                              <Route path="/clt/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="PONTO" lockedFlow={true} /></AuthGuard>} />
+                              <Route path="/intermitentes/inconsistencias" element={<AuthGuard><Inconsistencias flowType="INTERMITENTE" lockedFlow={true} /></AuthGuard>} />
+                              <Route path="/clt/banco-horas" element={<AuthGuard><PainelGeralBH /></AuthGuard>} />
+                              <Route path="/operacoes-volume" element={<AuthGuard><Operacoes /></AuthGuard>} />
+                              <Route path="/operacoes-volume/nova" element={<AuthGuard><LancamentoProducao /></AuthGuard>} />
+                              <Route path="/operacoes-volume/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="OPERAÇÃO" lockedFlow={true} /></AuthGuard>} />
+                              <Route path="/servicos-extras/novo" element={<AuthGuard><ServicosExtrasLancamento /></AuthGuard>} />
+                              <Route path="/servicos-extras/lancamentos" element={<AuthGuard><ServicosExtrasRecebidos /></AuthGuard>} />
+                              <Route path="/servicos-extras/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="SERVIÇO EXTRA" lockedFlow={true} /></AuthGuard>} />
+                              <Route path="/custos-extras/novo" element={<AuthGuard><CustosExtrasLancamento /></AuthGuard>} />
+                              <Route path="/custos-extras/lancamentos" element={<AuthGuard><CustosExtrasRecebidos /></AuthGuard>} />
+                              <Route path="/custos-extras/aprovacoes" element={<AuthGuard><AprovacoesRh flowType="CUSTO EXTRA" lockedFlow={true} /></AuthGuard>} />
+                              <Route path="/onboarding" element={<AuthGuard><Onboarding /></AuthGuard>} />
+                              <Route path="/" element={<AuthGuard><RootRedirect /></AuthGuard>} />
+                              <Route path="/central" element={<AuthGuard><CentralOperacional /></AuthGuard>} />
+                              <Route path="/operacional" element={<AuthGuard><RootRedirect /></AuthGuard>} />
+                              <Route path="/operacional/dashboard" element={<AuthGuard><Dashboard /></AuthGuard>} />
+                              <Route path="/operacional/pontos" element={<AuthGuard><Pontos /></AuthGuard>} />
+                              <Route path="/operacional/operacoes" element={<AuthGuard><Operacoes /></AuthGuard>} />
+                              <Route path="/operacional/diaristas" element={<AuthGuard><RhDiaristasPainel /></AuthGuard>} />
+                              <Route path="/operacional/servicos-extras" element={<AuthGuard><ServicosExtrasRecebidos /></AuthGuard>} />
+                              <Route path="/operacional/custos-extras" element={<AuthGuard><CustosExtrasRecebidos /></AuthGuard>} />
+                              <Route path="/operacional/intermitentes" element={<AuthGuard><IntermitentesRecebidos /></AuthGuard>} />
+                              <Route path="/operacional/intermitentes/lotes" element={<AuthGuard><IntermitentesLotes /></AuthGuard>} />
+                              <Route path="/intermitentes/lotes" element={<AuthGuard><IntermitentesLotes /></AuthGuard>} />
+                              <Route path="/producao" element={<AuthGuard><LancamentoProducao /></AuthGuard>} />
+                              <Route path="/producao/diaristas" element={<AuthGuard><DiaristasLancamento /></AuthGuard>} />
+                              <Route path="/producao/custos-extras" element={<AuthGuard><CustosExtrasLancamento /></AuthGuard>} />
+                              <Route path="/producao/servicos-extras" element={<AuthGuard><ServicosExtrasLancamento /></AuthGuard>} />
+                              <Route path="/producao/servicos-especificos" element={<AuthGuard><ServicosEspecificosLancamento /></AuthGuard>} />
+                              <Route path="/rh/diaristas" element={<AuthGuard><AprovacoesRh /></AuthGuard>} />
+                              <Route path="/rh/aprovacoes" element={<AuthGuard><AprovacoesRh /></AuthGuard>} />
+                              <Route path="/rh/diaristas/cadastros" element={<AuthGuard><RhDiaristasGestao /></AuthGuard>} />
+                              <Route path="/processamento" element={<Navigate to="/operacional/operacoes" replace />} />
+                              <Route path="/processamento/legado" element={<Navigate to="/operacional/operacoes" replace />} />
+                              <Route path="/operacional/pipeline" element={<AuthGuard><PipelineOperacional /></AuthGuard>} />
+                              <Route path="/processamento/reprocessamentos" element={<AuthGuard><Reprocessamentos /></AuthGuard>} />
+                              <Route path="/cadastros" element={<AuthGuard><CentralCadastros /></AuthGuard>} />
+                              <Route path="/cadastros/regras-operacionais" element={<AuthGuard><RegrasOperacionais /></AuthGuard>} />
+                              <Route path="/colaboradores" element={<AuthGuard><Colaboradores /></AuthGuard>} />
+                              <Route path="/transportadoras" element={<AuthGuard><Transportadoras /></AuthGuard>} />
+                              <Route path="/fornecedores" element={<AuthGuard><Fornecedores /></AuthGuard>} />
+                              <Route path="/servicos" element={<AuthGuard><Servicos /></AuthGuard>} />
+                              <Route path="/empresas" element={<AuthGuard><Empresas /></AuthGuard>} />
+                              <Route path="/coletores" element={<AuthGuard><Coletores /></AuthGuard>} />
+                              <Route path="/importacoes" element={<AuthGuard><Importacoes /></AuthGuard>} />
+                              <Route path="/inconsistencias" element={<AuthGuard><Inconsistencias /></AuthGuard>} />
 
-                            {/* Financeiro V3 */}
-                            <Route path="/financeiro" element={<AuthGuard><CentralFinanceira /></AuthGuard>} />
-                            <Route path="/financeiro/receitas" element={<AuthGuard><ReceitasPipeline /></AuthGuard>} />
-                            <Route path="/financeiro/dre" element={<AuthGuard><RelatorioDRE /></AuthGuard>} />
-                            <Route path="/financeiro/inadimplencia" element={<AuthGuard><Inadimplencia /></AuthGuard>} />
-                            <Route path="/financeiro/legado" element={<AuthGuard><FinanceiroGeral /></AuthGuard>} />
-                            <Route path="/bancario" element={<AuthGuard><CentralBancaria /></AuthGuard>} />
-                            <Route path="/financeiro/regras" element={<AuthGuard><RegrasCalculo /></AuthGuard>} />
-                            <Route path="/financeiro/faturamento" element={<AuthGuard><FaturamentoCliente /></AuthGuard>} />
-                            <Route path="/financeiro/faturamento/:id" element={<AuthGuard><DetalhamentoCliente /></AuthGuard>} />
-                            <Route path="/financeiro/colaborador/:id" element={<AuthGuard><DetalhamentoColaborador /></AuthGuard>} />
-                            <Route path="/financeiro/remessa" element={<AuthGuard><RemessaCNAB /></AuthGuard>} />
-                            <Route path="/financeiro/remessa/historico" element={<AuthGuard><HistoricoRemessas /></AuthGuard>} />
-                            <Route path="/financeiro/retorno" element={<AuthGuard><RetornoBancario /></AuthGuard>} />
-                            <Route path="/financeiro/contas-bancarias" element={<AuthGuard><ContasBancarias /></AuthGuard>} />
+                              {/* Financeiro V3 */}
+                              <Route path="/financeiro" element={<AuthGuard><CentralFinanceira /></AuthGuard>} />
+                              <Route path="/financeiro/receitas" element={<AuthGuard><ReceitasPipeline /></AuthGuard>} />
+                              <Route path="/financeiro/dre" element={<AuthGuard><RelatorioDRE /></AuthGuard>} />
+                              <Route path="/financeiro/inadimplencia" element={<AuthGuard><Inadimplencia /></AuthGuard>} />
+                              <Route path="/financeiro/legado" element={<AuthGuard><FinanceiroGeral /></AuthGuard>} />
+                              <Route path="/bancario" element={<AuthGuard><CentralBancaria /></AuthGuard>} />
+                              <Route path="/financeiro/regras" element={<AuthGuard><RegrasCalculo /></AuthGuard>} />
+                              <Route path="/financeiro/faturamento" element={<AuthGuard><FaturamentoCliente /></AuthGuard>} />
+                              <Route path="/financeiro/faturamento/:id" element={<AuthGuard><DetalhamentoCliente /></AuthGuard>} />
+                              <Route path="/financeiro/colaborador/:id" element={<AuthGuard><DetalhamentoColaborador /></AuthGuard>} />
+                              <Route path="/financeiro/remessa" element={<AuthGuard><RemessaCNAB /></AuthGuard>} />
+                              <Route path="/financeiro/remessa/historico" element={<AuthGuard><HistoricoRemessas /></AuthGuard>} />
+                              <Route path="/financeiro/retorno" element={<AuthGuard><RetornoBancario /></AuthGuard>} />
+                              <Route path="/financeiro/contas-bancarias" element={<AuthGuard><ContasBancarias /></AuthGuard>} />
 
-                            {/* Portal Cliente V3 */}
-                            <Route path="/cliente" element={<Navigate to="/cliente/dashboard" replace />} />
-                            <Route path="/cliente/dashboard" element={<PortalGuard><ClientDashboard /></PortalGuard>} />
-                            <Route path="/cliente/operacoes" element={<PortalGuard><ClientReports /></PortalGuard>} />
-                            <Route path="/cliente/relatorios" element={<PortalGuard><ClientReports /></PortalGuard>} />
-                            <Route path="/cliente/aprovacoes" element={<PortalGuard><ClientApprovals /></PortalGuard>} />
+                              {/* Portal Cliente V3 */}
+                              <Route path="/cliente" element={<Navigate to="/cliente/dashboard" replace />} />
+                              <Route path="/cliente/dashboard" element={<PortalGuard><ClientDashboard /></PortalGuard>} />
+                              <Route path="/cliente/operacoes" element={<PortalGuard><ClientReports /></PortalGuard>} />
+                              <Route path="/cliente/relatorios" element={<PortalGuard><ClientReports /></PortalGuard>} />
+                              <Route path="/cliente/aprovacoes" element={<PortalGuard><ClientApprovals /></PortalGuard>} />
 
-                            <Route path="/fechamento" element={<AuthGuard><Fechamento /></AuthGuard>} />
+                              <Route path="/fechamento" element={<AuthGuard><Fechamento /></AuthGuard>} />
 
-                            {/* Relatórios e Integração V4 — Oficial e Legado */}
-                            <Route path="/relatorios" element={<AuthGuard><CentralRelatoriosOficial /></AuthGuard>} />
-                            <Route path="/relatorios/legado" element={<AuthGuard><RelatoriosHub /></AuthGuard>} />
-                            <Route path="/relatorios/detalhe/:id" element={<AuthGuard><RelatorioDetalhe /></AuthGuard>} />
-                            <Route path="/relatorios/agendamentos" element={<AuthGuard><Agendamentos /></AuthGuard>} />
-                            <Route path="/relatorios/layouts" element={<AuthGuard><LayoutsExportacao /></AuthGuard>} />
-                            <Route path="/relatorios/integracao" element={<AuthGuard><IntegracaoContabil /></AuthGuard>} />
-                            <Route path="/relatorios/mapeamento" element={<AuthGuard><MapeamentoContabil /></AuthGuard>} />
-                            <Route path="/relatorios/integracao/logs" element={<AuthGuard><LogsIntegracao /></AuthGuard>} />
-                            <Route path="/relatorios/integracoes" element={<AuthGuard><CentralRelatoriosIntegracoes /></AuthGuard>} />
-                            <Route path="/relatorios/:reportId" element={<AuthGuard><RelatorioVisualizadorOficial /></AuthGuard>} />
+                              {/* Relatórios e Integração V4 — Oficial e Legado */}
+                              <Route path="/relatorios" element={<AuthGuard><CentralRelatoriosV2 /></AuthGuard>} />
+                              <Route path="/relatorios/classico" element={<AuthGuard><CentralRelatoriosOficial /></AuthGuard>} />
+                              <Route path="/relatorios/v2" element={<AuthGuard><CentralRelatoriosV2 /></AuthGuard>} />
+                              <Route path="/relatorios/legado" element={<AuthGuard><RelatoriosHub /></AuthGuard>} />
+                              <Route path="/relatorios/detalhe/:id" element={<AuthGuard><RelatorioDetalhe /></AuthGuard>} />
+                              <Route path="/relatorios/agendamentos" element={<AuthGuard><Agendamentos /></AuthGuard>} />
+                              <Route path="/relatorios/layouts" element={<AuthGuard><LayoutsExportacao /></AuthGuard>} />
+                              <Route path="/relatorios/integracao" element={<AuthGuard><IntegracaoContabil /></AuthGuard>} />
+                              <Route path="/relatorios/mapeamento" element={<AuthGuard><MapeamentoContabil /></AuthGuard>} />
+                              <Route path="/relatorios/integracao/logs" element={<AuthGuard><LogsIntegracao /></AuthGuard>} />
+                              <Route path="/relatorios/integracoes" element={<AuthGuard><CentralRelatoriosIntegracoes /></AuthGuard>} />
+                              <Route path="/relatorios/:reportId" element={<AuthGuard><RelatorioVisualizadorOficial /></AuthGuard>} />
 
-                            {/* Banco de Horas V4 */}
-                            <Route path="/banco-horas" element={<AuthGuard><PainelGeralBH /></AuthGuard>} />
-                            <Route path="/banco-horas/fechamento" element={<AuthGuard><FechamentoMensalCLT /></AuthGuard>} />
-                            <Route path="/banco-horas/regras" element={<AuthGuard><RegrasBH /></AuthGuard>} />
-                            <Route path="/banco-horas/extrato/:id" element={<AuthGuard><ExtratoColaborador /></AuthGuard>} />
-                            <Route path="/banco-horas/processamento" element={<AuthGuard><ProcessamentoRH /></AuthGuard>} />
+                              {/* Banco de Horas V4 */}
+                              <Route path="/banco-horas" element={<AuthGuard><PainelGeralBH /></AuthGuard>} />
+                              <Route path="/banco-horas/fechamento" element={<AuthGuard><FechamentoMensalCLT /></AuthGuard>} />
+                              <Route path="/banco-horas/regras" element={<AuthGuard><RegrasBH /></AuthGuard>} />
+                              <Route path="/banco-horas/extrato/:id" element={<AuthGuard><ExtratoColaborador /></AuthGuard>} />
+                              <Route path="/banco-horas/processamento" element={<AuthGuard><ProcessamentoRH /></AuthGuard>} />
 
-                            {/* Governança V4 */}
-                            <Route path="/governanca" element={<AuthGuard><CentralGovernanca /></AuthGuard>} />
-                            <Route path="/governanca/usuarios" element={<AuthGuard><UsuariosGestao /></AuthGuard>} />
-                            <Route path="/admin/usuarios-acessos" element={<AuthGuard><UsuariosGestao /></AuthGuard>} />
-                            <Route path="/governanca/perfis" element={<AuthGuard><PerfisPermissoes /></AuthGuard>} />
-                            <Route path="/governanca/auditoria" element={<AuthGuard><AuditoriaLogs /></AuthGuard>} />
-                            <Route path="/governanca/automacao" element={<AuthGuard><AutomacaoOperacional /></AuthGuard>} />
+                              {/* Governança V4 */}
+                              <Route path="/governanca" element={<AuthGuard><CentralGovernanca /></AuthGuard>} />
+                              <Route path="/governanca/usuarios" element={<AuthGuard><UsuariosGestao /></AuthGuard>} />
+                              <Route path="/admin/usuarios-acessos" element={<AuthGuard><UsuariosGestao /></AuthGuard>} />
+                              <Route path="/governanca/perfis" element={<AuthGuard><PerfisPermissoes /></AuthGuard>} />
+                              <Route path="/governanca/auditoria" element={<AuthGuard><AuditoriaLogs /></AuthGuard>} />
+                              <Route path="/governanca/automacao" element={<AuthGuard><AutomacaoOperacional /></AuthGuard>} />
 
-                            <Route path="/configuracoes" element={<AuthGuard><Configuracoes /></AuthGuard>} />
+                              <Route path="/configuracoes" element={<AuthGuard><Configuracoes /></AuthGuard>} />
 
-                            {/* Development Tools */}
-                            <Route path="/styleguide" element={<Styleguide />} />
-                            <Route path="/diag-tenant" element={<DiagnosticoTenant />} />
-                            <Route path="/ux-lab" element={<UxLabDashboard />} />
-                            <Route path="/ux-lab/torre" element={<UxLabTorreOperacional />} />
-                            <Route path="/ux-lab/operacoes-volume" element={<UxLabOperacoesVolume />} />
-                            <Route path="/ux-lab/servicos-extras" element={<UxLabServicosExtras />} />
-                            <Route path="/ux-lab/custos-extras" element={<UxLabCustosExtras />} />
-                            <Route path="/ux-lab/aprovacoes" element={<UxLabAprovacoes />} />
-                            <Route path="/ux-lab/inconsistencias" element={<UxLabInconsistencias />} />
-                            <Route path="/ux-lab/fechamento-ciclos" element={<UxLabFechamentoCiclos />} />
-                            <Route path="/ux-lab/fechamento" element={<Navigate to="/ux-lab/fechamento-ciclos" replace />} />
-                            <Route path="/ux-lab/receitas" element={<UxLabReceitas />} />
-                            <Route path="/ux-lab/despesas" element={<UxLabDespesas />} />
-                            <Route path="/ux-lab/central-bancaria" element={<UxLabCentralBancaria />} />
-                            <Route path="/ux-lab/inadimplencia" element={<UxLabInadimplencia />} />
-                            <Route path="/ux-lab/dre" element={<UxLabDRE />} />
-                            <Route path="/ux-lab/relatorios" element={<UxLabRelatoriosHub />} />
-                            <Route path="/ux-lab/relatorios/:reportId" element={<UxLabRelatorioView />} />
-                            <Route path="/ux-lab/design-system" element={<UxLabDesignSystemShowcase />} />
-                            <Route path="/uxlab" element={<Navigate to="/ux-lab" replace />} />
-                            {import.meta.env.DEV && (
-                              <>
-                                <Route path="/dev/diaristas-drawers" element={<DevDiaristasDrawersPreview />} />
-                                <Route path="/dev/intermitentes-drawers" element={<DevIntermitentesDrawersPreview />} />
-                              </>
-                            )}
+                              {/* Development Tools */}
+                              <Route path="/styleguide" element={<Styleguide />} />
+                              <Route path="/diag-tenant" element={<DiagnosticoTenant />} />
+                              <Route path="/ux-lab" element={<UxLabDashboard />} />
+                              <Route path="/ux-lab/torre" element={<UxLabTorreOperacional />} />
+                              <Route path="/ux-lab/operacoes-volume" element={<UxLabOperacoesVolume />} />
+                              <Route path="/ux-lab/servicos-extras" element={<UxLabServicosExtras />} />
+                              <Route path="/ux-lab/custos-extras" element={<UxLabCustosExtras />} />
+                              <Route path="/ux-lab/aprovacoes" element={<UxLabAprovacoes />} />
+                              <Route path="/ux-lab/inconsistencias" element={<UxLabInconsistencias />} />
+                              <Route path="/ux-lab/fechamento-ciclos" element={<UxLabFechamentoCiclos />} />
+                              <Route path="/ux-lab/fechamento" element={<Navigate to="/ux-lab/fechamento-ciclos" replace />} />
+                              <Route path="/ux-lab/receitas" element={<UxLabReceitas />} />
+                              <Route path="/ux-lab/despesas" element={<UxLabDespesas />} />
+                              <Route path="/ux-lab/central-bancaria" element={<UxLabCentralBancaria />} />
+                              <Route path="/ux-lab/inadimplencia" element={<UxLabInadimplencia />} />
+                              <Route path="/ux-lab/dre" element={<UxLabDRE />} />
+                              <Route path="/ux-lab/relatorios" element={<UxLabRelatoriosHub />} />
+                              <Route path="/ux-lab/relatorios/:reportId" element={<UxLabRelatorioView />} />
+                              <Route path="/ux-lab/design-system" element={<UxLabDesignSystemShowcase />} />
+                              <Route path="/uxlab" element={<Navigate to="/ux-lab" replace />} />
+                              {import.meta.env.DEV && (
+                                <>
+                                  <Route path="/dev/diaristas-drawers" element={<DevDiaristasDrawersPreview />} />
+                                  <Route path="/dev/intermitentes-drawers" element={<DevIntermitentesDrawersPreview />} />
+                                </>
+                              )}
 
-                            <Route path="*" element={<NotFound />} />
-                          </Routes>
-                        </ErrorBoundary>
-                      </ContextualHelpProvider>
-                    </BrowserRouter>
+                              <Route path="*" element={<NotFound />} />
+                            </Routes>
+                          </ErrorBoundary>
+                        </ContextualHelpProvider>
+                      </BrowserRouter>
                     </TooltipProvider>
                   </OperationalPipelineProvider>
                 </SelectionProvider>

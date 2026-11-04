@@ -83,6 +83,7 @@ export const ACCESS_PRESETS: Record<AccessRole, PermissionMatrix> = {
     processamento_rh: allowActions(["ver", "processar", "aprovar", "exportar"]),
     cadastro_de_diaristas: allowActions(["ver", "criar", "editar", "exportar"]),
     fechamento_mensal: allowActions(["ver", "processar", "fechar", "reabrir"]),
+    central_de_relatorios: allowActions(["ver", "exportar"]),
   },
   financeiro: {
     central_financeira: allowActions(["ver", "criar", "editar", "aprovar", "exportar"]),

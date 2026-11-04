@@ -62,6 +62,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FerramentasContabeisMenu } from "@/pages/Relatorios/components/FerramentasContabeisMenu";
 import { useAccessControl } from "@/contexts/AccessControlContext";
 import { EmpresaService } from "@/services/base.service";
 import {
@@ -368,39 +369,17 @@ export default function CentralRelatoriosOficial() {
                 Dossiê da Competência
               </Button>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-9 gap-1.5 text-xs text-muted-foreground">
-                    <SlidersHorizontal className="h-3.5 w-3.5" />
-                    Ferramentas Contábeis
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                    Sincronização & Agendamentos
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/relatorios/integracao")}>
-                    <Activity className="h-3.5 w-3.5 mr-2 text-primary" /> Integração Contábil
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/relatorios/agendamentos")}>
-                    <Clock className="h-3.5 w-3.5 mr-2 text-primary" /> Agendamentos
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/relatorios/layouts")}>
-                    <Layers className="h-3.5 w-3.5 mr-2 text-primary" /> Layouts de Exportação
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/relatorios/mapeamento")}>
-                    <CheckCircle2 className="h-3.5 w-3.5 mr-2 text-primary" /> Mapeamento Contábil
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/relatorios/integracao/logs")}>
-                    <FileSpreadsheet className="h-3.5 w-3.5 mr-2 text-primary" /> Logs de Integração
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/relatorios/legado")} className="text-muted-foreground">
-                    <Clock className="h-3.5 w-3.5 mr-2" /> Central de Relatórios Legada
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-9 gap-1.5 text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 border border-primary/30"
+                onClick={() => navigate(`/relatorios?empresa=${empresaId}&competencia=${competencia}`)}
+              >
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                Nova Central v2.0
+              </Button>
+
+              <FerramentasContabeisMenu buttonClassName="h-9 gap-1.5 text-xs text-muted-foreground" />
             </div>
           </div>
         </div>
