@@ -97,18 +97,40 @@ function executeGetPortalClienteOperacoes(params: {
       // Não deletado
       if (op.deleted_at !== null) return false;
 
-      // Status autorizado para exposição externa
-      if (!["processado", "fechado"].includes(op.status)) return false;
+      // Status autorizado para exposição externa (case-insensitive)
+      const stUpper = (op.status || "").toUpperCase();
+      const authorizedStatuses = [
+        "RECEBIDO",
+        "AGUARDANDO_FATURAMENTO",
+        "FATURADO",
+        "CONCLUIDO",
+        "FECHADO",
+        "RECEBIDO_FINANCEIRO",
+        "PROCESSADO", // compatibilidade retroativa
+      ];
+      if (!authorizedStatuses.includes(stUpper)) return false;
 
       // Filtros opcionais
       if (params.dataInicio && op.data_operacao < params.dataInicio) return false;
       if (params.dataFim && op.data_operacao > params.dataFim) return false;
-      if (params.status && op.status !== params.status) return false;
+      if (params.status && op.status.toUpperCase() !== params.status.toUpperCase()) return false;
 
       return true;
     })
     .map((op) => {
       // 4. Projeção Sanitizada (OMISSÃO ESTRITA DE DADOS CONFIDENCIAIS)
+      const stUpper = (op.status || "").toUpperCase();
+      let status_operacional = "Em conferência";
+      if (["CONCLUIDO", "FECHADO", "RECEBIDO_FINANCEIRO", "PROCESSADO"].includes(stUpper)) {
+        status_operacional = "Concluído";
+      } else if (stUpper === "FATURADO") {
+        status_operacional = "Faturado";
+      } else if (stUpper === "AGUARDANDO_FATURAMENTO") {
+        status_operacional = "Concluído";
+      } else if (stUpper === "RECEBIDO") {
+        status_operacional = "Recebido";
+      }
+
       return {
         id: op.id,
         data_operacao: op.data_operacao,
@@ -118,7 +140,7 @@ function executeGetPortalClienteOperacoes(params: {
         ctrc: op.ctrc || "-",
         horario_inicio: op.entrada_ponto,
         horario_fim: op.saida_ponto,
-        status_operacional: op.status === "fechado" ? "Concluído / Faturado" : "Concluído",
+        status_operacional,
         observacao: op.observacao || "",
         // Garantia de que dados confidenciais nunca estarão presentes
       };

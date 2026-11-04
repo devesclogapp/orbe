@@ -35,19 +35,13 @@ export interface GetPortalOperacoesParams {
   offset?: number;
 }
 
-const OPERATIONAL_ELIGIBLE_STATUSES = [
-  "CONCLUIDO",
+export const OPERATIONAL_ELIGIBLE_STATUSES = [
   "RECEBIDO",
   "AGUARDANDO_FATURAMENTO",
   "FATURADO",
+  "CONCLUIDO",
   "FECHADO",
-  "PROCESSADO",
-  "concluido",
-  "recebido",
-  "aguardando_faturamento",
-  "faturado",
-  "fechado",
-  "processado",
+  "RECEBIDO_FINANCEIRO",
 ];
 
 export const PortalOperacionalService = {
@@ -144,7 +138,10 @@ export const PortalOperacionalService = {
       )
       .eq("empresa_id", empresaId)
       .is("deleted_at", null)
-      .in("status", OPERATIONAL_ELIGIBLE_STATUSES);
+      .in("status", [
+        ...OPERATIONAL_ELIGIBLE_STATUSES,
+        ...OPERATIONAL_ELIGIBLE_STATUSES.map((s) => s.toLowerCase()),
+      ]);
 
     if (params.dataInicio) {
       query = query.gte("data_operacao", params.dataInicio);
@@ -153,7 +150,7 @@ export const PortalOperacionalService = {
       query = query.lte("data_operacao", params.dataFim);
     }
     if (params.status) {
-      query = query.eq("status", params.status);
+      query = query.ilike("status", params.status);
     }
     if (params.tipoServicoId) {
       query = query.eq("tipo_servico_id", params.tipoServicoId);
@@ -174,10 +171,16 @@ export const PortalOperacionalService = {
 
     const rows: PortalOperacaoItem[] = (data || []).map((row: any) => {
       const stUpper = String(row.status || "").toUpperCase();
-      const status_operacional =
-        stUpper === "FECHADO" || stUpper === "FATURADO" || stUpper === "RECEBIDO"
-          ? "Concluído / Faturado"
-          : "Concluído";
+      let status_operacional = "Em conferência";
+      if (["CONCLUIDO", "FECHADO", "RECEBIDO_FINANCEIRO"].includes(stUpper)) {
+        status_operacional = "Concluído";
+      } else if (stUpper === "FATURADO") {
+        status_operacional = "Faturado";
+      } else if (stUpper === "AGUARDANDO_FATURAMENTO") {
+        status_operacional = "Concluído";
+      } else if (stUpper === "RECEBIDO") {
+        status_operacional = "Recebido";
+      }
 
       return {
         id: row.id,
@@ -231,7 +234,10 @@ export const PortalOperacionalService = {
       .select("quantidade, data_operacao")
       .eq("empresa_id", empresaId)
       .is("deleted_at", null)
-      .in("status", OPERATIONAL_ELIGIBLE_STATUSES)
+      .in("status", [
+        ...OPERATIONAL_ELIGIBLE_STATUSES,
+        ...OPERATIONAL_ELIGIBLE_STATUSES.map((s) => s.toLowerCase()),
+      ])
       .gte("data_operacao", inicioMes)
       .lte("data_operacao", fimMes);
 

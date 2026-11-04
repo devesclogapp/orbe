@@ -181,8 +181,10 @@ export const ClientReports = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os status</SelectItem>
-                  <SelectItem value="processado">Concluído</SelectItem>
-                  <SelectItem value="fechado">Faturado</SelectItem>
+                  <SelectItem value="RECEBIDO">Recebido</SelectItem>
+                  <SelectItem value="AGUARDANDO_FATURAMENTO">Aguardando Faturamento</SelectItem>
+                  <SelectItem value="CONCLUIDO">Concluído</SelectItem>
+                  <SelectItem value="FATURADO">Faturado</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -295,9 +297,23 @@ export const ClientReports = () => {
                       <td className="px-4 py-4 whitespace-nowrap">
                         <Badge
                           variant="outline"
-                          className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400"
+                          className={
+                            op.status_operacional === "Recebido"
+                              ? "text-[10px] bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400"
+                              : op.status_operacional === "Faturado"
+                              ? "text-[10px] bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-400"
+                              : "text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400"
+                          }
                         >
-                          <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600 shrink-0" />
+                          <CheckCircle2
+                            className={
+                              op.status_operacional === "Recebido"
+                                ? "w-3 h-3 mr-1 text-blue-600 shrink-0"
+                                : op.status_operacional === "Faturado"
+                                ? "w-3 h-3 mr-1 text-purple-600 shrink-0"
+                                : "w-3 h-3 mr-1 text-emerald-600 shrink-0"
+                            }
+                          />
                           {op.status_operacional}
                         </Badge>
                       </td>
@@ -385,7 +401,16 @@ export const ClientReports = () => {
                 <div>
                   <span className="text-[11px] font-medium text-muted-foreground uppercase">Status</span>
                   <div className="mt-0.5">
-                    <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">
+                    <Badge
+                      variant="outline"
+                      className={
+                        selectedOp.status_operacional === "Recebido"
+                          ? "text-[10px] bg-blue-50 text-blue-700 border-blue-200"
+                          : selectedOp.status_operacional === "Faturado"
+                          ? "text-[10px] bg-purple-50 text-purple-700 border-purple-200"
+                          : "text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200"
+                      }
+                    >
                       {selectedOp.status_operacional}
                     </Badge>
                   </div>
