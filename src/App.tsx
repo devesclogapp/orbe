@@ -155,7 +155,16 @@ const queryClient = new QueryClient({
 });
 
 const RootRedirect: React.FC = () => {
-  const { role } = useAccessControl();
+  const { role, loading } = useAccessControl();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   const destination = getDefaultRouteForRole(role);
   return <Navigate to={destination} replace />;
 };
@@ -260,7 +269,9 @@ const App = () => (
                             <Route path="/financeiro/contas-bancarias" element={<AuthGuard><ContasBancarias /></AuthGuard>} />
 
                             {/* Portal Cliente V3 */}
+                            <Route path="/cliente" element={<Navigate to="/cliente/dashboard" replace />} />
                             <Route path="/cliente/dashboard" element={<PortalGuard><ClientDashboard /></PortalGuard>} />
+                            <Route path="/cliente/operacoes" element={<PortalGuard><ClientReports /></PortalGuard>} />
                             <Route path="/cliente/relatorios" element={<PortalGuard><ClientReports /></PortalGuard>} />
                             <Route path="/cliente/aprovacoes" element={<PortalGuard><ClientApprovals /></PortalGuard>} />
 

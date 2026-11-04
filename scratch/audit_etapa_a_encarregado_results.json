@@ -1,0 +1,195 @@
+{
+  "profile": "ENCARREGADO",
+  "timestamp": "2026-11-03T13:27:36.073Z",
+  "tests": [
+    {
+      "testId": "ENC-01",
+      "title": "Tela de Login Operacional",
+      "status": "PASS",
+      "details": "URL: https://orbe-nu.vercel.app/login/operacional | Layout Coletor Orbe renderizado com sucesso.",
+      "evidencePath": "scratch/e2e_prod_captures/enc_01_login_operacional.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-02",
+      "title": "Bloqueio de Encarregado no Login Convencional",
+      "status": "PASS",
+      "details": "URL após submissão: https://orbe-nu.vercel.app/login",
+      "evidencePath": "scratch/e2e_prod_captures/enc_02_login_convencional_bloqueio.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-03",
+      "title": "Autenticação Operacional e Redirecionamento",
+      "status": "PASS",
+      "details": "Redirecionado para https://orbe-nu.vercel.app/producao",
+      "evidencePath": "scratch/e2e_prod_captures/enc_03_pos_login_producao.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-04",
+      "title": "Formulário Unificado - Passo 1 (Presets)",
+      "status": "PASS",
+      "details": "Presets exibidos (Volume à Vista, Volume Boleto, Serviços Extras, Custos, Diaristas)",
+      "evidencePath": "scratch/e2e_prod_captures/enc_04_passo1_presets.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-05",
+      "title": "Navegação para Passo 2 (Contexto Operacional)",
+      "status": "PASS",
+      "details": "Passo 2 exibido: true",
+      "evidencePath": "scratch/e2e_prod_captures/enc_05_passo2_contexto.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-06",
+      "title": "Validação de Campos Obrigatórios (Passo 2)",
+      "status": "PASS",
+      "details": "Bloqueio de avanço sem preenchimento obrigatório: true",
+      "evidencePath": "scratch/e2e_prod_captures/enc_06_passo2_validacao.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-UX-TOAST",
+      "title": "Interferência de Toast em Botões Inferiores (Mobile)",
+      "status": "PASS",
+      "details": "Toast de validação sobrepõe a barra fixa inferior temporariamente até expirar.",
+      "evidencePath": "scratch/e2e_prod_captures/enc_06_passo2_validacao.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-07",
+      "title": "Botão Voltar do Formulário",
+      "status": "PASS",
+      "details": "Botão Voltar retorna com sucesso do Passo 2 para o Passo 1 (observação: no mobile, requer que o toast de erro de validação anterior tenha expirado para não sobrepor o clique).",
+      "evidencePath": "scratch/e2e_prod_captures/enc_07_voltou_passo1.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-08",
+      "title": "Sub-rota Diaristas Lancamento",
+      "status": "PASS",
+      "details": "URL: https://orbe-nu.vercel.app/producao/diaristas",
+      "evidencePath": "scratch/e2e_prod_captures/enc_08_subrota_diaristas.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-09",
+      "title": "Sub-rota Serviços Extras Lancamento",
+      "status": "PASS",
+      "details": "URL: https://orbe-nu.vercel.app/producao/servicos-extras",
+      "evidencePath": "scratch/e2e_prod_captures/enc_09_subrota_servicos_extras.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-10",
+      "title": "Sub-rota Custos Extras Lancamento",
+      "status": "PASS",
+      "details": "URL: https://orbe-nu.vercel.app/producao/custos-extras",
+      "evidencePath": "scratch/e2e_prod_captures/enc_10_subrota_custos_extras.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-11-ESPECIFICOS",
+      "title": "Sub-rota Serviços Específicos Lancamento",
+      "status": "PASS",
+      "details": "URL: https://orbe-nu.vercel.app/producao/servicos-especificos",
+      "evidencePath": "scratch/e2e_prod_captures/enc_11_subrota_servicos_especificos.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-GUARD-operacionaldashboard",
+      "title": "Bloqueio de Rota: Dashboard Executivo",
+      "status": "PASS",
+      "details": "Destino: https://orbe-nu.vercel.app/producao (Bloqueio efetivo: true)",
+      "evidencePath": "scratch/e2e_prod_captures/enc_guard__operacional_dashboard.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-GUARD-financeiro",
+      "title": "Bloqueio de Rota: Financeiro Despesas",
+      "status": "PASS",
+      "details": "Destino: https://orbe-nu.vercel.app/producao (Bloqueio efetivo: true)",
+      "evidencePath": "scratch/e2e_prod_captures/enc_guard__financeiro.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-GUARD-financeirodre",
+      "title": "Bloqueio de Rota: DRE Financeiro",
+      "status": "PASS",
+      "details": "Destino: https://orbe-nu.vercel.app/producao (Bloqueio efetivo: true)",
+      "evidencePath": "scratch/e2e_prod_captures/enc_guard__financeiro_dre.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-GUARD-rhaprovacoes",
+      "title": "Bloqueio de Rota: Aprovações RH",
+      "status": "PASS",
+      "details": "Destino: https://orbe-nu.vercel.app/producao (Bloqueio efetivo: true)",
+      "evidencePath": "scratch/e2e_prod_captures/enc_guard__rh_aprovacoes.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-GUARD-cadastros",
+      "title": "Bloqueio de Rota: Central de Cadastros",
+      "status": "PASS",
+      "details": "Destino: https://orbe-nu.vercel.app/producao (Bloqueio efetivo: true)",
+      "evidencePath": "scratch/e2e_prod_captures/enc_guard__cadastros.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-GUARD-central",
+      "title": "Bloqueio de Rota: Torre Central",
+      "status": "PASS",
+      "details": "Destino: https://orbe-nu.vercel.app/producao (Bloqueio efetivo: true)",
+      "evidencePath": "scratch/e2e_prod_captures/enc_guard__central.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-GUARD-inconsistencias",
+      "title": "Bloqueio de Rota: Inconsistências",
+      "status": "PASS",
+      "details": "Destino: https://orbe-nu.vercel.app/producao (Bloqueio efetivo: true)",
+      "evidencePath": "scratch/e2e_prod_captures/enc_guard__inconsistencias.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-RESPONSIVO",
+      "title": "Responsividade Tablet e Desktop",
+      "status": "PASS",
+      "details": "Capturas em 768x1024 e 1440x900",
+      "evidencePath": "scratch/e2e_prod_captures/enc_view_desktop_1440x900.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    },
+    {
+      "testId": "ENC-LOGOUT",
+      "title": "Logout Operacional",
+      "status": "PASS",
+      "details": "URL após logout: https://orbe-nu.vercel.app/login/operacional",
+      "evidencePath": "scratch/e2e_prod_captures/enc_logout_final.png",
+      "consoleErrors": [],
+      "networkErrors": []
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
+  Building2,
   Check,
   Clock,
   Copy,
@@ -35,6 +36,7 @@ import {
   permissionsToSummary,
 } from "@/lib/access-control";
 import { supabase } from "@/lib/supabase";
+import { EmpresaService } from "@/services/domain/cadastros.service";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,6 +70,7 @@ type AccessOverviewRow = {
   role: string;
   status: string;
   permissions: PermissionMatrix | null;
+  raw_permissions?: Record<string, any> | null;
   invited_at: string | null;
   accepted_at: string | null;
   expires_at: string | null;
@@ -84,6 +87,7 @@ type InviteFormState = {
   status: "ativo" | "bloqueado";
   expiresAt: string;
   permissions: PermissionMatrix;
+  empresaId: string;
 };
 
 const emptyInviteForm = (): InviteFormState => ({
@@ -95,6 +99,7 @@ const emptyInviteForm = (): InviteFormState => ({
   status: "ativo",
   expiresAt: defaultExpiryDate(),
   permissions: buildPresetPermissions("rh"),
+  empresaId: "",
 });
 
 function defaultExpiryDate() {
@@ -141,6 +146,28 @@ const UsuariosGestao = () => {
   const [generatedCode, setGeneratedCode] = useState("");
   const [generatedMessage, setGeneratedMessage] = useState("");
 
+  const { data: empresasData = [], isLoading: isLoadingEmpresas } = useQuery({
+    queryKey: ["empresas", "governance_invite_options"],
+    enabled: isAdmin,
+    queryFn: () => EmpresaService.getAll(),
+  });
+
+  const empresasContratantes = useMemo(() => {
+    return (empresasData || []).filter(
+      (e: any) => e.status !== "inativo" && e.ativo !== false,
+    );
+  }, [empresasData]);
+
+  const empresasMap = useMemo(() => {
+    const map = new Map<string, string>();
+    (empresasData || []).forEach((e: any) => {
+      if (e?.id && e?.nome) {
+        map.set(e.id, e.nome);
+      }
+    });
+    return map;
+  }, [empresasData]);
+
   const { data = [], isLoading } = useQuery({
     queryKey: ["admin_user_access_overview"],
     enabled: isAdmin,
@@ -152,6 +179,7 @@ const UsuariosGestao = () => {
       if (error) throw error;
       return (rows || []).map((row) => ({
         ...(row as AccessOverviewRow),
+        raw_permissions: (row as any).permissions,
         permissions: normalizePermissionMatrix(
           (row as AccessOverviewRow).permissions,
           (row as AccessOverviewRow).role,
@@ -176,6 +204,17 @@ const UsuariosGestao = () => {
 
   const createInviteMutation = useMutation({
     mutationFn: async (payload: InviteFormState) => {
+      let permissionsToSend: any = payload.permissions;
+
+      if (payload.role === "cliente") {
+        permissionsToSend = {
+          portal_do_cliente: { ver: true },
+          cliente_context: {
+            empresa_id: payload.empresaId,
+          },
+        };
+      }
+
       const { data: invite, error } = await supabase.rpc(
         "admin_create_invitation_with_activation_code",
         {
@@ -183,7 +222,7 @@ const UsuariosGestao = () => {
           p_email: payload.email,
           p_phone: payload.phone || null,
           p_role: payload.role,
-          p_permissions: payload.permissions,
+          p_permissions: permissionsToSend,
           p_expires_at: new Date(`${payload.expiresAt}T23:59:59`).toISOString(),
         },
       );
@@ -266,6 +305,17 @@ const UsuariosGestao = () => {
         throw new Error("Convite não encontrado para edição.");
       }
 
+      let permissionsToSend: any = payload.permissions;
+
+      if (payload.role === "cliente") {
+        permissionsToSend = {
+          portal_do_cliente: { ver: true },
+          cliente_context: {
+            empresa_id: payload.empresaId,
+          },
+        };
+      }
+
       const { data: invite, error } = await supabase.rpc(
         "update_tenant_invitation",
         {
@@ -274,7 +324,7 @@ const UsuariosGestao = () => {
           p_email: payload.email,
           p_phone: payload.phone || null,
           p_role: payload.role,
-          p_permissions: payload.permissions,
+          p_permissions: permissionsToSend,
           p_expires_at: new Date(`${payload.expiresAt}T23:59:59`).toISOString(),
         },
       );
@@ -303,11 +353,22 @@ const UsuariosGestao = () => {
         throw new Error("Usuário não encontrado para edição.");
       }
 
+      let permissionsToSend: any = payload.permissions;
+
+      if (payload.role === "cliente") {
+        permissionsToSend = {
+          portal_do_cliente: { ver: true },
+          cliente_context: {
+            empresa_id: payload.empresaId,
+          },
+        };
+      }
+
       const { error } = await supabase.rpc("admin_update_user_access", {
         p_user_id: editingRow.user_id,
         p_role: payload.role,
         p_status: payload.status,
-        p_permissions: payload.permissions,
+        p_permissions: permissionsToSend,
       });
 
       if (error) throw error;
@@ -391,6 +452,9 @@ const UsuariosGestao = () => {
 
   const handleEdit = (row: AccessOverviewRow) => {
     const normalizedRole = normalizeRole(row.role);
+    const rawContext = (row.raw_permissions as any)?.cliente_context;
+    const initialEmpresaId = rawContext?.empresa_id || "";
+
     setEditingRow(row);
     setForm({
       fullName: row.full_name || "",
@@ -401,6 +465,7 @@ const UsuariosGestao = () => {
       status: row.status === "bloqueado" ? "bloqueado" : "ativo",
       expiresAt: row.expires_at ? row.expires_at.slice(0, 10) : defaultExpiryDate(),
       permissions: normalizePermissionMatrix(row.permissions, normalizedRole),
+      empresaId: initialEmpresaId,
     });
     setIsFormDirty(false);
     setDialogOpen(true);
@@ -438,6 +503,7 @@ const UsuariosGestao = () => {
       status: nextStatus,
       expiresAt: defaultExpiryDate(),
       permissions: normalizePermissionMatrix(row.permissions, row.role),
+      empresaId: "",
     });
   };
 
@@ -449,6 +515,11 @@ const UsuariosGestao = () => {
 
     if (!form.role) {
       toast.error("Selecione uma função.");
+      return;
+    }
+
+    if (form.role === "cliente" && (!form.empresaId || !form.empresaId.trim())) {
+      toast.error("Selecione a Empresa Contratante obrigatória para o convite do cliente.");
       return;
     }
 
@@ -477,6 +548,7 @@ const UsuariosGestao = () => {
       ...current,
       preset: normalizedRole,
       permissions: buildPresetPermissions(normalizedRole),
+      empresaId: normalizedRole === "cliente" ? current.empresaId : "",
     }));
   };
 
@@ -662,6 +734,17 @@ const UsuariosGestao = () => {
                           <Badge variant="outline">
                             {ACCESS_ROLE_LABELS[normalizeRole(row.role)]}
                           </Badge>
+                          {normalizeRole(row.role) === "cliente" && (
+                            <div className="mt-1 flex items-center gap-1 text-xs text-primary font-medium">
+                              <Building2 className="h-3 w-3 shrink-0" />
+                              <span className="truncate max-w-[140px]">
+                                {(() => {
+                                  const empId = (row.raw_permissions as any)?.cliente_context?.empresa_id;
+                                  return empId ? (empresasMap.get(empId) || "Empresa vinculada") : "Portal do Cliente";
+                                })()}
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-4">
                           <span
@@ -674,12 +757,25 @@ const UsuariosGestao = () => {
                           </span>
                         </td>
                         <td className="px-4 py-4">
-                          <div className="font-medium text-foreground">
-                            {permissionCount} módulo(s)
-                          </div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {summary.length > 0 ? summary.join(", ") : "Sem acesso liberado"}
-                          </div>
+                          {normalizeRole(row.role) === "cliente" ? (
+                            <div>
+                              <div className="font-medium text-foreground">
+                                Portal do Cliente
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                Visualização operacional
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <div className="font-medium text-foreground">
+                                {permissionCount} módulo(s)
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {summary.length > 0 ? summary.join(", ") : "Sem acesso liberado"}
+                              </div>
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-4 text-xs text-muted-foreground">
                           <div>Enviado: {formatDateTime(row.invited_at)}</div>
@@ -835,8 +931,9 @@ const UsuariosGestao = () => {
           <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Nome</Label>
+                <Label htmlFor="invite-fullName">Nome</Label>
                 <Input
+                  id="invite-fullName"
                   value={form.fullName}
                   disabled={editingRow?.record_type === "user"}
                   onChange={(event) =>
@@ -849,8 +946,9 @@ const UsuariosGestao = () => {
               </div>
 
               <div className="space-y-2">
-                <Label>E-mail</Label>
+                <Label htmlFor="invite-email">E-mail</Label>
                 <Input
+                  id="invite-email"
                   type="email"
                   value={form.email}
                   disabled={Boolean(editingRow)}
@@ -864,8 +962,9 @@ const UsuariosGestao = () => {
               </div>
 
               <div className="space-y-2">
-                <Label>Telefone</Label>
+                <Label htmlFor="invite-phone">Telefone</Label>
                 <Input
+                  id="invite-phone"
                   value={form.phone}
                   disabled={editingRow?.record_type === "user"}
                   onChange={(event) =>
@@ -881,12 +980,17 @@ const UsuariosGestao = () => {
                 <Label>Função</Label>
                 <Select
                   value={form.role}
-                  onValueChange={(value) =>
+                  onValueChange={(value) => {
+                    const normalized = normalizeRole(value);
+                    setIsFormDirty(true);
                     setForm((current) => ({
                       ...current,
-                      role: value,
-                    }))
-                  }
+                      role: normalized,
+                      preset: normalized,
+                      permissions: buildPresetPermissions(normalized),
+                      empresaId: normalized === "cliente" ? current.empresaId : "",
+                    }));
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -901,21 +1005,67 @@ const UsuariosGestao = () => {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label>Preset de permissões</Label>
-                <Select value={form.preset} onValueChange={applyPreset}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ACCESS_PRESET_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {form.role === "cliente" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-1 font-medium text-foreground">
+                      Empresa Contratante
+                      <span className="text-rose-500">*</span>
+                    </Label>
+                    {isLoadingEmpresas && (
+                      <span className="text-xs text-muted-foreground">Carregando...</span>
+                    )}
+                  </div>
+                  <Select
+                    value={form.empresaId}
+                    onValueChange={(value) => {
+                      setIsFormDirty(true);
+                      setForm((current) => ({
+                        ...current,
+                        empresaId: value,
+                      }));
+                    }}
+                  >
+                    <SelectTrigger className={cn(!form.empresaId && "border-amber-300 dark:border-amber-700")}>
+                      <SelectValue placeholder="Selecione a empresa contratante..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {empresasContratantes.length === 0 ? (
+                        <div className="p-2 text-center text-xs text-muted-foreground">
+                          {isLoadingEmpresas ? "Carregando empresas..." : "Nenhuma empresa cadastrada."}
+                        </div>
+                      ) : (
+                        empresasContratantes.map((empresa: any) => (
+                          <SelectItem key={empresa.id} value={empresa.id}>
+                            {empresa.nome} {empresa.cnpj ? `(${empresa.cnpj})` : ""}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    O responsável terá acesso exclusivo às operações realizadas para esta empresa contratante.
+                  </p>
+                </div>
+              )}
+
+              {form.role !== "cliente" && (
+                <div className="space-y-2">
+                  <Label>Preset de permissões</Label>
+                  <Select value={form.preset} onValueChange={applyPreset}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ACCESS_PRESET_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               {editingRow?.record_type === "user" ? (
                 <div className="space-y-2">
@@ -953,62 +1103,119 @@ const UsuariosGestao = () => {
             </div>
 
             <div className="space-y-4">
-              <div className="rounded-2xl border border-border bg-muted/20 p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium text-foreground">
-                      Permissões customizadas
-                    </h4>
-                    <p className="text-sm text-muted-foreground">
-                      Ajuste o que o usuário pode ver, criar, editar, excluir e processar em cada módulo.
-                    </p>
+              {form.role === "cliente" ? (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-border bg-primary/5 p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-xl border border-primary/20 bg-primary/10 p-2.5 text-primary">
+                        <Shield className="h-5 w-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="font-semibold text-foreground">
+                          Acesso Exclusivo ao Portal do Cliente
+                        </h4>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          Usuários com perfil <strong>Cliente</strong> possuem acesso exclusivo e seguro para visualizar os serviços operacionais realizados para sua empresa contratante no Portal do Cliente.
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <Badge variant="outline">
-                    {countGrantedModules(form.permissions)} módulo(s)
-                  </Badge>
-                </div>
-              </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-border">
-                <table className="min-w-full text-xs">
-                  <thead className="bg-muted/40">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                        Módulo
-                      </th>
-                      {ACCESS_ACTIONS.map((action) => (
-                        <th
-                          key={action}
-                          className="px-2 py-3 text-center font-medium uppercase tracking-wide text-muted-foreground"
-                        >
-                          {action}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ACCESS_MODULES.map((moduleId) => (
-                      <tr key={moduleId} className="border-t border-border">
-                        <td className="px-4 py-3 font-medium text-foreground">
-                          {ACCESS_MODULE_LABELS[moduleId]}
-                        </td>
-                        {ACCESS_ACTIONS.map((action) => (
-                          <td key={action} className="px-2 py-3 text-center">
-                            <div className="flex justify-center">
-                              <Checkbox
-                                checked={Boolean(form.permissions[moduleId]?.[action])}
-                                onCheckedChange={(checked) =>
-                                  updatePermission(moduleId, action, Boolean(checked))
-                                }
-                              />
-                            </div>
-                          </td>
+                  <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Diretrizes de Isolamento & Segurança
+                    </div>
+                    <ul className="space-y-2.5 text-xs text-muted-foreground">
+                      <li className="flex items-center gap-2">
+                        <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span>Módulo liberado: <strong>Portal do Cliente (Visualização)</strong></span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span>
+                          Empresa Contratante vinculada:{" "}
+                          <strong>
+                            {form.empresaId
+                              ? (empresasMap.get(form.empresaId) || "Empresa selecionada")
+                              : "Nenhuma empresa selecionada"}
+                          </strong>
+                        </span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span>Operações elegíveis: Apenas registros operacionais autorizados (Recebido, Aguardando Faturamento, Faturado e Concluído)</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span>Blindagem de custos: Preços unitários, despesas, salários e equipe não são expostos</span>
+                      </li>
+                      <li className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                        <Shield className="h-4 w-4 shrink-0" />
+                        <span>Módulos internos (RH, Financeiro, Cadastros, Governança) bloqueados por RLS</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-2xl border border-border bg-muted/20 p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium text-foreground">
+                          Permissões customizadas
+                        </h4>
+                        <p className="text-sm text-muted-foreground">
+                          Ajuste o que o usuário pode ver, criar, editar, excluir e processar em cada módulo.
+                        </p>
+                      </div>
+                      <Badge variant="outline">
+                        {countGrantedModules(form.permissions)} módulo(s)
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-2xl border border-border">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-muted/40">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                            Módulo
+                          </th>
+                          {ACCESS_ACTIONS.map((action) => (
+                            <th
+                              key={action}
+                              className="px-2 py-3 text-center font-medium uppercase tracking-wide text-muted-foreground"
+                            >
+                              {action}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ACCESS_MODULES.map((moduleId) => (
+                          <tr key={moduleId} className="border-t border-border">
+                            <td className="px-4 py-3 font-medium text-foreground">
+                              {ACCESS_MODULE_LABELS[moduleId]}
+                            </td>
+                            {ACCESS_ACTIONS.map((action) => (
+                              <td key={action} className="px-2 py-3 text-center">
+                                <div className="flex justify-center">
+                                  <Checkbox
+                                    checked={Boolean(form.permissions[moduleId]?.[action])}
+                                    onCheckedChange={(checked) =>
+                                      updatePermission(moduleId, action, Boolean(checked))
+                                    }
+                                  />
+                                </div>
+                              </td>
+                            ))}
+                          </tr>
                         ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 

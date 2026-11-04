@@ -22,7 +22,8 @@ import {
   Eye,
   RefreshCw,
   Loader2,
-  ShieldCheck
+  ShieldCheck,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -61,6 +62,7 @@ import { LoteFechamentoDiaristaService } from "@/services/domain/diaristas.servi
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
+import { useAccessControl } from "@/contexts/AccessControlContext";
 import { useOperationalPipeline, buildServicosExtrasPipeline } from "@/contexts/OperationalPipelineContext";
 import { cn } from "@/lib/utils";
 import { HelpTooltip } from "@/components/help/HelpTooltip";
@@ -135,6 +137,8 @@ const getMaisAntigoInfo = (pendentes: ApprovalItem[]) => {
 export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: string; lockedFlow?: boolean } = {}) {
   const { user } = useAuth();
   const { role, isAdmin } = useTenant();
+  const { canAccess, isAdmin: isAccessAdmin } = useAccessControl();
+  const canApprove = isAccessAdmin || isAdmin || canAccess("processamento_rh", "aprovar");
   const { openPipeline } = useOperationalPipeline();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -421,6 +425,10 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
 
   const aprovarMutation = useMutation({
     mutationFn: async (item: ApprovalItem) => {
+      if (!canApprove) {
+        throw new Error("Acesso não autorizado: seu usuário possui permissão exclusivamente de visualização.");
+      }
+
       // 1. DIARISTA (Validação canônica do lote pelo RH: diaristas_lotes_fechamento e lancamentos_diaristas para VALIDADO_RH)
       if (item.tipo === "DIARISTA") {
         const loteId = item.raw_lote_id || item.id;
@@ -543,6 +551,10 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
 
   const devolverMutation = useMutation({
     mutationFn: async ({ item, motivo }: { item: ApprovalItem; motivo?: string }) => {
+      if (!canApprove) {
+        throw new Error("Acesso não autorizado: seu usuário possui permissão exclusivamente de visualização.");
+      }
+
       // 1. DIARISTA (Devolução operacional do lote via reabrirPeriodo)
       if (item.tipo === "DIARISTA") {
         const loteId = item.raw_lote_id || item.id;
@@ -633,7 +645,12 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
   });
 
   // ── Ações em Lote ──
+  // Guarda anti-duplo clique estrita: disabled={aprovarMutation.isPending} e disabled={devolverMutation.isPending}
   const handleBulkAprovar = async () => {
+    if (!canApprove) {
+      toast.error("Acesso não autorizado: seu perfil possui permissão exclusivamente de visualização.");
+      return;
+    }
     const items = paginatedItems.filter((i) => selectedItems.includes(i.id));
     const aprovados: string[] = [];
     const falhas: string[] = [];
@@ -660,6 +677,10 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
   };
 
   const handleBulkDevolver = async () => {
+    if (!canApprove) {
+      toast.error("Acesso não autorizado: seu perfil possui permissão exclusivamente de visualização.");
+      return;
+    }
     const items = paginatedItems.filter((i) => selectedItems.includes(i.id));
     for (const item of items) {
       await devolverMutation.mutateAsync({ item }).catch(() => null);
@@ -739,8 +760,12 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
                   size="sm"
                   variant="outline"
                   onClick={handleBulkDevolver}
-                  disabled={devolverMutation.isPending}
-                  className="h-8 text-xs font-bold text-rose-700 border-rose-200 hover:bg-rose-50 dark:text-rose-400"
+                  disabled={devolverMutation.isPending || !canApprove}
+                  title={!canApprove ? "Seu usuário não possui permissão para devolver registros (somente leitura)" : undefined}
+                  className={cn(
+                    "h-8 text-xs font-bold text-rose-700 border-rose-200 hover:bg-rose-50 dark:text-rose-400",
+                    !canApprove && "opacity-50 cursor-not-allowed"
+                  )}
                 >
                   <RotateCcw className="w-3.5 h-3.5 mr-1" />
                   Devolver
@@ -748,8 +773,12 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
                 <Button
                   size="sm"
                   onClick={handleBulkAprovar}
-                  disabled={aprovarMutation.isPending}
-                  className="h-8 text-xs font-bold bg-[#2563EB] hover:bg-[#2563EB]/90 text-white"
+                  disabled={aprovarMutation.isPending || !canApprove}
+                  title={!canApprove ? "Seu usuário não possui permissão para aprovar registros (somente leitura)" : undefined}
+                  className={cn(
+                    "h-8 text-xs font-bold bg-[#2563EB] hover:bg-[#2563EB]/90 text-white",
+                    !canApprove && "opacity-50 cursor-not-allowed"
+                  )}
                 >
                   <Check className="w-3.5 h-3.5 mr-1" />
                   Aprovar
@@ -769,6 +798,15 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
             </Button>
           </div>
         </div>
+
+        {!canApprove && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50/90 dark:border-amber-900/40 dark:bg-amber-950/20 p-3.5 text-xs text-amber-900 dark:text-amber-200 flex items-center gap-2.5 shadow-sm">
+            <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              <strong>Modo Somente Leitura:</strong> Seu usuário possui permissão exclusivamente de visualização nesta Central de Aprovações. As ações de aprovação e devolução estão bloqueadas.
+            </span>
+          </div>
+        )}
 
         {/* 1. Indicadores Operacionais Compactos (4 Cards UX08) */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
@@ -1268,6 +1306,7 @@ export default function AprovacoesRh({ flowType, lockedFlow }: { flowType?: stri
         onDevolver={(item, motivo) => devolverMutation.mutate({ item, motivo })}
         isAprovando={aprovarMutation.isPending}
         isDevolvendo={devolverMutation.isPending}
+        canApprove={canApprove}
       />
     </AppShell>
   );

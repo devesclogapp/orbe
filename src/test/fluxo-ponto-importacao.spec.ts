@@ -353,4 +353,83 @@ describe("Fluxo de Importação de Pontos — Pré-Cadastro (P0-01)", () => {
     expect(result.empresasCriadas).toBe(0);
     expect(result.rowsWithColaboradorId.length).toBe(0);
   });
+
+  it("Cenário 4: Departamentos malformados (nulos, espaços, caracteres especiais) — isolados como INCONSISTENTE sem criar empresas", async () => {
+    ctx.existingEmpresas = [
+      { id: "emp-legitima-1", nome: "Empresa Legítima LTDA" },
+    ];
+
+    const rows: PontoPreCadastroRow[] = [
+      // Caso A: Departamento apenas com espaços em branco
+      {
+        colaborador_id: null,
+        empresa_id: null,
+        empresa_nome: "     ",
+        nome_colaborador: "Colaborador Espaços",
+        cpf_colaborador: "11100011100",
+        matricula_colaborador: "M01",
+        cargo_colaborador: "Operador",
+      },
+      // Caso B: Departamento somente com caracteres especiais / pontuação
+      {
+        colaborador_id: null,
+        empresa_id: null,
+        empresa_nome: "!!!@@@###$$$%%%",
+        nome_colaborador: "Colaborador Especiais",
+        cpf_colaborador: "22200022200",
+        matricula_colaborador: "M02",
+        cargo_colaborador: "Auxiliar",
+      },
+      // Caso C: Departamento nulo / undefined
+      {
+        colaborador_id: null,
+        empresa_id: null,
+        empresa_nome: null,
+        nome_colaborador: "Colaborador Nulo",
+        cpf_colaborador: "33300033300",
+        matricula_colaborador: "M03",
+        cargo_colaborador: "Conferente",
+      },
+      // Caso D: Linha com empresa_id órfão / inexistente no tenant
+      {
+        colaborador_id: null,
+        empresa_id: "emp-fantasma-inexistente",
+        empresa_nome: "Departamento Fantasma",
+        nome_colaborador: "Colaborador Fantasma",
+        cpf_colaborador: "44400044400",
+        matricula_colaborador: "M04",
+        cargo_colaborador: "Operador",
+      },
+    ];
+
+    const result = await ensurePreCadastrosFromImportedPontos(rows, "planilha", "ponto");
+
+    // Nenhuma empresa fictícia criada
+    expect(result.empresasCriadas).toBe(0);
+    expect(result.novosDetectados).toBe(0);
+    expect(result.preCadastrosCriados).toBe(0);
+
+    // Todos os 4 registros foram blindados e marcados como INCONSISTENTE
+    expect(result.rowsWithColaboradorId.length).toBe(4);
+
+    // Validações individuais de isolamento
+    result.rowsWithColaboradorId.forEach((row) => {
+      expect(row.colaborador_id).toBeNull();
+      expect(row.empresa_id).toBeNull();
+      expect((row as any).status_processamento).toBe("INCONSISTENTE");
+      expect((row as any).status).toBe("Pendente");
+      expect((row as any).motivo_inconsistencia).toBeTruthy();
+    });
+
+    // Caso A, B e C recebem aviso de ausente/malformado
+    expect((result.rowsWithColaboradorId[0] as any).motivo_inconsistencia).toContain("ausente ou malformado");
+    expect((result.rowsWithColaboradorId[1] as any).motivo_inconsistencia).toContain("ausente ou malformado");
+    expect((result.rowsWithColaboradorId[2] as any).motivo_inconsistencia).toContain("ausente ou malformado");
+
+    // Caso D recebe aviso de empresa/departamento não reconhecido
+    expect((result.rowsWithColaboradorId[3] as any).motivo_inconsistencia).toContain("Departamento Fantasma");
+
+    // Banco permaneceu 100% intocado
+    expect(ctx.insertedRecords.length).toBe(0);
+  });
 });

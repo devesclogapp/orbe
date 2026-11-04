@@ -313,7 +313,20 @@ const Cadastro = () => {
       setTimeout(() => navigate(redirectTarget), 1200);
     } catch (err: any) {
       console.error("[Onboarding] Erro na ativação:", err);
-      toast.error(err.message || "Erro ao ativar conta.");
+      const msg = err.message || "Erro ao ativar conta.";
+      toast.error(msg);
+
+      if (
+        msg.includes("validação prévia") ||
+        msg.includes("código") ||
+        msg.includes("temporário") ||
+        msg.includes("expirado")
+      ) {
+        setIsCodeVerified(false);
+        setVerificationProof(null);
+        setCode("");
+        setStep(2);
+      }
     } finally {
       setActivating(false);
     }
@@ -742,7 +755,11 @@ const Cadastro = () => {
               type="button"
               variant="outline"
               className="gap-1.5"
-              onClick={() => setStep(2)}
+              onClick={() => {
+                setIsCodeVerified(false);
+                setVerificationProof(null);
+                setStep(2);
+              }}
               disabled={activating}
             >
               <ArrowLeft className="h-4 w-4" />

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   X,
@@ -25,8 +25,10 @@ import {
   RefreshCw,
   FileEdit,
   ArrowRight,
-  UserX
+  UserX,
+  Lock,
 } from "lucide-react";
+import { AccessControlContext } from "@/contexts/AccessControlContext";
 import {
   Sheet,
   SheetContent,
@@ -87,6 +89,7 @@ interface AprovacaoDecisaoDrawerProps {
   onDevolver: (item: ApprovalItem, motivo: string) => void;
   isAprovando: boolean;
   isDevolvendo: boolean;
+  canApprove?: boolean;
   onOpenServicoExtraContinuity?: (item: ApprovalItem) => void;
 }
 
@@ -204,8 +207,11 @@ export function AprovacaoDecisaoDrawer({
   onDevolver,
   isAprovando,
   isDevolvendo,
+  canApprove,
 }: AprovacaoDecisaoDrawerProps) {
   const navigate = useNavigate();
+  const accessControl = useContext(AccessControlContext);
+  const effectiveCanApprove = canApprove ?? (accessControl ? accessControl.isAdmin || accessControl.canAccess("processamento_rh", "aprovar") : true);
   const [modalDevolucaoOpen, setModalDevolucaoOpen] = useState(false);
   const [motivoDevolucao, setMotivoDevolucao] = useState("");
 
@@ -300,6 +306,10 @@ export function AprovacaoDecisaoDrawer({
   const detailNotice = getOrigemRecursoStatusNotice(origemRecurso, item.situacao === "Aprovado");
 
   const handleConfirmarDevolucao = () => {
+    if (!effectiveCanApprove) {
+      toast.error("Acesso não autorizado: seu perfil possui permissão exclusivamente de visualização.");
+      return;
+    }
     if (!motivoDevolucao.trim()) return;
     onDevolver(item, motivoDevolucao);
     setModalDevolucaoOpen(false);
@@ -308,6 +318,10 @@ export function AprovacaoDecisaoDrawer({
   };
 
   const handleAprovarClick = () => {
+    if (!effectiveCanApprove) {
+      toast.error("Acesso não autorizado: seu perfil possui permissão exclusivamente de visualização.");
+      return;
+    }
     if (isFailClosedBloqueado) return;
     if (item.tipo === "DIARISTA" && !item.raw_lote_id && !item.id) {
       toast.error("Lote de fechamento de diaristas inválido para aprovação.");
@@ -416,6 +430,15 @@ export function AprovacaoDecisaoDrawer({
                 <span>Recebido: {fmtDate(item.data_rece_recebimento || item.data_recebimento)}</span>
               </div>
             </div>
+
+            {!effectiveCanApprove && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50/90 dark:border-amber-900/40 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-900 dark:text-amber-200 flex items-center gap-2">
+                <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  <strong>Modo Somente Leitura:</strong> Visualização autorizada. Ações de aprovação e devolução desabilitadas para o seu perfil.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Conteúdo Rolável */}
@@ -936,9 +959,13 @@ export function AprovacaoDecisaoDrawer({
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={isAprovando || isDevolvendo}
+                  disabled={!effectiveCanApprove || isAprovando || isDevolvendo}
+                  title={!effectiveCanApprove ? "Seu usuário não possui permissão para devolver registros (somente leitura)" : undefined}
                   onClick={() => setModalDevolucaoOpen(true)}
-                  className="flex-1 sm:flex-none text-xs font-bold border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                  className={cn(
+                    "flex-1 sm:flex-none text-xs font-bold border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40",
+                    !effectiveCanApprove && "opacity-50 cursor-not-allowed"
+                  )}
                 >
                   <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
                   Devolver
@@ -960,6 +987,16 @@ export function AprovacaoDecisaoDrawer({
                   {isOperacaoAguardandoAprovacaoOperacional
                     ? "Aguardando Aprovação Operacional"
                     : "Aprovação Bloqueada (Fail-Closed)"}
+                </Button>
+              ) : !effectiveCanApprove ? (
+                <Button
+                  size="sm"
+                  disabled
+                  title="Seu usuário possui permissão somente de visualização (sem permissão de aprovação)"
+                  className="flex-1 sm:flex-none text-xs font-bold bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+                >
+                  <Lock className="w-3.5 h-3.5 mr-1.5" />
+                  Aprovação Não Autorizada (Somente Leitura)
                 </Button>
               ) : (
                 <Button
@@ -1027,7 +1064,7 @@ export function AprovacaoDecisaoDrawer({
             <Button
               size="sm"
               onClick={handleConfirmarDevolucao}
-              disabled={!motivoDevolucao.trim() || isDevolvendo}
+              disabled={!motivoDevolucao.trim() || isDevolvendo || !effectiveCanApprove}
               className="text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white"
             >
               {isDevolvendo ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}

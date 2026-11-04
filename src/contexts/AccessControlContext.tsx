@@ -41,7 +41,7 @@ export const AccessControlProvider: React.FC<{ children: React.ReactNode }> = ({
   const { user, loading: authLoading } = useAuth();
   const { role: tenantRole, loading: tenantLoading } = useTenant();
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isPending, refetch } = useQuery({
     queryKey: ["user_access_control", user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
@@ -70,7 +70,8 @@ export const AccessControlProvider: React.FC<{ children: React.ReactNode }> = ({
     staleTime: 1000 * 60 * 2,
   });
 
-  const effectiveRole = normalizeRole(data?.role ?? tenantRole ?? "user");
+  const isAccessLoading = authLoading || tenantLoading || (!!user?.id ? (isLoading || isPending) : false);
+  const effectiveRole = isAccessLoading ? null : normalizeRole(data?.role ?? tenantRole ?? "user");
   const permissions = useMemo(() => {
     if (effectiveRole === "admin") {
       return buildPresetPermissions("admin");
@@ -85,17 +86,18 @@ export const AccessControlProvider: React.FC<{ children: React.ReactNode }> = ({
       role: effectiveRole,
       status,
       permissions,
-      loading: authLoading || tenantLoading || isLoading,
+      loading: isAccessLoading,
       isAdmin: effectiveRole === "admin",
       isBlocked: status === "bloqueado",
       canAccess: (moduleId: AccessModule, action: AccessAction = "ver") => {
+        if (isAccessLoading) return false;
         if (effectiveRole === "admin") return true;
         if (status === "bloqueado") return false;
         return canAccessModule(permissions, moduleId, action);
       },
       refetch,
     }),
-    [authLoading, effectiveRole, isLoading, permissions, refetch, status, tenantLoading],
+    [isAccessLoading, effectiveRole, permissions, refetch, status],
   );
 
   return (
