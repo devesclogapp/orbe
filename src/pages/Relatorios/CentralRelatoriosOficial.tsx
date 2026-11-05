@@ -379,7 +379,11 @@ export default function CentralRelatoriosOficial() {
                 Nova Central v2.0
               </Button>
 
-              <FerramentasContabeisMenu buttonClassName="h-9 gap-1.5 text-xs text-muted-foreground" />
+              <FerramentasContabeisMenu
+                empresaId={empresaId}
+                competencia={competencia}
+                buttonClassName="h-9 gap-1.5 text-xs text-muted-foreground"
+              />
             </div>
           </div>
         </div>

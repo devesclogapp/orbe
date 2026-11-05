@@ -2,6 +2,7 @@ import {
   Activity,
   AlertCircle,
   AlertTriangle,
+  ArrowRightLeft,
   Banknote,
   Calendar,
   CalendarCheck,
@@ -10,6 +11,8 @@ import {
   Database,
   ExternalLink,
   FileText,
+  FileSpreadsheet,
+  History,
   Layers,
   LayoutDashboard,
   LayoutGrid,
@@ -35,7 +38,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAccessControl } from "@/contexts/AccessControlContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { AccessModule } from "@/lib/access-control";
+import { AccessModule, normalizeRole } from "@/lib/access-control";
 import { cn } from "@/lib/utils";
 
 const SIDEBAR_SCROLL_KEY = "sidebar-scroll-position";
@@ -432,13 +435,61 @@ export const isRouteMatchingItem = (
   return false;
 };
 
+export const CONTADOR_SECTIONS: MenuGroup[] = [
+  {
+    id: "contabilidade",
+    title: "Ferramentas Contábeis",
+    icon: FileSpreadsheet,
+    items: [
+      {
+        id: "integracao-contabil",
+        label: "Integração Contábil",
+        to: "/relatorios/integracao",
+        icon: Activity,
+        end: true,
+      },
+      {
+        id: "mapeamento-contabil",
+        label: "Mapeamento De-Para",
+        to: "/relatorios/mapeamento",
+        icon: ArrowRightLeft,
+        end: true,
+      },
+      {
+        id: "logs-integracao",
+        label: "Logs de Integração",
+        to: "/relatorios/integracao/logs",
+        icon: History,
+        end: true,
+      },
+      {
+        id: "agendamentos-contabeis",
+        label: "Agendamentos",
+        to: "/relatorios/agendamentos",
+        icon: Clock,
+        end: true,
+      },
+      {
+        id: "layouts-exportacao",
+        label: "Layouts de Exportação",
+        to: "/relatorios/layouts",
+        icon: Layers,
+        end: true,
+      },
+    ],
+  },
+];
+
 const getInitialOpenGroups = (pathname: string): Record<string, boolean> => {
   try {
     const saved = localStorage.getItem(SIDEBAR_OPEN_GROUPS_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed && typeof parsed === "object") {
-        return parsed;
+        return {
+          contabilidade: true,
+          ...parsed,
+        };
       }
     }
   } catch (e) {
@@ -446,20 +497,24 @@ const getInitialOpenGroups = (pathname: string): Record<string, boolean> => {
   }
 
   // Padrão inteligente: abre o grupo correspondente à rota atual
-  const matched = SECTIONS.find((section) =>
+  const allGroups = [...SECTIONS, ...CONTADOR_SECTIONS];
+  const matched = allGroups.find((section) =>
     section.items.some((i) => isRouteMatchingItem(i.to, i.end, { pathname }))
   );
   return {
+    contabilidade: true,
     [matched ? matched.id : "operacoes-campo"]: true,
   };
 };
 
 export const Sidebar = () => {
   const { user, signOut } = useAuth();
-  const { canAccess, isAdmin } = useAccessControl();
+  const { canAccess, isAdmin, role } = useAccessControl();
   const { items: pulseItems } = useOperationalPulse();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const isContador = normalizeRole(role) === "contador";
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
     getInitialOpenGroups(location.pathname)
@@ -469,7 +524,8 @@ export const Sidebar = () => {
 
   // Garante que o grupo da rota atual esteja aberto quando o usuário navegar
   useEffect(() => {
-    const matched = SECTIONS.find((section) =>
+    const targetSections = isContador ? CONTADOR_SECTIONS : SECTIONS;
+    const matched = targetSections.find((section) =>
       section.items.some((i) => isRouteMatchingItem(i.to, i.end, location))
     );
     if (matched && !openSections[matched.id]) {
@@ -481,7 +537,7 @@ export const Sidebar = () => {
         return next;
       });
     }
-  }, [location.pathname, location.search]);
+  }, [location.pathname, location.search, isContador]);
 
   useEffect(() => {
     const savedScrollPosition = sessionStorage.getItem(SIDEBAR_SCROLL_KEY);
@@ -519,21 +575,25 @@ export const Sidebar = () => {
     });
 
   const visibleTopLevel = useMemo(
-    () =>
-      TOP_LEVEL_ITEMS.filter((item) => {
+    () => {
+      if (isContador) return [];
+      return TOP_LEVEL_ITEMS.filter((item) => {
         if (!item.module || isAdmin) return true;
         return canAccess(item.module);
-      }),
-    [canAccess, isAdmin]
+      });
+    },
+    [canAccess, isAdmin, isContador]
   );
 
   const visibleSections = useMemo(
-    () =>
-      SECTIONS.map((section) => {
+    () => {
+      if (isContador) return CONTADOR_SECTIONS;
+      return SECTIONS.map((section) => {
         const items = filterItems(section.items);
         return { ...section, items };
-      }).filter((section) => section.items.length > 0),
-    [canAccess, isAdmin]
+      }).filter((section) => section.items.length > 0);
+    },
+    [canAccess, isAdmin, isContador]
   );
 
   const userInitials = user?.user_metadata?.full_name
@@ -607,7 +667,7 @@ export const Sidebar = () => {
 
           {/* 2. Seções por Domínio de Trabalho */}
           {visibleSections.map((section) => {
-            const isCollapsed = !openSections[section.id];
+            const isCollapsed = isContador ? false : !openSections[section.id];
 
             return (
               <div key={section.id} className="space-y-1">
@@ -711,9 +771,16 @@ export const Sidebar = () => {
           {/* Cartão de Usuário Autenticado */}
           <div className="flex items-center justify-between rounded-lg border border-border/80 bg-background p-2 transition-colors">
             <button
-              onClick={() => navigate("/configuracoes?tab=conta")}
-              className="flex items-center gap-2.5 min-w-0 text-left flex-1"
-              title="Acessar preferências de conta"
+              onClick={() => {
+                if (!isContador) {
+                  navigate("/configuracoes?tab=conta");
+                }
+              }}
+              className={cn(
+                "flex items-center gap-2.5 min-w-0 text-left flex-1",
+                isContador ? "cursor-default" : "cursor-pointer"
+              )}
+              title={isContador ? "Perfil: Contador Interno (ESC Logística)" : "Acessar preferências de conta"}
             >
               <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted font-display text-xs font-bold text-foreground">
                 {user?.user_metadata?.avatar_url ? (

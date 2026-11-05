@@ -363,7 +363,7 @@ describe("CentralRelatoriosV2: Testes Funcionais da UI v2.0", () => {
   // --------------------------------------------------------------------------
   // 6. FERRAMENTAS CONTÁBEIS (REL-03.3)
   // --------------------------------------------------------------------------
-  it("deve exibir o menu 'Ferramentas Contábeis' no cabeçalho e manter as 6 opções desabilitadas com badges de governança", async () => {
+  it("deve exibir o menu 'Ferramentas Contábeis' no cabeçalho com 'Integração Contábil' ativa e demais opções com badges de governança", async () => {
     renderCentralV2();
 
     await waitFor(() => {
@@ -384,9 +384,9 @@ describe("CentralRelatoriosV2: Testes Funcionais da UI v2.0", () => {
       expect(screen.getByText("Central Legada")).toBeDefined();
     });
 
-    // Validar os badges de status correspondentes
-    const badgesEmBreve = screen.getAllByText("Em breve");
-    expect(badgesEmBreve.length).toBe(5);
+    // Validar os badges de status correspondentes (CONT-04: todas as 5 ferramentas ativas)
+    const badgesAtivo = screen.getAllByText("Ativo");
+    expect(badgesAtivo.length).toBeGreaterThanOrEqual(5);
 
     const badgeDesativada = screen.getByText("Desativada");
     expect(badgeDesativada).toBeDefined();

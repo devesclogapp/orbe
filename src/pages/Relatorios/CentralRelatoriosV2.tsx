@@ -525,18 +525,18 @@ export default function CentralRelatoriosV2() {
           icon: Package,
           color: "text-blue-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Cargas Realizadas",
-              subtitle: "Operações por Volume no Período",
-              metricLabel: "Total de Cargas Filtradas",
-              metricValue: `${totalCargas} cargas`,
-              description: "Total de registros operacionais de descargas lançados no intervalo temporal filtrado.",
-              sourceTable: "operacoes_producao",
-              breakdown: [
-                { label: "Cargas Filtradas", value: `${totalCargas}` },
-                { label: "Unidade Principal", value: rows[0]?.unidade || "Matriz" },
-                { label: "Total no Período (sem filtros)", value: `${activeRows.length}` },
-              ],
-            }),
+            title: "Auditoria de Cargas Realizadas",
+            subtitle: "Operações por Volume no Período",
+            metricLabel: "Total de Cargas Filtradas",
+            metricValue: `${totalCargas} cargas`,
+            description: "Total de registros operacionais de descargas lançados no intervalo temporal filtrado.",
+            sourceTable: "operacoes_producao",
+            breakdown: [
+              { label: "Cargas Filtradas", value: `${totalCargas}` },
+              { label: "Unidade Principal", value: rows[0]?.unidade || "Matriz" },
+              { label: "Total no Período (sem filtros)", value: `${activeRows.length}` },
+            ],
+          }),
         },
         {
           id: "r01-volume",
@@ -547,17 +547,17 @@ export default function CentralRelatoriosV2() {
           icon: Boxes,
           color: "text-emerald-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Volume Movimentado",
-              subtitle: "Soma de Caixas / Volumes Descarregados",
-              metricLabel: "Volume Total Filtrado",
-              metricValue: `${volumeTotal.toLocaleString("pt-BR")} cx`,
-              description: "Soma consolidada de caixas descarregadas segundo os filtros ativos.",
-              sourceTable: "operacoes_producao (quantidade)",
-              breakdown: [
-                { label: "Volume Filtrado", value: `${volumeTotal.toLocaleString("pt-BR")} cx` },
-                { label: "Média por Carga", value: `${Math.round(volumeTotal / (totalCargas || 1))} cx` },
-              ],
-            }),
+            title: "Auditoria de Volume Movimentado",
+            subtitle: "Soma de Caixas / Volumes Descarregados",
+            metricLabel: "Volume Total Filtrado",
+            metricValue: `${volumeTotal.toLocaleString("pt-BR")} cx`,
+            description: "Soma consolidada de caixas descarregadas segundo os filtros ativos.",
+            sourceTable: "operacoes_producao (quantidade)",
+            breakdown: [
+              { label: "Volume Filtrado", value: `${volumeTotal.toLocaleString("pt-BR")} cx` },
+              { label: "Média por Carga", value: `${Math.round(volumeTotal / (totalCargas || 1))} cx` },
+            ],
+          }),
         },
         {
           id: "r01-bruto",
@@ -567,17 +567,17 @@ export default function CentralRelatoriosV2() {
           icon: Wallet,
           color: "text-indigo-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria do Faturamento Bruto",
-              subtitle: "Valor Total das Descargas no Período",
-              metricLabel: "Faturamento Bruto Filtrado",
-              metricValue: formatBRL(totalBruto),
-              description: "Soma do valor total das operações antes de deduções ou retenções de impostos.",
-              sourceTable: "operacoes_producao (valor_total)",
-              breakdown: [
-                { label: "Bruto Filtrado", value: formatBRL(totalBruto) },
-                { label: "Insumos (Filme Stretch)", value: formatBRL(totalMateriais) },
-              ],
-            }),
+            title: "Auditoria do Faturamento Bruto",
+            subtitle: "Valor Total das Descargas no Período",
+            metricLabel: "Faturamento Bruto Filtrado",
+            metricValue: formatBRL(totalBruto),
+            description: "Soma do valor total das operações antes de deduções ou retenções de impostos.",
+            sourceTable: "operacoes_producao (valor_total)",
+            breakdown: [
+              { label: "Bruto Filtrado", value: formatBRL(totalBruto) },
+              { label: "Insumos (Filme Stretch)", value: formatBRL(totalMateriais) },
+            ],
+          }),
         },
         {
           id: "r01-materiais",
@@ -587,17 +587,17 @@ export default function CentralRelatoriosV2() {
           icon: Receipt,
           color: "text-amber-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Insumos e Materiais",
-              subtitle: "Consumo de Filme Stretch e Suprimentos",
-              metricLabel: "Total de Insumos Filtrados",
-              metricValue: formatBRL(totalMateriais),
-              description: "Total faturado ou apurado em materiais aplicados nas descargas e transbordos.",
-              sourceTable: "operacoes_producao (valor_total_materiais)",
-              breakdown: [
-                { label: "Total Materiais", value: formatBRL(totalMateriais) },
-                { label: "Proporção s/ Bruto", value: `${((totalMateriais / (totalBruto || 1)) * 100).toFixed(1)}%` },
-              ],
-            }),
+            title: "Auditoria de Insumos e Materiais",
+            subtitle: "Consumo de Filme Stretch e Suprimentos",
+            metricLabel: "Total de Insumos Filtrados",
+            metricValue: formatBRL(totalMateriais),
+            description: "Total faturado ou apurado em materiais aplicados nas descargas e transbordos.",
+            sourceTable: "operacoes_producao (valor_total_materiais)",
+            breakdown: [
+              { label: "Total Materiais", value: formatBRL(totalMateriais) },
+              { label: "Proporção s/ Bruto", value: `${((totalMateriais / (totalBruto || 1)) * 100).toFixed(1)}%` },
+            ],
+          }),
         },
       ];
     }
@@ -619,17 +619,17 @@ export default function CentralRelatoriosV2() {
           icon: CalendarDays,
           color: "text-purple-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Diárias Apuradas",
-              subtitle: "Consolidação de Diárias no Período",
-              metricLabel: "Total de Diárias",
-              metricValue: `${totalDiarias} diárias`,
-              description: "Total consolidado de diárias registradas e aprovadas para o fechamento semanal.",
-              sourceTable: "lancamentos_diaristas",
-              breakdown: [
-                { label: "Diárias Filtradas", value: `${totalDiarias}` },
-                { label: "Apontamentos Registrados", value: `${rows.length}` },
-              ],
-            }),
+            title: "Auditoria de Diárias Apuradas",
+            subtitle: "Consolidação de Diárias no Período",
+            metricLabel: "Total de Diárias",
+            metricValue: `${totalDiarias} diárias`,
+            description: "Total consolidado de diárias registradas e aprovadas para o fechamento semanal.",
+            sourceTable: "lancamentos_diaristas",
+            breakdown: [
+              { label: "Diárias Filtradas", value: `${totalDiarias}` },
+              { label: "Apontamentos Registrados", value: `${rows.length}` },
+            ],
+          }),
         },
         {
           id: "r02-total",
@@ -639,17 +639,17 @@ export default function CentralRelatoriosV2() {
           icon: Wallet,
           color: "text-rose-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Folha de Diaristas",
-              subtitle: "Consolidação Financeira a Liquidar",
-              metricLabel: "Total a Pagar",
-              metricValue: formatBRL(totalAPagar),
-              description: "Valor bruto devido aos diaristas nos lotes selecionados.",
-              sourceTable: "diaristas_lotes_fechamento + lancamentos_diaristas",
-              breakdown: [
-                { label: "Total Filtrado", value: formatBRL(totalAPagar) },
-                { label: "Valor Médio por Diária", value: formatBRL(diariaMedia) },
-              ],
-            }),
+            title: "Auditoria de Folha de Diaristas",
+            subtitle: "Consolidação Financeira a Liquidar",
+            metricLabel: "Total a Pagar",
+            metricValue: formatBRL(totalAPagar),
+            description: "Valor bruto devido aos diaristas nos lotes selecionados.",
+            sourceTable: "diaristas_lotes_fechamento + lancamentos_diaristas",
+            breakdown: [
+              { label: "Total Filtrado", value: formatBRL(totalAPagar) },
+              { label: "Valor Médio por Diária", value: formatBRL(diariaMedia) },
+            ],
+          }),
         },
         {
           id: "r02-media",
@@ -659,17 +659,17 @@ export default function CentralRelatoriosV2() {
           icon: CircleDollarSign,
           color: "text-indigo-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Diária Média",
-              subtitle: "Valor Médio Base por Diária Efetiva",
-              metricLabel: "Diária Média",
-              metricValue: formatBRL(diariaMedia),
-              description: "Custo médio apurado por diária individual executada.",
-              sourceTable: "lancamentos_diaristas (valor_calculado / quantidade)",
-              breakdown: [
-                { label: "Média Calculada", value: formatBRL(diariaMedia) },
-                { label: "Total Geral", value: formatBRL(totalAPagar) },
-              ],
-            }),
+            title: "Auditoria de Diária Média",
+            subtitle: "Valor Médio Base por Diária Efetiva",
+            metricLabel: "Diária Média",
+            metricValue: formatBRL(diariaMedia),
+            description: "Custo médio apurado por diária individual executada.",
+            sourceTable: "lancamentos_diaristas (valor_calculado / quantidade)",
+            breakdown: [
+              { label: "Média Calculada", value: formatBRL(diariaMedia) },
+              { label: "Total Geral", value: formatBRL(totalAPagar) },
+            ],
+          }),
         },
         {
           id: "r02-headcount",
@@ -680,17 +680,17 @@ export default function CentralRelatoriosV2() {
           icon: UserCheck,
           color: "text-emerald-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Headcount de Diaristas",
-              subtitle: "Colaboradores Únicos Ativos no Período",
-              metricLabel: "Diaristas Únicos",
-              metricValue: `${diaristasUnicos} colaboradores`,
-              description: "Quantidade de diaristas distintos com lançamentos no período.",
-              sourceTable: "colaboradores (tipo diarista)",
-              breakdown: [
-                { label: "Headcount Único", value: `${diaristasUnicos}` },
-                { label: "Média de Diárias/Diarista", value: `${(totalDiarias / (diaristasUnicos || 1)).toFixed(1)}` },
-              ],
-            }),
+            title: "Auditoria de Headcount de Diaristas",
+            subtitle: "Colaboradores Únicos Ativos no Período",
+            metricLabel: "Diaristas Únicos",
+            metricValue: `${diaristasUnicos} colaboradores`,
+            description: "Quantidade de diaristas distintos com lançamentos no período.",
+            sourceTable: "colaboradores (tipo diarista)",
+            breakdown: [
+              { label: "Headcount Único", value: `${diaristasUnicos}` },
+              { label: "Média de Diárias/Diarista", value: `${(totalDiarias / (diaristasUnicos || 1)).toFixed(1)}` },
+            ],
+          }),
         },
       ];
     }
@@ -715,17 +715,17 @@ export default function CentralRelatoriosV2() {
           icon: Wallet,
           color: "text-blue-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria do Livro de Receitas",
-              subtitle: "Receitas Reconhecidas no Período",
-              metricLabel: "Total Faturado",
-              metricValue: formatBRL(totalFaturado),
-              description: "Total de receitas contratuais emitidas e faturadas para a empresa.",
-              sourceTable: "receitas_operacionais",
-              breakdown: [
-                { label: "Total Faturado", value: formatBRL(totalFaturado) },
-                { label: "Títulos Emitidos", value: `${rows.length}` },
-              ],
-            }),
+            title: "Auditoria do Livro de Receitas",
+            subtitle: "Receitas Reconhecidas no Período",
+            metricLabel: "Total Faturado",
+            metricValue: formatBRL(totalFaturado),
+            description: "Total de receitas contratuais emitidas e faturadas para a empresa.",
+            sourceTable: "receitas_operacionais",
+            breakdown: [
+              { label: "Total Faturado", value: formatBRL(totalFaturado) },
+              { label: "Títulos Emitidos", value: `${rows.length}` },
+            ],
+          }),
         },
         {
           id: "r03-liquidado",
@@ -735,17 +735,17 @@ export default function CentralRelatoriosV2() {
           icon: CheckCircle2,
           color: "text-emerald-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Receitas Liquidadas",
-              subtitle: "Títulos com Baixa e Conciliação Bancária",
-              metricLabel: "Total Liquidado",
-              metricValue: formatBRL(liquidado),
-              description: "Valores efetivamente compensados e liquidados na conta da transportadora/empresa.",
-              sourceTable: "receitas_operacionais (status conciliado/recebido)",
-              breakdown: [
-                { label: "Total Liquidado", value: formatBRL(liquidado) },
-                { label: "Percentual Liquidado", value: `${((liquidado / (totalFaturado || 1)) * 100).toFixed(1)}%` },
-              ],
-            }),
+            title: "Auditoria de Receitas Liquidadas",
+            subtitle: "Títulos com Baixa e Conciliação Bancária",
+            metricLabel: "Total Liquidado",
+            metricValue: formatBRL(liquidado),
+            description: "Valores efetivamente compensados e liquidados na conta da transportadora/empresa.",
+            sourceTable: "receitas_operacionais (status conciliado/recebido)",
+            breakdown: [
+              { label: "Total Liquidado", value: formatBRL(liquidado) },
+              { label: "Percentual Liquidado", value: `${((liquidado / (totalFaturado || 1)) * 100).toFixed(1)}%` },
+            ],
+          }),
         },
         {
           id: "r03-pendente",
@@ -755,17 +755,17 @@ export default function CentralRelatoriosV2() {
           icon: Clock,
           color: "text-amber-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Títulos em Aberto",
-              subtitle: "Contas a Receber em Carteira",
-              metricLabel: "Total Pendente",
-              metricValue: formatBRL(pendente),
-              description: "Valores faturados aguardando vencimento, liquidação ou conciliação bancária.",
-              sourceTable: "receitas_operacionais (status pendente)",
-              breakdown: [
-                { label: "Total Pendente", value: formatBRL(pendente) },
-                { label: "Percentual em Aberto", value: `${((pendente / (totalFaturado || 1)) * 100).toFixed(1)}%` },
-              ],
-            }),
+            title: "Auditoria de Títulos em Aberto",
+            subtitle: "Contas a Receber em Carteira",
+            metricLabel: "Total Pendente",
+            metricValue: formatBRL(pendente),
+            description: "Valores faturados aguardando vencimento, liquidação ou conciliação bancária.",
+            sourceTable: "receitas_operacionais (status pendente)",
+            breakdown: [
+              { label: "Total Pendente", value: formatBRL(pendente) },
+              { label: "Percentual em Aberto", value: `${((pendente / (totalFaturado || 1)) * 100).toFixed(1)}%` },
+            ],
+          }),
         },
         {
           id: "r03-ticket",
@@ -775,17 +775,17 @@ export default function CentralRelatoriosV2() {
           icon: TrendingUp,
           color: "text-indigo-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Ticket Médio",
-              subtitle: "Valor Médio por Fatura Emitida",
-              metricLabel: "Ticket Médio",
-              metricValue: formatBRL(ticketMedio),
-              description: "Valor médio das notas fiscais e títulos financeiros gerados no período.",
-              sourceTable: "receitas_operacionais (valor_faturado / quantidade)",
-              breakdown: [
-                { label: "Ticket Médio", value: formatBRL(ticketMedio) },
-                { label: "Total de Faturas", value: `${rows.length}` },
-              ],
-            }),
+            title: "Auditoria de Ticket Médio",
+            subtitle: "Valor Médio por Fatura Emitida",
+            metricLabel: "Ticket Médio",
+            metricValue: formatBRL(ticketMedio),
+            description: "Valor médio das notas fiscais e títulos financeiros gerados no período.",
+            sourceTable: "receitas_operacionais (valor_faturado / quantidade)",
+            breakdown: [
+              { label: "Ticket Médio", value: formatBRL(ticketMedio) },
+              { label: "Total de Faturas", value: `${rows.length}` },
+            ],
+          }),
         },
       ];
     }
@@ -810,17 +810,17 @@ export default function CentralRelatoriosV2() {
           icon: Activity,
           color: "text-rose-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Despesas de Campo",
-              subtitle: "Custos Extras e Despesas Operacionais",
-              metricLabel: "Total de Despesas",
-              metricValue: formatBRL(totalDespesas),
-              description: "Soma de despesas operacionais e extraordinárias registradas no campo.",
-              sourceTable: "custos_extras_operacionais",
-              breakdown: [
-                { label: "Total Filtrado", value: formatBRL(totalDespesas) },
-                { label: "Lançamentos", value: `${rows.length}` },
-              ],
-            }),
+            title: "Auditoria de Despesas de Campo",
+            subtitle: "Custos Extras e Despesas Operacionais",
+            metricLabel: "Total de Despesas",
+            metricValue: formatBRL(totalDespesas),
+            description: "Soma de despesas operacionais e extraordinárias registradas no campo.",
+            sourceTable: "custos_extras_operacionais",
+            breakdown: [
+              { label: "Total Filtrado", value: formatBRL(totalDespesas) },
+              { label: "Lançamentos", value: `${rows.length}` },
+            ],
+          }),
         },
         {
           id: "r04-pago",
@@ -830,17 +830,17 @@ export default function CentralRelatoriosV2() {
           icon: CheckCircle2,
           color: "text-emerald-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Despesas Pagas",
-              subtitle: "Custos já Liquidados ou Reembolsados",
-              metricLabel: "Total Liquidado",
-              metricValue: formatBRL(pago),
-              description: "Custos extras quitados via transferência, caixinha ou reembolso aprovado.",
-              sourceTable: "custos_extras_operacionais (status PAGO)",
-              breakdown: [
-                { label: "Total Pago", value: formatBRL(pago) },
-                { label: "Percentual Liquidado", value: `${((pago / (totalDespesas || 1)) * 100).toFixed(1)}%` },
-              ],
-            }),
+            title: "Auditoria de Despesas Pagas",
+            subtitle: "Custos já Liquidados ou Reembolsados",
+            metricLabel: "Total Liquidado",
+            metricValue: formatBRL(pago),
+            description: "Custos extras quitados via transferência, caixinha ou reembolso aprovado.",
+            sourceTable: "custos_extras_operacionais (status PAGO)",
+            breakdown: [
+              { label: "Total Pago", value: formatBRL(pago) },
+              { label: "Percentual Liquidado", value: `${((pago / (totalDespesas || 1)) * 100).toFixed(1)}%` },
+            ],
+          }),
         },
         {
           id: "r04-pendente",
@@ -850,17 +850,17 @@ export default function CentralRelatoriosV2() {
           icon: AlertTriangle,
           color: "text-amber-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Custos Pendentes",
-              subtitle: "Despesas Aguardando Baixa ou Reembolso",
-              metricLabel: "Total Pendente",
-              metricValue: formatBRL(pendente),
-              description: "Custos extras em validação operacional ou pendentes de quitação financeira.",
-              sourceTable: "custos_extras_operacionais (status PENDENTE)",
-              breakdown: [
-                { label: "Total Pendente", value: formatBRL(pendente) },
-                { label: "Percentual Pendente", value: `${((pendente / (totalDespesas || 1)) * 100).toFixed(1)}%` },
-              ],
-            }),
+            title: "Auditoria de Custos Pendentes",
+            subtitle: "Despesas Aguardando Baixa ou Reembolso",
+            metricLabel: "Total Pendente",
+            metricValue: formatBRL(pendente),
+            description: "Custos extras em validação operacional ou pendentes de quitação financeira.",
+            sourceTable: "custos_extras_operacionais (status PENDENTE)",
+            breakdown: [
+              { label: "Total Pendente", value: formatBRL(pendente) },
+              { label: "Percentual Pendente", value: `${((pendente / (totalDespesas || 1)) * 100).toFixed(1)}%` },
+            ],
+          }),
         },
         {
           id: "r04-medio",
@@ -870,17 +870,17 @@ export default function CentralRelatoriosV2() {
           icon: CircleDollarSign,
           color: "text-indigo-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Custo Médio",
-              subtitle: "Valor Médio por Despesa Lançada",
-              metricLabel: "Custo Médio",
-              metricValue: formatBRL(custoMedio),
-              description: "Média aritmética das despesas de campo registradas.",
-              sourceTable: "custos_extras_operacionais (total / quantidade)",
-              breakdown: [
-                { label: "Custo Médio", value: formatBRL(custoMedio) },
-                { label: "Total de Lançamentos", value: `${rows.length}` },
-              ],
-            }),
+            title: "Auditoria de Custo Médio",
+            subtitle: "Valor Médio por Despesa Lançada",
+            metricLabel: "Custo Médio",
+            metricValue: formatBRL(custoMedio),
+            description: "Média aritmética das despesas de campo registradas.",
+            sourceTable: "custos_extras_operacionais (total / quantidade)",
+            breakdown: [
+              { label: "Custo Médio", value: formatBRL(custoMedio) },
+              { label: "Total de Lançamentos", value: `${rows.length}` },
+            ],
+          }),
         },
       ];
     }
@@ -901,17 +901,17 @@ export default function CentralRelatoriosV2() {
           icon: Clock,
           color: saldoTotal < 0 ? "text-rose-500" : "text-emerald-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Saldo de Banco de Horas",
-              subtitle: "Balanço Líquido Acumulado CLT",
-              metricLabel: "Saldo Líquido",
-              metricValue: formatMinutosToHourString(saldoTotal),
-              description: "Balanço temporal líquido acumulado entre horas positivas e horas negativas dos colaboradores CLT.",
-              sourceTable: "banco_horas_saldos",
-              breakdown: [
-                { label: "Saldo Líquido", value: formatMinutosToHourString(saldoTotal) },
-                { label: "Colaboradores Filtrados", value: `${rows.length}` },
-              ],
-            }),
+            title: "Auditoria de Saldo de Banco de Horas",
+            subtitle: "Balanço Líquido Acumulado CLT",
+            metricLabel: "Saldo Líquido",
+            metricValue: formatMinutosToHourString(saldoTotal),
+            description: "Balanço temporal líquido acumulado entre horas positivas e horas negativas dos colaboradores CLT.",
+            sourceTable: "banco_horas_saldos",
+            breakdown: [
+              { label: "Saldo Líquido", value: formatMinutosToHourString(saldoTotal) },
+              { label: "Colaboradores Filtrados", value: `${rows.length}` },
+            ],
+          }),
         },
         {
           id: "r05-creditos",
@@ -921,16 +921,16 @@ export default function CentralRelatoriosV2() {
           icon: TrendingUp,
           color: "text-emerald-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Créditos de Horas",
-              subtitle: "Horas Positivas Acumuladas no Banco",
-              metricLabel: "Total de Créditos",
-              metricValue: formatMinutosToHourString(creditosTotal),
-              description: "Total de horas extras creditadas em banco de horas e ainda não compensadas.",
-              sourceTable: "banco_horas_saldos (horas_positivas)",
-              breakdown: [
-                { label: "Créditos Acumulados", value: formatMinutosToHourString(creditosTotal) },
-              ],
-            }),
+            title: "Auditoria de Créditos de Horas",
+            subtitle: "Horas Positivas Acumuladas no Banco",
+            metricLabel: "Total de Créditos",
+            metricValue: formatMinutosToHourString(creditosTotal),
+            description: "Total de horas extras creditadas em banco de horas e ainda não compensadas.",
+            sourceTable: "banco_horas_saldos (horas_positivas)",
+            breakdown: [
+              { label: "Créditos Acumulados", value: formatMinutosToHourString(creditosTotal) },
+            ],
+          }),
         },
         {
           id: "r05-debitos",
@@ -940,16 +940,16 @@ export default function CentralRelatoriosV2() {
           icon: AlertTriangle,
           color: "text-rose-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Débitos de Horas",
-              subtitle: "Horas Negativas a Compensar",
-              metricLabel: "Total de Débitos",
-              metricValue: formatMinutosToHourString(debitosTotal),
-              description: "Total de atrasos e faltas que debitaram saldo de banco de horas.",
-              sourceTable: "banco_horas_saldos (horas_negativas)",
-              breakdown: [
-                { label: "Débitos Acumulados", value: formatMinutosToHourString(debitosTotal) },
-              ],
-            }),
+            title: "Auditoria de Débitos de Horas",
+            subtitle: "Horas Negativas a Compensar",
+            metricLabel: "Total de Débitos",
+            metricValue: formatMinutosToHourString(debitosTotal),
+            description: "Total de atrasos e faltas que debitaram saldo de banco de horas.",
+            sourceTable: "banco_horas_saldos (horas_negativas)",
+            breakdown: [
+              { label: "Débitos Acumulados", value: formatMinutosToHourString(debitosTotal) },
+            ],
+          }),
         },
         {
           id: "r05-vencer",
@@ -959,16 +959,16 @@ export default function CentralRelatoriosV2() {
           icon: Calendar,
           color: "text-amber-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Horas a Vencer",
-              subtitle: "Eventos Próximos da Validade Limite",
-              metricLabel: "Horas a Vencer (30d)",
-              metricValue: formatMinutosToHourString(aVencerTotal),
-              description: "Horas positivas acumuladas cujo prazo contratual de compensação expira nos próximos 30 dias.",
-              sourceTable: "banco_horas_eventos (data_vencimento <= 30d)",
-              breakdown: [
-                { label: "Horas a Vencer (30d)", value: formatMinutosToHourString(aVencerTotal) },
-              ],
-            }),
+            title: "Auditoria de Horas a Vencer",
+            subtitle: "Eventos Próximos da Validade Limite",
+            metricLabel: "Horas a Vencer (30d)",
+            metricValue: formatMinutosToHourString(aVencerTotal),
+            description: "Horas positivas acumuladas cujo prazo contratual de compensação expira nos próximos 30 dias.",
+            sourceTable: "banco_horas_eventos (data_vencimento <= 30d)",
+            breakdown: [
+              { label: "Horas a Vencer (30d)", value: formatMinutosToHourString(aVencerTotal) },
+            ],
+          }),
         },
       ];
     }
@@ -990,17 +990,17 @@ export default function CentralRelatoriosV2() {
           icon: Layers,
           color: "text-sky-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Volume de Serviços Extras",
-              subtitle: "Quantidade Física de Serviços Extras",
-              metricLabel: "Volume Total",
-              metricValue: `${volumeServicos.toLocaleString("pt-BR")} un`,
-              description: "Total de unidades de serviços extraordinários executados no período.",
-              sourceTable: "servicos_extras_operacionais (quantidade)",
-              breakdown: [
-                { label: "Volume Total", value: `${volumeServicos.toLocaleString("pt-BR")} un` },
-                { label: "Apontamentos", value: `${rows.length}` },
-              ],
-            }),
+            title: "Auditoria de Volume de Serviços Extras",
+            subtitle: "Quantidade Física de Serviços Extras",
+            metricLabel: "Volume Total",
+            metricValue: `${volumeServicos.toLocaleString("pt-BR")} un`,
+            description: "Total de unidades de serviços extraordinários executados no período.",
+            sourceTable: "servicos_extras_operacionais (quantidade)",
+            breakdown: [
+              { label: "Volume Total", value: `${volumeServicos.toLocaleString("pt-BR")} un` },
+              { label: "Apontamentos", value: `${rows.length}` },
+            ],
+          }),
         },
         {
           id: "r07-faturamento",
@@ -1010,17 +1010,17 @@ export default function CentralRelatoriosV2() {
           icon: Wallet,
           color: "text-blue-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Faturamento de Serviços Extras",
-              subtitle: "Receitas Extras Apuradas no Período",
-              metricLabel: "Total Faturado",
-              metricValue: formatBRL(totalBruto),
-              description: "Total apurado com transbordos, enlonamentos e serviços avulsos.",
-              sourceTable: "servicos_extras_operacionais (total)",
-              breakdown: [
-                { label: "Faturamento Filtrado", value: formatBRL(totalBruto) },
-                { label: "Ticket Médio", value: formatBRL(totalBruto / (rows.length || 1)) },
-              ],
-            }),
+            title: "Auditoria de Faturamento de Serviços Extras",
+            subtitle: "Receitas Extras Apuradas no Período",
+            metricLabel: "Total Faturado",
+            metricValue: formatBRL(totalBruto),
+            description: "Total apurado com transbordos, enlonamentos e serviços avulsos.",
+            sourceTable: "servicos_extras_operacionais (total)",
+            breakdown: [
+              { label: "Faturamento Filtrado", value: formatBRL(totalBruto) },
+              { label: "Ticket Médio", value: formatBRL(totalBruto / (rows.length || 1)) },
+            ],
+          }),
         },
         {
           id: "r07-concluidos",
@@ -1031,17 +1031,17 @@ export default function CentralRelatoriosV2() {
           icon: CheckCircle2,
           color: "text-emerald-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Pipeline Concluído",
-              subtitle: "Serviços com Ciclo Operacional Finalizado",
-              metricLabel: "Serviços Concluídos",
-              metricValue: `${concluidos} serviços`,
-              description: "Serviços extras aprovados e encaminhados para faturamento ou já concluídos.",
-              sourceTable: "servicos_extras_operacionais (pipeline_status CONCLUIDO/FATURADO)",
-              breakdown: [
-                { label: "Concluídos", value: `${concluidos}` },
-                { label: "Percentual", value: `${((concluidos / (rows.length || 1)) * 100).toFixed(1)}%` },
-              ],
-            }),
+            title: "Auditoria de Pipeline Concluído",
+            subtitle: "Serviços com Ciclo Operacional Finalizado",
+            metricLabel: "Serviços Concluídos",
+            metricValue: `${concluidos} serviços`,
+            description: "Serviços extras aprovados e encaminhados para faturamento ou já concluídos.",
+            sourceTable: "servicos_extras_operacionais (pipeline_status CONCLUIDO/FATURADO)",
+            breakdown: [
+              { label: "Concluídos", value: `${concluidos}` },
+              { label: "Percentual", value: `${((concluidos / (rows.length || 1)) * 100).toFixed(1)}%` },
+            ],
+          }),
         },
         {
           id: "r07-aberto",
@@ -1052,17 +1052,17 @@ export default function CentralRelatoriosV2() {
           icon: Clock,
           color: "text-amber-500",
           onOpenDrawer: () => handleOpenKpiDrawer({
-              title: "Auditoria de Pipeline em Aberto",
-              subtitle: "Serviços Pendentes de Aprovação ou Faturamento",
-              metricLabel: "Serviços em Aberto",
-              metricValue: `${emAberto} serviços`,
-              description: "Serviços extras lançados aguardando validação de campo ou aprovação financeira.",
-              sourceTable: "servicos_extras_operacionais (pipeline_status pendente/validação)",
-              breakdown: [
-                { label: "Em Aberto", value: `${emAberto}` },
-                { label: "Percentual", value: `${((emAberto / (rows.length || 1)) * 100).toFixed(1)}%` },
-              ],
-            }),
+            title: "Auditoria de Pipeline em Aberto",
+            subtitle: "Serviços Pendentes de Aprovação ou Faturamento",
+            metricLabel: "Serviços em Aberto",
+            metricValue: `${emAberto} serviços`,
+            description: "Serviços extras lançados aguardando validação de campo ou aprovação financeira.",
+            sourceTable: "servicos_extras_operacionais (pipeline_status pendente/validação)",
+            breakdown: [
+              { label: "Em Aberto", value: `${emAberto}` },
+              { label: "Percentual", value: `${((emAberto / (rows.length || 1)) * 100).toFixed(1)}%` },
+            ],
+          }),
         },
       ];
     }
@@ -1131,7 +1131,10 @@ export default function CentralRelatoriosV2() {
               Dossiê Consolidado
             </Button>
 
-            <FerramentasContabeisMenu />
+            <FerramentasContabeisMenu
+              empresaId={empresaId}
+              competencia={competencia}
+            />
 
             <Button
               variant="ghost"
@@ -1164,11 +1167,10 @@ export default function CentralRelatoriosV2() {
             {/* Item 0: Visão Geral / Dashboard */}
             <button
               onClick={() => handleSelectNav("dashboard")}
-              className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-all ${
-                activeReportId === "dashboard"
+              className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-all ${activeReportId === "dashboard"
                   ? "bg-primary text-primary-foreground shadow-xs"
                   : "text-foreground hover:bg-muted/60"
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2">
                 <LayoutDashboard className="h-4 w-4" />
@@ -1186,11 +1188,10 @@ export default function CentralRelatoriosV2() {
               {/* R01 */}
               <button
                 onClick={() => handleSelectNav("r01-operacoes-volume")}
-                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-all ${
-                  activeReportId === "r01-operacoes-volume"
+                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-all ${activeReportId === "r01-operacoes-volume"
                     ? "bg-primary/10 text-primary font-bold border border-primary/30"
                     : "text-foreground hover:bg-muted/50"
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2 truncate">
                   <Badge variant="outline" className="font-mono text-[10px] px-1 py-0 border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
@@ -1206,11 +1207,10 @@ export default function CentralRelatoriosV2() {
               {/* R04 */}
               <button
                 onClick={() => handleSelectNav("r04-custos-extras")}
-                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-all ${
-                  activeReportId === "r04-custos-extras"
+                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-all ${activeReportId === "r04-custos-extras"
                     ? "bg-primary/10 text-primary font-bold border border-primary/30"
                     : "text-foreground hover:bg-muted/50"
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2 truncate">
                   <Badge variant="outline" className="font-mono text-[10px] px-1 py-0 border-amber-500/30 text-amber-600 dark:text-amber-400">
@@ -1226,11 +1226,10 @@ export default function CentralRelatoriosV2() {
               {/* R07 */}
               <button
                 onClick={() => handleSelectNav("r07-servicos-extras")}
-                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-all ${
-                  activeReportId === "r07-servicos-extras"
+                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-all ${activeReportId === "r07-servicos-extras"
                     ? "bg-primary/10 text-primary font-bold border border-primary/30"
                     : "text-foreground hover:bg-muted/50"
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2 truncate">
                   <Badge variant="outline" className="font-mono text-[10px] px-1 py-0 border-sky-500/30 text-sky-600 dark:text-sky-400">
@@ -1267,11 +1266,10 @@ export default function CentralRelatoriosV2() {
               {/* R02 */}
               <button
                 onClick={() => handleSelectNav("r02-fechamento-diaristas")}
-                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-all ${
-                  activeReportId === "r02-fechamento-diaristas"
+                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-all ${activeReportId === "r02-fechamento-diaristas"
                     ? "bg-primary/10 text-primary font-bold border border-primary/30"
                     : "text-foreground hover:bg-muted/50"
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2 truncate">
                   <Badge variant="outline" className="font-mono text-[10px] px-1 py-0 border-purple-500/30 text-purple-600 dark:text-purple-400">
@@ -1287,11 +1285,10 @@ export default function CentralRelatoriosV2() {
               {/* R05 */}
               <button
                 onClick={() => handleSelectNav("r05-banco-horas")}
-                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-all ${
-                  activeReportId === "r05-banco-horas"
+                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-all ${activeReportId === "r05-banco-horas"
                     ? "bg-primary/10 text-primary font-bold border border-primary/30"
                     : "text-foreground hover:bg-muted/50"
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2 truncate">
                   <Badge variant="outline" className="font-mono text-[10px] px-1 py-0 border-indigo-500/30 text-indigo-600 dark:text-indigo-400">
@@ -1318,11 +1315,10 @@ export default function CentralRelatoriosV2() {
               {/* R03 */}
               <button
                 onClick={() => handleSelectNav("r03-faturamento-receitas")}
-                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-all ${
-                  activeReportId === "r03-faturamento-receitas"
+                className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between transition-all ${activeReportId === "r03-faturamento-receitas"
                     ? "bg-primary/10 text-primary font-bold border border-primary/30"
                     : "text-foreground hover:bg-muted/50"
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-2 truncate">
                   <Badge variant="outline" className="font-mono text-[10px] px-1 py-0 border-blue-500/30 text-blue-600 dark:text-blue-400">
@@ -1534,11 +1530,10 @@ export default function CentralRelatoriosV2() {
                           onClick={() => {
                             if (allowed) handleSelectNav(report.id);
                           }}
-                          className={`rounded-lg border p-3 flex flex-col justify-between transition-all ${
-                            allowed
+                          className={`rounded-lg border p-3 flex flex-col justify-between transition-all ${allowed
                               ? "border-border/60 hover:border-primary/50 hover:bg-muted/30 cursor-pointer"
                               : "border-border/30 opacity-60 cursor-not-allowed bg-muted/10"
-                          }`}
+                            }`}
                         >
                           <div>
                             <div className="flex items-center justify-between mb-1.5">

@@ -1,5 +1,6 @@
 import { BaseService } from './domain/base.service';
 import { supabase } from '@/lib/supabase';
+import { ContabilOficialService } from './contabilOficial.service';
 
 class AccountingServiceClass extends BaseService<'contabil_configuracao'> {
   constructor() {
@@ -7,31 +8,33 @@ class AccountingServiceClass extends BaseService<'contabil_configuracao'> {
   }
 
   async getMapeamentos(empresaId: string) {
-    const { data, error } = await supabase
-      .from('contabil_mapeamento')
-      .select('*')
-      .eq('empresa_id', empresaId);
-    if (error) throw error;
-    return data;
+    if (!empresaId || empresaId === "*") {
+      // Para retrocompatibilidade ou listagem geral
+      const { data, error } = await supabase
+        .from('contabil_mapeamento')
+        .select('*');
+      if (error) throw error;
+      return data || [];
+    }
+    return ContabilOficialService.getMapeamentos(empresaId);
   }
 
-  async getLogs() {
-    const { data, error } = await supabase
-      .from('contabil_logs_integracao')
-      .select('*')
-      .order('execucao_data', { ascending: false });
-    if (error) throw error;
-    return data;
+  async getLogs(empresaId?: string, competencia?: string) {
+    return ContabilOficialService.getLogs(empresaId, competencia);
   }
 
-  async triggerIntegration(tipo: string, sistema: string) {
-    // Simulação de gatilho de integração
+  async triggerIntegration(tipo: string, sistema: string, payload?: any) {
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData?.user?.id || null;
+
     const { data, error } = await supabase
       .from('contabil_logs_integracao')
       .insert({
         tipo_envio: tipo,
         sistema_destino: sistema,
-        status: 'sucesso', // No MVP simulamos sucesso
+        status: 'sucesso',
+        user_id: userId,
+        payload: payload || null,
       })
       .select()
       .single();

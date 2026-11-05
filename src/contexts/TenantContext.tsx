@@ -164,6 +164,10 @@ export const useTenant = () => {
   return context;
 };
 
+export const useOptionalTenant = () => {
+  return useContext(TenantContext);
+};
+
 export const useTenantFilter = () => {
   const { tenantId } = useTenant();
   return useMemo(() => {

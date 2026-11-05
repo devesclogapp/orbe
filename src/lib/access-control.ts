@@ -49,7 +49,8 @@ export type AccessRole =
   | "encarregado"
   | "gestor"
   | "user"
-  | "cliente";
+  | "cliente"
+  | "contador";
 
 type PartialPermissionSet = Partial<Record<AccessAction, boolean>>;
 
@@ -61,6 +62,7 @@ export const ACCESS_ROLE_LABELS: Record<AccessRole, string> = {
   gestor: "Gestor",
   user: "Usuário",
   cliente: "Cliente (Portal)",
+  contador: "Contador",
 };
 
 const allowAllActions = (): PartialPermissionSet =>
@@ -116,6 +118,9 @@ export const ACCESS_PRESETS: Record<AccessRole, PermissionMatrix> = {
   cliente: {
     portal_do_cliente: allowActions(["ver"]),
   },
+  contador: {
+    central_de_relatorios: allowActions(["ver", "exportar"]),
+  },
 };
 
 export const ACCESS_PRESET_OPTIONS: Array<{ value: AccessRole; label: string }> = [
@@ -126,6 +131,7 @@ export const ACCESS_PRESET_OPTIONS: Array<{ value: AccessRole; label: string }> 
   { value: "gestor", label: "Gestor" },
   { value: "user", label: "Personalizado" },
   { value: "cliente", label: "Cliente (Portal)" },
+  { value: "contador", label: "Contador" },
 ];
 
 export const ACCESS_MODULE_LABELS: Record<AccessModule, string> = {
@@ -251,6 +257,7 @@ export function normalizeRole(role: string | null | undefined): AccessRole {
   if (normalized === "encarregado") return "encarregado";
   if (normalized === "gestor") return "gestor";
   if (normalized === "cliente") return "cliente";
+  if (normalized === "contador") return "contador";
 
   return "user";
 }
@@ -331,6 +338,9 @@ export function getDefaultRouteForRole(role?: string | null): string {
   if (normalizedRole === "cliente") {
     return "/cliente/dashboard";
   }
+  if (normalizedRole === "contador") {
+    return "/relatorios/integracao";
+  }
   return "/operacional/dashboard";
 }
 
@@ -350,6 +360,9 @@ export function getAccessDeniedFallbackRoute(role?: string | null): string {
   }
   if (normalizedRole === "cliente") {
     return "/cliente/dashboard";
+  }
+  if (normalizedRole === "contador") {
+    return "/relatorios/integracao";
   }
   return "/operacional/dashboard";
 }
@@ -394,5 +407,24 @@ export function isRouteForbiddenForRole(role: string | null | undefined, pathnam
     // Bloqueia qualquer rota interna administrativa/RH/Financeira/Operacional
     return true;
   }
+
+  if (normalizedRole === "contador") {
+    // O perfil CONTADOR acessa exclusivamente as cinco ferramentas contábeis
+    const allowedContadorPrefixes = [
+      "/relatorios/integracao",
+      "/relatorios/mapeamento",
+      "/relatorios/agendamentos",
+      "/relatorios/layouts",
+      "/relatorios/logs",
+    ];
+
+    const isExplicitlyAllowed = allowedContadorPrefixes.some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+    );
+
+    // Se NÃO for uma das ferramentas contábeis, bloqueia (inclusive /relatorios e /relatorios/v2)
+    return !isExplicitlyAllowed;
+  }
   return false;
 }
+

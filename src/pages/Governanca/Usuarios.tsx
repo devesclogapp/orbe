@@ -11,6 +11,7 @@ import {
   Mail,
   Pencil,
   Plus,
+  Receipt,
   RefreshCw,
   Shield,
   UserCheck,
@@ -21,6 +22,7 @@ import { toast } from "sonner";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { useAccessControl } from "@/contexts/AccessControlContext";
+import { useOptionalTenant } from "@/contexts/TenantContext";
 import {
   ACCESS_ACTIONS,
   ACCESS_MODULES,
@@ -123,6 +125,25 @@ function buildInviteLink(token: string) {
   return `${window.location.origin}/cadastro?token=${encodeURIComponent(token)}`;
 }
 
+export function formatOfficialInviteMessage(params: {
+  fullName?: string | null;
+  tenantName?: string | null;
+  link: string;
+  code?: string | null;
+}): string {
+  const recipientName = params.fullName?.trim() || "colaborador";
+
+  // Nome institucional oficial da ESC Logística, eliminando placeholders genéricos como "Minha Empresa"
+  const isGenericTenant = !params.tenantName || /minha\s*empresa/i.test(params.tenantName.trim());
+  const companyName = isGenericTenant ? "ESC Logística" : params.tenantName!.trim();
+
+  const codeInstruction = params.code
+    ? `\n\n2. Informe o seu Código de Ativação temporário:\n${params.code}\n\n3. Crie sua senha de acesso pessoal.\n\nAtenção: Por razões de segurança, este código expira em 10 minutos. Caso você não reconheça este convite, desconsidere esta mensagem.`
+    : `\n\n2. Crie sua senha de acesso pessoal.\n\nCaso você não reconheça este convite, desconsidere esta mensagem.`;
+
+  return `Olá, ${recipientName}!\n\nVocê foi convidado para acessar a plataforma ORBE pela empresa ${companyName}.\n\nPara ativar sua conta com segurança, siga os passos abaixo:\n\n1. Acesse o link de ativação:\n${params.link}${codeInstruction}`;
+}
+
 const statusStyles: Record<string, string> = {
   ativo: "bg-emerald-100 text-emerald-800 border-emerald-200",
   pendente: "bg-amber-100 text-amber-800 border-amber-200",
@@ -136,6 +157,8 @@ const tableActionButtonClass =
 const UsuariosGestao = () => {
   const queryClient = useQueryClient();
   const { isAdmin, refetch: refetchAccess } = useAccessControl();
+  const tenantContext = useOptionalTenant();
+  const currentTenantName = tenantContext?.tenant?.name;
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [resultOpen, setResultOpen] = useState(false);
@@ -215,6 +238,12 @@ const UsuariosGestao = () => {
         };
       }
 
+      if (payload.role === "contador") {
+        permissionsToSend = {
+          central_de_relatorios: { ver: true, exportar: true },
+        };
+      }
+
       const { data: invite, error } = await supabase.rpc(
         "admin_create_invitation_with_activation_code",
         {
@@ -236,14 +265,18 @@ const UsuariosGestao = () => {
         full_name?: string;
       };
     },
-    onSuccess: async (invite) => {
+    onSuccess: async (invite, variables) => {
       const link = buildInviteLink(invite.token);
       setGeneratedLink(link);
       setGeneratedCode(invite.code);
-      const rawMsg = invite.invitation_message || "";
-      const fullUrlMessage = rawMsg.includes("/cadastro?token=")
-        ? rawMsg.replace("/cadastro?token=", `${window.location.origin}/cadastro?token=`)
-        : `Olá, ${invite.full_name || "colaborador"}!\n\nVocê foi convidado para acessar a plataforma ORBE pela empresa ${invite.tenant_name || ""}.\n\nPara ativar sua conta com segurança, siga os passos abaixo:\n\n1. Acesse o link de ativação:\n${link}\n\n2. Informe o seu Código de Ativação temporário:\n${invite.code}\n\n3. Crie sua senha de acesso pessoal.\n\nAtenção: Por razões de segurança, este código expira em 10 minutos. Caso você não reconheça este convite, desconsidere esta mensagem.`;
+      const recipientName = variables.fullName || invite.full_name;
+      const tenantName = invite.tenant_name || currentTenantName;
+      const fullUrlMessage = formatOfficialInviteMessage({
+        fullName: recipientName,
+        tenantName,
+        link,
+        code: invite.code,
+      });
       setGeneratedMessage(fullUrlMessage);
       setIsFormDirty(false);
       setResultOpen(true);
@@ -279,14 +312,16 @@ const UsuariosGestao = () => {
         token: row.token,
       };
     },
-    onSuccess: async (data) => {
+    onSuccess: async (data, variables) => {
       const link = data.token ? buildInviteLink(data.token) : "";
       setGeneratedLink(link);
       setGeneratedCode(data.code);
-      const rawMsg = data.invitation_message || "";
-      const fullUrlMessage = rawMsg.includes("/cadastro?token=")
-        ? rawMsg.replace("/cadastro?token=", `${window.location.origin}/cadastro?token=`)
-        : rawMsg;
+      const fullUrlMessage = formatOfficialInviteMessage({
+        fullName: variables.full_name,
+        tenantName: currentTenantName,
+        link,
+        code: data.code,
+      });
       setGeneratedMessage(fullUrlMessage);
       setResultOpen(true);
       await queryClient.invalidateQueries({ queryKey: ["admin_user_access_overview"] });
@@ -313,6 +348,12 @@ const UsuariosGestao = () => {
           cliente_context: {
             empresa_id: payload.empresaId,
           },
+        };
+      }
+
+      if (payload.role === "contador") {
+        permissionsToSend = {
+          central_de_relatorios: { ver: true, exportar: true },
         };
       }
 
@@ -364,6 +405,12 @@ const UsuariosGestao = () => {
         };
       }
 
+      if (payload.role === "contador") {
+        permissionsToSend = {
+          central_de_relatorios: { ver: true, exportar: true },
+        };
+      }
+
       const { error } = await supabase.rpc("admin_update_user_access", {
         p_user_id: editingRow.user_id,
         p_role: payload.role,
@@ -410,9 +457,16 @@ const UsuariosGestao = () => {
       if (error) throw error;
       return invite as { token: string };
     },
-    onSuccess: async (invite) => {
+    onSuccess: async (invite, variables) => {
       const link = buildInviteLink(invite.token);
       setGeneratedLink(link);
+      setGeneratedCode("");
+      const fullUrlMessage = formatOfficialInviteMessage({
+        fullName: variables.full_name,
+        tenantName: currentTenantName,
+        link,
+      });
+      setGeneratedMessage(fullUrlMessage);
       setResultOpen(true);
       await queryClient.invalidateQueries({ queryKey: ["admin_user_access_overview"] });
       toast.success("Convite renovado com sucesso.");
@@ -745,6 +799,12 @@ const UsuariosGestao = () => {
                               </span>
                             </div>
                           )}
+                          {normalizeRole(row.role) === "contador" && (
+                            <div className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground font-medium">
+                              <Receipt className="h-3 w-3 shrink-0 text-primary" />
+                              <span>ESC Logística (Interno)</span>
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-4">
                           <span
@@ -764,6 +824,15 @@ const UsuariosGestao = () => {
                               </div>
                               <div className="mt-1 text-xs text-muted-foreground">
                                 Visualização operacional
+                              </div>
+                            </div>
+                          ) : normalizeRole(row.role) === "contador" ? (
+                            <div>
+                              <div className="font-medium text-foreground">
+                                Ferramentas Contábeis
+                              </div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                5 ferramentas oficiais (Tenant)
                               </div>
                             </div>
                           ) : (
@@ -1152,6 +1221,44 @@ const UsuariosGestao = () => {
                       <li className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
                         <Shield className="h-4 w-4 shrink-0" />
                         <span>Módulos internos (RH, Financeiro, Cadastros, Governança) bloqueados por RLS</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              ) : form.role === "contador" ? (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-xl border border-primary/20 bg-primary/10 p-2.5 text-primary">
+                        <Shield className="h-5 w-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="font-semibold text-foreground">
+                          Contador Interno — ESC Logística (CONT-07.2)
+                        </h4>
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          Profissional contábil da própria ESC Logística. Possui acesso exclusivo às 5 ferramentas contábeis, podendo consolidar e auditar lançamentos de todas as empresas do tenant da organização.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+                    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Diretrizes de Governança & Blindagem
+                    </div>
+                    <ul className="space-y-2.5 text-xs text-muted-foreground">
+                      <li className="flex items-center gap-2">
+                        <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span>Módulos autorizados: <strong>Integração Contábil, Mapeamento De-Para, Logs, Agendamentos e Layouts</strong></span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span>Escopo de dados: <strong>Todas as empresas clientes e operações vinculadas ao tenant ESC Logística</strong></span>
+                      </li>
+                      <li className="flex items-center gap-2 text-rose-700 dark:text-rose-400">
+                        <Shield className="h-4 w-4 shrink-0" />
+                        <span>Módulos restritos: Dashboard geral, RH, Financeiro interno, Operações e Cadastros</span>
                       </li>
                     </ul>
                   </div>

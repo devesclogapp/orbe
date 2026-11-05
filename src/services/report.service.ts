@@ -35,23 +35,40 @@ class ReportServiceClass extends BaseService<'relatorios_catalogo'> {
     }
   }
 
-  async getAgendamentos() {
-    const { data, error } = await supabase
+  async getAgendamentos(empresaId?: string) {
+    let query = supabase
       .from('relatorios_agendamentos')
-      .select('*, relatorios_catalogo(nome)')
+      .select('*')
       .order('created_at', { ascending: false });
+
+    if (empresaId && empresaId !== 'TODAS') {
+      query = query.or(`empresa_id.eq.${empresaId},empresa_id.is.null`);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
-    return data;
+    return data || [];
   }
 
   async createAgendamento(data: any) {
-    const { error } = await supabase.from('relatorios_agendamentos').insert(data);
+    const { data: inserted, error } = await supabase
+      .from('relatorios_agendamentos')
+      .insert(data)
+      .select()
+      .single();
     if (error) throw error;
+    return inserted;
   }
 
   async updateAgendamento(id: string, data: any) {
-    const { error } = await supabase.from('relatorios_agendamentos').update(data).eq('id', id);
+    const { data: updated, error } = await supabase
+      .from('relatorios_agendamentos')
+      .update(data)
+      .eq('id', id)
+      .select()
+      .single();
     if (error) throw error;
+    return updated;
   }
 
   async deleteAgendamento(id: string) {
@@ -67,8 +84,19 @@ class LayoutServiceClass extends BaseService<'relatorios_layouts_exportacao'> {
     super('relatorios_layouts_exportacao');
   }
 
-  async getLayouts() {
-    return this.getAll();
+  async getLayouts(empresaId?: string) {
+    let query = supabase
+      .from('relatorios_layouts_exportacao')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (empresaId && empresaId !== 'TODAS') {
+      query = query.or(`empresa_id.eq.${empresaId},empresa_id.is.null`);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
   }
 }
 

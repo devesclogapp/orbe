@@ -3,6 +3,8 @@ import { BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useContextualHelp } from '@/contexts/ContextualHelpContext';
+import { useAccessControl } from '@/contexts/AccessControlContext';
+import { normalizeRole } from '@/lib/access-control';
 import { cn } from '@/lib/utils';
 
 interface ContextualHelpButtonProps {
@@ -20,6 +22,19 @@ export const ContextualHelpButton: React.FC<ContextualHelpButtonProps> = ({
   className,
   showLabel = false,
 }) => {
+  let isContador = false;
+  try {
+    const access = useAccessControl();
+    isContador = normalizeRole(access?.role) === 'contador';
+  } catch {
+    isContador = false;
+  }
+
+  // Oculta o guia geral da aplicação para o perfil Contador (possui guia próprio nas ferramentas)
+  if (isContador) {
+    return null;
+  }
+
   const { openHelp, currentGuide } = useContextualHelp();
   const effectiveSize = size || (showLabel ? 'sm' : 'icon');
 
