@@ -58,6 +58,8 @@ export interface ReceitaItemUI {
   origemPrincipal: OrigemReceitaReal;
   competencia: string; // YYYY-MM
   competenciaFormatada: string;
+  dataEmissao?: string; // YYYY-MM-DD (Data de criação/faturamento oficial)
+  dataContabil?: string; // YYYY-MM-DD (Data contábil do fato gerador)
   vencimento: string; // YYYY-MM-DD
   dataRecebimento?: string | null; // YYYY-MM-DD
   valorTotal: number;
@@ -400,6 +402,8 @@ class ReceitasOficialServiceClass {
         origemPrincipal,
         competencia: compCanonica,
         competenciaFormatada: formatCompetencia(compCanonica),
+        dataEmissao: r.created_at ? String(r.created_at).slice(0, 10) : "",
+        dataContabil: itensUI[0]?.data || (r.created_at ? String(r.created_at).slice(0, 10) : ""),
         vencimento: r.vencimento ? String(r.vencimento).slice(0, 10) : "",
         dataRecebimento: r.data_recebimento ? String(r.data_recebimento).slice(0, 10) : null,
         valorTotal: Number(r.valor_total || 0),

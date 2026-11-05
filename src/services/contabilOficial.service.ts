@@ -21,7 +21,8 @@ export interface MapeamentoContabilItem {
 
 export interface LancamentoContabilPartidaDobrada {
   id: string;
-  data: string; // YYYY-MM-DD
+  data: string; // YYYY-MM-DD (Data contábil / fato gerador / emissão)
+  data_vencimento?: string; // YYYY-MM-DD (Vencimento financeiro da duplicata/cobrança)
   origem: string;
   origem_tipo: CategoriaContabil;
   documento: string;
@@ -292,7 +293,34 @@ class ContabilOficialServiceClass {
       const valor = Number(Number(r.valorFaturado || 0).toFixed(2));
       if (valor <= 0) continue;
 
-      const dataLancamento = r.vencimento || `${competencia}-28`;
+      // CONT-09.2: Separação rigorosa entre Data Contábil (fato gerador / emissão) e Vencimento Financeiro.
+      // 1. Prioriza a data contábil oficial (dataOperacao ou dataEmissao) pertencente à competência.
+      // 2. Se a data contábil pertencer à competência, utiliza-a.
+      // 3. Fallback seguro: se r.vencimento pertencer à própria competência (ex: caixa imediato ou vencimento dentro do mês).
+      // 4. Se não houver data contábil confiável compatível com a competência, registra inconsistência impeditiva (não inventa data).
+      const dataOp = (r.dataOperacao || "").slice(0, 10);
+      const dataEmissao = (r.dataEmissao || "").slice(0, 10);
+      const dataVenc = (r.vencimento || "").slice(0, 10);
+
+      let dataLancamento = "";
+      if (dataOp && dataOp.startsWith(competencia)) {
+        dataLancamento = dataOp;
+      } else if (dataEmissao && dataEmissao.startsWith(competencia)) {
+        dataLancamento = dataEmissao;
+      } else if (dataVenc && dataVenc.startsWith(competencia)) {
+        dataLancamento = dataVenc;
+      } else if (dataOp) {
+        dataLancamento = dataOp;
+      } else if (dataEmissao) {
+        dataLancamento = dataEmissao;
+      }
+
+      if (!dataLancamento) {
+        inconsistencias.push(
+          `Receita ${r.id} (${r.origem}): ausência de data contábil oficial confiável para a competência ${competencia}.`
+        );
+      }
+
       const doc = `REC-${r.id.slice(0, 8).toUpperCase()}`;
       const hist = `Faturamento Ref. ${r.origem} - Cliente ${r.clienteNome}`;
 
@@ -303,6 +331,7 @@ class ContabilOficialServiceClass {
       lancamentos.push({
         id: `LANC-R03-${r.id}`,
         data: dataLancamento,
+        data_vencimento: dataVenc || undefined,
         origem: r.origem,
         origem_tipo: "RECEITA_OPERACAO_VOLUME",
         documento: doc,
@@ -696,6 +725,104 @@ class ContabilOficialServiceClass {
     }
 
     return { fileName, csvContent, logId };
+  }
+
+  /**
+   * CONT-09: Gera e dispara download de CSV de prévia para conferência contábil.
+   * - Reutiliza os lançamentos apurados na prévia contábil consolidada.
+   * - Não bloqueia por competência em aberto nem por contas pendentes.
+   * - Não registra histórico oficial em contabil_logs_integracao.
+   * - Identifica contas não configuradas como 'PENDENTE DE MAPEAMENTO'.
+   * - Identifica claramente o arquivo como prévia não oficial no nome e na coluna TipoExportacao.
+   */
+  gerarCSVPrevia(
+    previa: PreviaContabilConsolidada
+  ): { fileName: string; csvContent: string } {
+    if (!previa) {
+      throw new Error("Dados da prévia contábil não fornecidos.");
+    }
+
+    const sanitize = (val: string | number | null | undefined): string => {
+      const str = String(val ?? "").replace(/[\r\n]+/g, " ").trim();
+      if (str.includes(";") || str.includes('"')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const header = [
+      "Empresa",
+      "Competencia",
+      "Data",
+      "Origem",
+      "Documento",
+      "Historico",
+      "ContaDebito",
+      "ContaCredito",
+      "Valor",
+      "TipoExportacao",
+    ].join(";");
+
+    const lines = (previa.lancamentos || []).map((l) => {
+      const contaDebito =
+        l.conta_debito && l.conta_debito.trim() !== ""
+          ? sanitize(l.conta_debito)
+          : "PENDENTE DE MAPEAMENTO";
+      const contaCredito =
+        l.conta_credito && l.conta_credito.trim() !== ""
+          ? sanitize(l.conta_credito)
+          : "PENDENTE DE MAPEAMENTO";
+
+      return [
+        sanitize(previa.empresa_nome || l.empresa_nome),
+        sanitize(previa.competencia),
+        sanitize(l.data),
+        sanitize(l.origem),
+        sanitize(l.documento),
+        sanitize(l.historico),
+        contaDebito,
+        contaCredito,
+        Number(l.valor || 0).toFixed(2),
+        "PREVIA_NAO_OFICIAL",
+      ].join(";");
+    });
+
+    const csvContent = [header, ...lines].join("\r\n");
+
+    const slug = (previa.empresa_nome || "empresa")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+    const timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+    const fileName = `ORBE_PREVIA_CONTABIL_NAO_OFICIAL_${slug}_${previa.competencia}_${timestamp}.csv`;
+
+    // Disparar download no navegador
+    if (typeof window !== "undefined" && typeof URL.createObjectURL === "function") {
+      const blob = new Blob(["\uFEFF" + csvContent], {
+        type: "text/csv;charset=utf-8;",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", fileName);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      if (typeof URL.revokeObjectURL === "function") {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    return { fileName, csvContent };
+  }
+
+  /**
+   * CONT-09: Alias para compatibilidade com interfaces e testes de prévia.
+   */
+  exportarCSVPrevia(
+    previa: PreviaContabilConsolidada
+  ): { fileName: string; csvContent: string } {
+    return this.gerarCSVPrevia(previa);
   }
 
   /**

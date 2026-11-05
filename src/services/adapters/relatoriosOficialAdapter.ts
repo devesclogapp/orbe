@@ -211,6 +211,8 @@ export interface FaturamentoReceitaRow {
   modalidade: "FATURAMENTO_MENSAL" | "DUPLICATA" | "CAIXA_IMEDIATO";
   origem: "Operação por Volume" | "Serviço Extra";
   valorFaturado: number;
+  dataEmissao?: string; // Data oficial de faturamento / criação (YYYY-MM-DD)
+  dataOperacao?: string; // Data contábil do fato gerador se disponível (YYYY-MM-DD)
   vencimento: string;
   dataRecebimento: string | null;
   status: string;
@@ -605,6 +607,9 @@ class RelatoriosOficialAdapterClass {
       const comp = r.competencia || "";
       const compFormatada = comp.includes("-") ? `${comp.split("-")[1]}/${comp.split("-")[0]}` : comp;
 
+      const dataCriacao = r.dataEmissao || (r.raw?.created_at ? String(r.raw.created_at).slice(0, 10) : "");
+      const dataOp = r.dataContabil || (r.itens?.[0]?.data ? String(r.itens[0].data).slice(0, 10) : "");
+
       return {
         id: r.id,
         empresaId: r.clienteId || empresaId,
@@ -614,6 +619,8 @@ class RelatoriosOficialAdapterClass {
         modalidade: r.modalidade as any,
         origem,
         valorFaturado: Number(r.valorTotal || 0),
+        dataEmissao: dataCriacao,
+        dataOperacao: dataOp || dataCriacao,
         vencimento: String(r.vencimento || "").slice(0, 10),
         dataRecebimento: r.dataRecebimento ? String(r.dataRecebimento).slice(0, 10) : null,
         status: r.status as any,

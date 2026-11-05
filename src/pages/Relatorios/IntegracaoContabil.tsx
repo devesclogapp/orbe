@@ -227,6 +227,17 @@ const IntegracaoContabil: React.FC<IntegracaoContabilProps> = () => {
     }
   };
 
+  // Download de CSV de Prévia para conferência contábil (CONT-09)
+  const handleDownloadPreviaCSV = () => {
+    if (!previa) return;
+    try {
+      const res = ContabilOficialService.gerarCSVPrevia(previa);
+      toast.success(`CSV de prévia gerado para conferência: ${res.fileName}`);
+    } catch (err: any) {
+      toast.error(`Falha ao gerar CSV de prévia: ${err?.message || "Erro desconhecido"}`);
+    }
+  };
+
   return (
     <AppShell
       title="Integração Contábil"
@@ -287,50 +298,65 @@ const IntegracaoContabil: React.FC<IntegracaoContabilProps> = () => {
           </div>
 
           {/* Ações Globais */}
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {/* Auxiliares */}
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 px-3 gap-2 text-sm font-medium text-muted-foreground hover:text-foreground border-border/70 hover:bg-muted/50"
-              onClick={() => setIsGuiaOpen(true)}
-            >
-              <HelpCircle className="h-4 w-4 text-primary" />
-              <span>Guia de Uso</span>
-            </Button>
+          {isAuthorizedRole && (
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {/* Auxiliares */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 px-3 gap-2 text-sm font-medium text-muted-foreground hover:text-foreground border-border/70 hover:bg-muted/50"
+                onClick={() => setIsGuiaOpen(true)}
+              >
+                <HelpCircle className="h-4 w-4 text-primary" />
+                <span>Guia de Uso</span>
+              </Button>
 
-            <FerramentasContabeisMenu
-              empresaId={activeEmpresaId}
-              competencia={competencia}
-            />
+              <FerramentasContabeisMenu
+                empresaId={activeEmpresaId}
+                competencia={competencia}
+              />
 
-            {/* Secundárias */}
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 px-3.5 gap-2 text-sm font-medium text-foreground border-border hover:bg-muted/60"
-              onClick={() => refetchPrevia()}
-              disabled={isFetchingPrevia}
-            >
-              <RefreshCw className={`h-4 w-4 ${isFetchingPrevia ? "animate-spin" : ""}`} />
-              <span>Atualizar</span>
-            </Button>
+              {/* Secundárias */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 px-3.5 gap-2 text-sm font-medium text-foreground border-border hover:bg-muted/60"
+                onClick={() => refetchPrevia()}
+                disabled={isFetchingPrevia}
+              >
+                <RefreshCw className={`h-4 w-4 ${isFetchingPrevia ? "animate-spin" : ""}`} />
+                <span>Atualizar</span>
+              </Button>
 
-            {/* Primária */}
-            <Button
-              size="sm"
-              className="h-9 px-4 gap-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs"
-              onClick={handleTriggerExport}
-              disabled={exportMutation.isPending || isLoadingPrevia || !previa?.elegivel_exportacao}
-            >
-              {exportMutation.isPending ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4" />
-              )}
-              <span>{exportMutation.isPending ? "Exportando..." : "Exportar CSV Contábil"}</span>
-            </Button>
-          </div>
+              {/* Baixar CSV de Prévia (CONT-09) */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 px-3.5 gap-2 text-sm font-medium text-foreground border-border hover:bg-muted/60"
+                onClick={handleDownloadPreviaCSV}
+                disabled={isLoadingPrevia || !previa}
+                title="Baixar CSV preliminar para conferência contábil (sem efeito oficial)"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <span>Baixar CSV de Prévia</span>
+              </Button>
+
+              {/* Primária */}
+              <Button
+                size="sm"
+                className="h-9 px-4 gap-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs"
+                onClick={handleTriggerExport}
+                disabled={exportMutation.isPending || isLoadingPrevia || !previa?.elegivel_exportacao}
+              >
+                {exportMutation.isPending ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                <span>{exportMutation.isPending ? "Exportando..." : "Exportar CSV Contábil"}</span>
+              </Button>
+            </div>
+          )}
         </header>
 
         {/* Conteúdo Principal */}
@@ -423,8 +449,16 @@ const IntegracaoContabil: React.FC<IntegracaoContabilProps> = () => {
                       </li>
                     ))}
                   </ul>
-                  <div className="text-[11px] text-muted-foreground pt-1 italic">
-                    A conferência preliminar permanece totalmente acessível na tabela abaixo.
+                  <div className="text-[11px] text-muted-foreground pt-1 italic flex flex-wrap items-center justify-between gap-2">
+                    <span>A conferência preliminar permanece totalmente acessível na tabela abaixo.</span>
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-amber-700 dark:text-amber-300 underline font-semibold text-xs"
+                      onClick={handleDownloadPreviaCSV}
+                    >
+                      Baixar CSV de Prévia para conferência
+                    </Button>
                   </div>
                 </div>
               )}
@@ -542,7 +576,12 @@ const IntegracaoContabil: React.FC<IntegracaoContabilProps> = () => {
                           }`}
                         >
                           <TableCell className="font-mono text-xs font-semibold text-foreground">
-                            {lanc.data}
+                            <div>{lanc.data}</div>
+                            {lanc.data_vencimento && lanc.data_vencimento !== lanc.data && (
+                              <div className="text-[10px] text-muted-foreground font-normal">
+                                Venc: {lanc.data_vencimento}
+                              </div>
+                            )}
                           </TableCell>
 
                           <TableCell>
