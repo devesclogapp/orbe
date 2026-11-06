@@ -2251,6 +2251,8 @@ export const OperacoesTableBlock = ({
                                     ? item.avaliacao_json.contexto_operacional.colaboradores_selecionados.map((c: any) => ({
                                       collaborator_id: c.id,
                                       had_infraction: c.had_infraction === true,
+                                      infraction_type_id: c.infraction_type_id || c.tipo || null,
+                                      infraction_notes: c.infraction_notes || c.descricao || c.notes || null,
                                       colaboradores: {
                                         id: c.id,
                                         nome: c.nome,
@@ -2310,7 +2312,16 @@ export const OperacoesTableBlock = ({
                                                 <td className="px-4 py-2 text-muted-foreground">{c.colaboradores?.cargo || '-'}</td>
                                                 <td className="px-4 py-2">
                                                   {isInfraction ? (
-                                                    <span className="text-destructive font-medium border border-destructive/20 bg-destructive/10 px-2 py-0.5 rounded-full text-xs">Sim</span>
+                                                    <div className="flex flex-col gap-0.5">
+                                                      <span className="text-destructive font-medium border border-destructive/20 bg-destructive/10 px-2 py-0.5 rounded-full text-xs inline-block w-fit">
+                                                        {c.infraction_type_id || "Sim"}
+                                                      </span>
+                                                      {c.infraction_notes && (
+                                                        <span className="text-[11px] text-muted-foreground italic line-clamp-1" title={c.infraction_notes}>
+                                                          {c.infraction_notes}
+                                                        </span>
+                                                      )}
+                                                    </div>
                                                   ) : <span className="text-muted-foreground">-</span>}
                                                 </td>
                                               </tr>

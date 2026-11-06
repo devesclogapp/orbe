@@ -61,6 +61,7 @@ import {
 import ResetOperacional from "@/pages/Configuracoes/ResetOperacional";
 import JornadasTrabalhoSection from "@/pages/Configuracoes/JornadasTrabalhoSection";
 import RegrasBancoHorasSection from "@/pages/Configuracoes/RegrasBancoHorasSection";
+import { InfracoesOperacionaisSection } from "@/pages/Configuracoes/InfracoesOperacionaisSection";
 
 const IMPORTACAO_MODULOS = [
   { value: "colaboradores", label: "Colaboradores" },
@@ -468,6 +469,13 @@ const Configuracoes = () => {
                 Configurações Operacionais
               </TabsTrigger>
               <TabsTrigger
+                value="infracoes_operacionais"
+                className="px-4 py-1.5 text-xs font-medium flex-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs rounded-md transition-all gap-2"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Infrações Operacionais
+              </TabsTrigger>
+              <TabsTrigger
                 value="manutencao"
                 className="px-4 py-1.5 text-xs font-medium flex-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs rounded-md transition-all gap-2"
               >
@@ -808,7 +816,11 @@ const Configuracoes = () => {
           </div>
         </TabsContent>
 
-                <TabsContent value="modelos" className="space-y-4 mt-2">
+        <TabsContent value="infracoes_operacionais" className="space-y-5 mt-2">
+          <InfracoesOperacionaisSection />
+        </TabsContent>
+
+        <TabsContent value="modelos" className="space-y-4 mt-2">
           {/* Header Card */}
           <div className="rounded-xl border border-border/80 bg-card p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors">
             <div className="space-y-0.5">

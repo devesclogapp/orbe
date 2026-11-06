@@ -434,7 +434,7 @@ const summarizeItems = (items: any[]) => {
   const valorTotal = items.reduce((acc, item) => acc + safeNumber(item.valor_calculado), 0);
   return {
     totalColaboradores: colaboradoresUnicos.size,
-    valorTotal: Number(valorTotal.toFixed(2)),
+    valorTotal: Math.max(0, Number(valorTotal.toFixed(2))),
   };
 };
 
@@ -736,9 +736,44 @@ class RHFinanceiroServiceClass {
     const { tenantId, userId, userName } = await getCurrentSessionContext();
     const { pontos, colaboradores, regras } = await loadCompetenciaContext(tenantId, empresaId, competencia);
 
+    // FIX-OCORRÊNCIAS-05: Busca descontos de ocorrências operacionais autorizados para colaboradores CLT nesta competência
+    let eventosDesconto: any[] = [];
+    try {
+      const { data: evData } = await (supabase as any)
+        .from("operacoes_ocorrencias_eventos_financeiros")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("empresa_id", empresaId)
+        .eq("competencia", competencia)
+        .eq("tipo_vinculo", "CLT")
+        .eq("status", "PENDENTE_APLICACAO");
+      eventosDesconto = evData || [];
+    } catch {
+      eventosDesconto = [];
+    }
+
+    const itensDesconto = eventosDesconto.map((ev: any) => {
+      const colab = (colaboradores || []).find((c: any) => c.id === ev.collaborator_id);
+      return {
+        colaborador_id: ev.collaborator_id,
+        nome_colaborador: colab?.nome || "Colaborador",
+        tipo_evento: "DESCONTO_AVARIA_RESSARCIMENTO",
+        minutos: 0,
+        horas: "00:00",
+        valor_calculado: -Math.abs(Number(ev.valor_desconto || 0)),
+        origem_evento: "OCORRENCIA_OPERACIONAL",
+        referencia_evento_id: ev.id,
+      };
+    });
+
+    const itensFolhaVariavel = [
+      ...buildFolhaVariavelItems(pontos, colaboradores, regras),
+      ...itensDesconto,
+    ];
+
     const tiposParaCriar = [
       { tipo: "FOLHA_BASE", items: buildFolhaBaseItems(colaboradores, competencia) },
-      { tipo: "FOLHA_VARIAVEL", items: buildFolhaVariavelItems(pontos, colaboradores, regras) },
+      { tipo: "FOLHA_VARIAVEL", items: itensFolhaVariavel },
       { tipo: "BANCO_HORAS", items: await buildBancoHorasItems(tenantId, empresaId, competencia, colaboradores) },
     ];
 
@@ -845,6 +880,20 @@ class RHFinanceiroServiceClass {
         if (itensPayload.length > 0) {
           const { error: itensError } = await (supabase as any).from("rh_financeiro_lote_itens").insert(itensPayload);
           if (itensError) throw itensError;
+
+          if (entry.tipo === "FOLHA_VARIAVEL" && eventosDesconto.length > 0) {
+            const idsEv = eventosDesconto.map((ev: any) => ev.id);
+            await (supabase as any)
+              .from("operacoes_ocorrencias_eventos_financeiros")
+              .update({
+                status: "APLICADO",
+                lote_pagamento_id: loteExistente.id,
+                aplicado_em: approvedAt,
+                aplicado_por: userId,
+                updated_at: approvedAt,
+              })
+              .in("id", idsEv);
+          }
         }
 
         await appendLoteHistorico({
@@ -903,6 +952,20 @@ class RHFinanceiroServiceClass {
         .from("rh_financeiro_lote_itens")
         .insert(itensPayload);
       if (itensError) throw itensError;
+
+      if (entry.tipo === "FOLHA_VARIAVEL" && eventosDesconto.length > 0) {
+        const idsEv = eventosDesconto.map((ev: any) => ev.id);
+        await (supabase as any)
+          .from("operacoes_ocorrencias_eventos_financeiros")
+          .update({
+            status: "APLICADO",
+            lote_pagamento_id: lote.id,
+            aplicado_em: approvedAt,
+            aplicado_por: userId,
+            updated_at: approvedAt,
+          })
+          .in("id", idsEv);
+      }
 
       await appendLoteHistorico({
         tenantId,

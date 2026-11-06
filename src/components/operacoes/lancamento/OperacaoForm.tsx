@@ -34,7 +34,7 @@ import { FormStepSelector } from "@/components/operacoes/lancamento/FormStepSele
 import { FormStepContext } from "@/components/operacoes/lancamento/FormStepContext";
 import { FormStepSummary } from "@/components/operacoes/lancamento/FormStepSummary";
 import { FormStepTeam } from "@/components/operacoes/lancamento/FormStepTeam";
-import { DEFAULT_PRODUCTION_VALUES } from "@/components/operacoes/lancamento/schema";
+import { DEFAULT_PRODUCTION_VALUES, validarCondutasEquipe, type ColaboradorConduta } from "@/components/operacoes/lancamento/schema";
 import { useOperationalPipeline, buildOperacaoVolumePipeline } from "@/contexts/OperationalPipelineContext";
 
 export interface OperacaoFormProps {
@@ -52,6 +52,7 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
     const [etapa, setEtapa] = useState(1);
 
     const [selectedColaboradores, setSelectedColaboradores] = useState<string[]>([]);
+    const [condutas, setCondutas] = useState<Record<string, ColaboradorConduta>>({});
 
     const [selecionouSemAlteracao, setSelecionouSemAlteracao] = useState(false);
     const [justificativa, setJustificativa] = useState("");
@@ -89,6 +90,20 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
             if (initialData.production_entry_collaborators && Array.isArray(initialData.production_entry_collaborators)) {
                 const colabs = initialData.production_entry_collaborators.map((c: any) => c.colaboradores?.id || c.collaborator_id);
                 setSelectedColaboradores(Array.from(new Set(colabs.filter(Boolean))));
+
+                const initCondutas: Record<string, ColaboradorConduta> = {};
+                for (const c of initialData.production_entry_collaborators) {
+                    const cId = c.colaboradores?.id || c.collaborator_id;
+                    if (cId) {
+                        initCondutas[cId] = {
+                            collaborator_id: cId,
+                            had_infraction: Boolean(c.had_infraction),
+                            infraction_type_id: c.infraction_type_id || "",
+                            infraction_notes: c.infraction_notes || "",
+                        };
+                    }
+                }
+                setCondutas(initCondutas);
             } else if (initialData.colaborador_id) {
                 // Fallback legado
                 setSelectedColaboradores([initialData.colaborador_id]);
@@ -316,17 +331,67 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
 
             const uniqueSelectedColabs = Array.from(new Set(selectedColaboradores)).filter(Boolean);
 
-            console.log("==========================================");
-            console.log("[DEBUG] Payload Final para Update: ", JSON.stringify(payload, null, 2));
-            console.log("==========================================");
-            const colabPayload = uniqueSelectedColabs.map(id => ({
-                collaborator_id: id,
-                had_infraction: false,
-                entrada_ponto: null,
-                saida_almoco: null,
-                retorno_almoco: null,
-                saida_ponto: null,
-            }));
+            const colabPayload = uniqueSelectedColabs.map(id => {
+                const c = condutas[id];
+                const hadInfraction = Boolean(c?.had_infraction);
+                return {
+                    collaborator_id: id,
+                    had_infraction: hadInfraction,
+                    infraction_type_id: hadInfraction ? (c?.infraction_type_id?.trim() || null) : null,
+                    infraction_notes: hadInfraction ? (c?.infraction_notes?.trim() || null) : null,
+                    valor_provisorio: hadInfraction ? Number(c?.valor_provisorio || 0) : 0,
+                    infracao_codigo: hadInfraction ? (c?.infracao_codigo || null) : null,
+                    entrada_ponto: null,
+                    saida_almoco: null,
+                    retorno_almoco: null,
+                    saida_ponto: null,
+                };
+            });
+
+            // Estrutura as ocorrências no avaliacao_json para governança e Central de Inconsistências
+            const colaboradoresComInfracao = colabPayload.filter(c => c.had_infraction);
+            const infracoesCount = colaboradoresComInfracao.length;
+            const totalDescontoProvisorio = colaboradoresComInfracao.reduce(
+                (acc, curr) => acc + Number(condutas[curr.collaborator_id]?.valor_provisorio || 0),
+                0
+            );
+
+            const existingAvaliacao = (typeof initialData?.avaliacao_json === 'object' && initialData?.avaliacao_json !== null)
+                ? { ...initialData.avaliacao_json }
+                : {};
+
+            const infracoesResumo = colaboradoresComInfracao.map(c => {
+                const colabObj = colaboradores.find(item => item.id === c.collaborator_id);
+                const condutaObj = condutas[c.collaborator_id];
+                return {
+                    collaborator_id: c.collaborator_id,
+                    nome: colabObj?.nome || "Colaborador",
+                    cargo: colabObj?.cargo || null,
+                    tipo: c.infraction_type_id,
+                    codigo: condutaObj?.infracao_codigo || null,
+                    valor_provisorio: Number(condutaObj?.valor_provisorio || 0),
+                    descricao: c.infraction_notes,
+                };
+            });
+
+            const avaliacaoJson: Record<string, any> = {
+                ...existingAvaliacao,
+                infracoes: infracoesResumo,
+                total_infracoes: infracoesCount,
+                desconto_provisorio_total: totalDescontoProvisorio,
+            };
+
+            if (infracoesCount > 0) {
+                avaliacaoJson.motivo_restricao = existingAvaliacao.motivo_restricao ||
+                    `Ocorrência registrada em serviço: ${infracoesResumo.map(i => `${i.nome} (${i.tipo})`).join("; ")}`;
+                if (!initialData?.id) {
+                    payload.status = "EM_RESTRICAO";
+                }
+            } else if (typeof existingAvaliacao.motivo_restricao === 'string' && existingAvaliacao.motivo_restricao.startsWith("Ocorrência registrada em serviço:")) {
+                delete avaliacaoJson.motivo_restricao;
+            }
+
+            payload.avaliacao_json = avaliacaoJson;
 
             if (initialData?.id) {
                 // Modo de Edição
@@ -381,6 +446,7 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                 setEtapa(1);
                 form.reset(DEFAULT_PRODUCTION_VALUES);
                 setSelectedColaboradores([]);
+                setCondutas({});
                 setSelectedMateriais([]);
                 if (onSuccess) onSuccess();
             }
@@ -462,10 +528,26 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
         }
     };
 
+    const handleChangeConduta = (colabId: string, conduta: ColaboradorConduta) => {
+        setCondutas(prev => ({
+            ...prev,
+            [colabId]: conduta,
+        }));
+    };
+
     const handleToggleColaborador = (id: string) => {
-        setSelectedColaboradores(prev =>
-            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-        );
+        setSelectedColaboradores(prev => {
+            const exists = prev.includes(id);
+            if (exists) {
+                setCondutas(cPrev => {
+                    const next = { ...cPrev };
+                    delete next[id];
+                    return next;
+                });
+                return prev.filter(i => i !== id);
+            }
+            return [...prev, id];
+        });
     };
 
     return (
@@ -587,6 +669,8 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                                 colaboradores={colaboradores}
                                 selectedIds={selectedColaboradores}
                                 onToggleColaborador={handleToggleColaborador}
+                                condutas={condutas}
+                                onChangeConduta={handleChangeConduta}
                             />
                         </div>
                     )}
@@ -678,6 +762,13 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                                 <Button
                                     type="button"
                                     onClick={() => {
+                                        // Validação obrigatória de condutas e ocorrências preenchidas
+                                        const condutaErro = validarCondutasEquipe(selectedColaboradores, condutas, colaboradores);
+                                        if (condutaErro) {
+                                            toast.warning(condutaErro);
+                                            return;
+                                        }
+
                                         // Checker manual antes de chamar handleSubmit
                                         if (initialData) {
                                             const hasMainDirty = Object.keys(form.formState.dirtyFields).length > 0;
@@ -694,7 +785,24 @@ export const OperacaoForm = ({ mode, initialData, onSuccess, onCancel }: Operaca
                                             }));
                                             const hasMateriaisChanged = JSON.stringify(initMateriais) !== JSON.stringify(curMateriais);
 
-                                            const isChanged = hasMainDirty || hasColabChanged || hasMateriaisChanged;
+                                            // Condutas / Ocorrências
+                                            const initCondutas = (initialData.production_entry_collaborators || []).map((c: any) => ({
+                                                id: c.colaboradores?.id || c.collaborator_id,
+                                                had_infraction: Boolean(c.had_infraction),
+                                                infraction_type_id: c.infraction_type_id || "",
+                                                infraction_notes: c.infraction_notes || "",
+                                            })).sort((a: any, b: any) => (a.id || "").localeCompare(b.id || ""));
+
+                                            const curCondutas = selectedColaboradores.map(id => ({
+                                                id,
+                                                had_infraction: Boolean(condutas[id]?.had_infraction),
+                                                infraction_type_id: condutas[id]?.infraction_type_id || "",
+                                                infraction_notes: condutas[id]?.infraction_notes || "",
+                                            })).sort((a, b) => a.id.localeCompare(b.id));
+
+                                            const hasCondutasChanged = JSON.stringify(initCondutas) !== JSON.stringify(curCondutas);
+
+                                            const isChanged = hasMainDirty || hasColabChanged || hasMateriaisChanged || hasCondutasChanged;
 
                                             if (!isChanged) {
                                                 toast.info("Nenhuma alteração identificada. Não foi necessário salvar.");

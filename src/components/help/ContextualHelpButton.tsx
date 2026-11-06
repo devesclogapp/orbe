@@ -35,7 +35,18 @@ export const ContextualHelpButton: React.FC<ContextualHelpButtonProps> = ({
     return null;
   }
 
-  const { openHelp, currentGuide } = useContextualHelp();
+  let helpContext: ReturnType<typeof useContextualHelp> | null = null;
+  try {
+    helpContext = useContextualHelp();
+  } catch {
+    helpContext = null;
+  }
+
+  if (!helpContext) {
+    return null;
+  }
+
+  const { openHelp, currentGuide } = helpContext;
   const effectiveSize = size || (showLabel ? 'sm' : 'icon');
 
   return (

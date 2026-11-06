@@ -51,6 +51,8 @@ import { OperacaoProducaoService } from "@/services/base.service";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAccessControl } from "@/contexts/AccessControlContext";
 import { supabase } from "@/lib/supabase";
+import { OcorrenciaDecisaoModal } from "@/components/operacoes/OcorrenciaDecisaoModal";
+import { OcorrenciasDecisaoService } from "@/services/domain/ocorrenciasDecisao.service";
 
 export const OPERACOES_VOLUME_PIPELINE_STEPS: PipelineStep[] = [
   { key: "RECEBIDO", label: "Recebido", shortLabel: "Rec." },
@@ -326,6 +328,28 @@ export function OperacaoVolumeDrawer({
   const canApproveOperation =
     isAdmin || ["admin", "super_admin", "gestor", "financeiro"].includes(userRole);
 
+  // Perfis autorizados para deliberação de ocorrências (RH e Governança, Encarregado estritamente proibido)
+  const canDeliberateOcorrencia =
+    isAdmin || ["admin", "super_admin", "gestor", "rh"].includes(userRole);
+
+  const [ocorrenciaModalOpen, setOcorrenciaModalOpen] = useState(false);
+  const [colaboradorSelecionadoOcorrencia, setColaboradorSelecionadoOcorrencia] = useState<{
+    id: string;
+    nome: string;
+    cargo?: string;
+    cpf?: string | null;
+    had_infraction?: boolean;
+    infraction_type_id?: string | null;
+    infraction_notes?: string | null;
+  } | null>(null);
+
+  const { data: ocorrenciasDecisoes = [], refetch: refetchDecisoes } = useQuery({
+    queryKey: ["ocorrencias-decisoes", operacao?.id],
+    queryFn: () => (operacao?.id ? OcorrenciasDecisaoService.getByOperacaoId(operacao.id) : Promise.resolve([])),
+    enabled: !!operacao?.id && canDeliberateOcorrencia,
+    staleTime: 1000 * 30,
+  });
+
   const handleNavigateRh = () => {
     onOpenChange(false);
     if (onNavigateRh) {
@@ -433,16 +457,24 @@ export function OperacaoVolumeDrawer({
     !isEmRestricao &&
     ["RECEBIDO", "EM_VALIDACAO", "ABERTO", "PENDENTE"].includes((operacao.status || "").toUpperCase());
 
-  const colaboradoresNominais = (operacao.production_entry_collaborators || []).map((pec, idx) => ({
-    id: pec.colaboradores?.id || `col-${idx}`,
-    nome: pec.colaboradores?.nome || `Colaborador ${idx + 1}`,
-    cargo: pec.colaboradores?.cargo || "Ajudante Operacional",
-    cpf: pec.colaboradores?.cpf || null,
-    entrada_ponto: pec.entrada_ponto ? pec.entrada_ponto.slice(0, 5) : null,
-    saida_ponto: pec.saida_ponto ? pec.saida_ponto.slice(0, 5) : null,
-    had_infraction: Boolean(pec.had_infraction),
-    infraction_notes: pec.infraction_notes || null,
-  }));
+  const infracoesAvaliacao = operacao.avaliacao_json?.infracoes || [];
+  const colaboradoresNominais = (operacao.production_entry_collaborators || []).map((pec, idx) => {
+    const colabId = pec.colaboradores?.id || `col-${idx}`;
+    const infracaoDetalhe = infracoesAvaliacao.find((inf: any) => inf.collaborator_id === colabId);
+    return {
+      id: colabId,
+      nome: pec.colaboradores?.nome || `Colaborador ${idx + 1}`,
+      cargo: pec.colaboradores?.cargo || "Ajudante Operacional",
+      cpf: pec.colaboradores?.cpf || null,
+      entrada_ponto: pec.entrada_ponto ? pec.entrada_ponto.slice(0, 5) : null,
+      saida_ponto: pec.saida_ponto ? pec.saida_ponto.slice(0, 5) : null,
+      had_infraction: Boolean(pec.had_infraction),
+      infraction_type_id: pec.infraction_type_id || infracaoDetalhe?.tipo || null,
+      infraction_notes: pec.infraction_notes || infracaoDetalhe?.descricao || null,
+      valor_provisorio: Number((pec as any).valor_provisorio || infracaoDetalhe?.valor_provisorio || 0),
+      infracao_codigo: (pec as any).infracao_codigo || infracaoDetalhe?.codigo || null,
+    };
+  });
 
   const materiaisConsumidos = (operacao.operacao_producao_materiais || []).map((m) => ({
     id: m.id || m.material_id,
@@ -1019,32 +1051,81 @@ export function OperacaoVolumeDrawer({
 
             <div className="bg-card rounded-lg border border-border divide-y divide-border overflow-hidden">
               {colaboradoresNominais.length > 0 ? (
-                colaboradoresNominais.map((colab) => (
-                  <div key={colab.id} className="p-3 flex items-center justify-between text-xs hover:bg-muted/30">
-                    <div className="space-y-0.5">
-                      <div className="font-medium text-foreground flex items-center gap-2">
-                        {colab.nome}
+                colaboradoresNominais.map((colab) => {
+                  const decisaoColab = ocorrenciasDecisoes.find(
+                    (d) => d.collaborator_id === colab.id && d.status === "REGISTRADA"
+                  );
+
+                  return (
+                    <div key={colab.id} className="p-3 flex items-center justify-between text-xs hover:bg-muted/30">
+                      <div className="space-y-0.5">
+                        <div className="font-medium text-foreground flex items-center gap-2">
+                          {colab.nome}
+                          {colab.had_infraction && (
+                            <Badge variant="destructive" className="text-[9px] px-1.5 py-0 h-4">
+                              Infração
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground flex items-center gap-2">
+                          <span>{colab.cargo}</span>
+                          <span>•</span>
+                          <span className="font-mono text-muted-foreground">{maskCpf(colab.cpf)}</span>
+                        </div>
                         {colab.had_infraction && (
-                          <Badge variant="destructive" className="text-[9px] px-1.5 py-0 h-4">
-                            Infração
-                          </Badge>
+                          <div className="mt-1.5 text-[11px] text-destructive bg-destructive/10 p-2 rounded border border-destructive/20 font-normal space-y-1">
+                            <div className="font-semibold flex items-center justify-between gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <AlertTriangle className="h-3 w-3 shrink-0" />
+                                <span>{colab.infraction_type_id || "Ocorrência Operacional"}</span>
+                                {Number(colab.valor_provisorio || 0) > 0 && (
+                                  <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
+                                    (Desconto Provisório: R$ {Number(colab.valor_provisorio).toFixed(2)})
+                                  </span>
+                                )}
+                              </div>
+                              {canDeliberateOcorrencia && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-5 text-[10px] px-2 py-0 bg-background text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 shadow-none shrink-0"
+                                  onClick={() => {
+                                    setColaboradorSelecionadoOcorrencia(colab);
+                                    setOcorrenciaModalOpen(true);
+                                  }}
+                                >
+                                  {decisaoColab ? "Ver Deliberação" : "Analisar Ocorrência"}
+                                </Button>
+                              )}
+                            </div>
+                            {colab.infraction_notes && (
+                              <p className="text-foreground/90 pl-4">{colab.infraction_notes}</p>
+                            )}
+                            {decisaoColab && canDeliberateOcorrencia && (
+                              <div className="mt-1 pt-1 border-t border-destructive/20 text-[10px] flex items-center justify-between">
+                                <span className="text-muted-foreground font-medium">Decisão RH:</span>
+                                <span className="font-semibold text-indigo-700 dark:text-indigo-300">
+                                  {decisaoColab.tipo_decisao === "ARQUIVADA_SEM_PENALIDADE" && "Arquivada sem Penalidade"}
+                                  {decisaoColab.tipo_decisao === "ADVERTENCIA_FORMAL" && "Advertência Formal"}
+                                  {decisaoColab.tipo_decisao === "PROPOSTA_RESSARCIMENTO" &&
+                                    `Ressarcimento Autorizado (R$ ${Number(decisaoColab.valor_autorizado ?? (decisaoColab as any).valor_proposto ?? 0).toFixed(2)})`}
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
-                      <div className="text-[11px] text-muted-foreground flex items-center gap-2">
-                        <span>{colab.cargo}</span>
-                        <span>•</span>
-                        <span className="font-mono text-muted-foreground">{maskCpf(colab.cpf)}</span>
+                      <div className="text-right font-mono text-[11px] text-muted-foreground">
+                        {colab.entrada_ponto && colab.saida_ponto ? (
+                          <span>{colab.entrada_ponto} às {colab.saida_ponto}</span>
+                        ) : (
+                          <span className="text-rose-600 font-medium">Horário incompleto</span>
+                        )}
                       </div>
                     </div>
-                    <div className="text-right font-mono text-[11px] text-muted-foreground">
-                      {colab.entrada_ponto && colab.saida_ponto ? (
-                        <span>{colab.entrada_ponto} às {colab.saida_ponto}</span>
-                      ) : (
-                        <span className="text-rose-600 font-medium">Horário incompleto</span>
-                      )}
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="p-4 text-center text-xs text-muted-foreground italic">
                   Nenhum colaborador individual vinculado nominalmente (Qtd declarada: {operacao.quantidade_colaboradores || 1}).
@@ -1305,6 +1386,19 @@ export function OperacaoVolumeDrawer({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {canDeliberateOcorrencia && (
+        <OcorrenciaDecisaoModal
+          open={ocorrenciaModalOpen}
+          onOpenChange={setOcorrenciaModalOpen}
+          operacaoId={operacao?.id || ""}
+          empresaId={operacao?.empresa_id || ""}
+          colaborador={colaboradorSelecionadoOcorrencia}
+          onDecisaoSalva={() => {
+            refetchDecisoes();
+          }}
+        />
+      )}
     </Sheet>
   );
 }
