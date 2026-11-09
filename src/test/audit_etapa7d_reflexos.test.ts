@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
+
 import { DespesasContasPagarOficialService } from '@/services/despesasOficial.service';
 import { DashboardConsolidadoService } from '@/services/dashboard.service';
 import { buildDREKpis, buildDRELedger } from '@/services/adapters/dreOficialAdapter';
 import { EnvironmentService } from '@/services/environment/EnvironmentService';
 import { supabase } from '@/lib/supabase';
 
-const testEmail = 'e2e-test@orbe.local';
-const testPassword = '123456';
+const testEmail = process.env.E2E_TEST_EMAIL || 'e2e-test@orbe.local';
+const testPassword = process.env.E2E_TEST_PASSWORD;
 
 const TARGET = {
   tenantId: '09ccafb6-2cf2-4c83-ac3d-a2913947693c',
@@ -22,6 +25,10 @@ describe('AUDITORIA REAL DE REFLEXOS FINANCEIROS — ETAPA 7D', () => {
   });
 
   it('1. Deve autenticar e consultar DespesasContasPagarOficialService em ambiente Homologacao', async () => {
+    if (!testPassword) {
+      throw new Error('E2E_TEST_PASSWORD ausente no ambiente (.env.local). Operação de autenticação abortada por segurança.');
+    }
+
     const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
       email: testEmail,
       password: testPassword,
