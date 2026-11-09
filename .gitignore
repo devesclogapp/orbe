@@ -37,3 +37,11 @@ env_local_copy.txt
 # Scratch & local testing
 scratch/
 
+# Build caches and transient artifacts
+*.tsbuildinfo
+vite.config.ts.timestamp-*
+vitest.config.ts.timestamp-*
+bun.lock
+bun.lockb
+temp_ts/
+
