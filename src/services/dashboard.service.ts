@@ -938,7 +938,7 @@ class DashboardConsolidadoServiceClass {
       // 2. Lote Semanal Diaristas em Análise RH
       let qDiaristas = applySeg(supabase
         .from('diaristas_lotes_fechamento')
-        .select('id, valor_total, status, total_diarias')
+        .select('id, valor_total, status, total_registros')
         .eq('status', 'AGUARDANDO_VALIDACAO_RH')
         .gte('periodo_inicio', startRange)
         .lt('periodo_inicio', endRange));
@@ -949,8 +949,8 @@ class DashboardConsolidadoServiceClass {
 
       const resDiaristas = await qDiaristas;
       const lotesDiaristas = safeData(resDiaristas);
-      const totalDiaristas = lotesDiaristas.reduce((acc, curr) => acc + (Number(curr.valor_total) || 0), 0);
-      const totalPresencas = lotesDiaristas.reduce((acc, curr) => acc + (Number(curr.total_diarias) || 0), 0);
+      const totalDiaristas = lotesDiaristas.reduce((acc, curr: any) => acc + (Number(curr.valor_total) || 0), 0);
+      const totalPresencas = lotesDiaristas.reduce((acc, curr: any) => acc + (Number(curr.total_registros) || 0), 0);
 
       if (lotesDiaristas.length > 0) {
         alertas.push({
@@ -1000,22 +1000,29 @@ class DashboardConsolidadoServiceClass {
       // 4. Última Sincronização REP / Automação
       const qSync = supabase
         .from('historico_importacoes')
-        .select('id, tipo_arquivo, status, criado_em, registros_processados')
-        .order('criado_em', { ascending: false })
+        .select('id, tipo_arquivo, status, created_at, quantidade_registros')
+        .order('created_at', { ascending: false })
         .limit(1);
 
       const resSync = await qSync;
-      const lastSync = safeData(resSync)[0];
-      if (lastSync) {
-        const dataSync = new Date(lastSync.criado_em);
-        const horaStr = !isNaN(dataSync.getTime()) ? dataSync.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '07:00';
+      const lastSync = safeData(resSync as any)[0] as any;
+      if (lastSync?.created_at) {
+        const dataSync = new Date(lastSync.created_at);
+        const now = new Date();
+        const isToday = dataSync.toDateString() === now.toDateString();
+        const horaStr = !isNaN(dataSync.getTime())
+          ? dataSync.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+          : '';
+        const tempoLabel = isToday
+          ? `Hoje ${horaStr}`
+          : `${dataSync.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}${horaStr ? ` ${horaStr}` : ''}`;
         alertas.push({
           id: 'alt-sync-rep',
           tipo: 'info',
           modulo: 'Automação / REP',
           titulo: 'Sincronização de pontos executada',
-          descricao: `${lastSync.registros_processados || 'Registros'} importados (${lastSync.tipo_arquivo || 'REP'}) com status: ${lastSync.status || 'OK'}.`,
-          tempo: `Hoje ${horaStr}`,
+          descricao: `${lastSync.quantidade_registros ?? 'Registros'} importados (${lastSync.tipo_arquivo || 'REP'}) com status: ${lastSync.status || 'OK'}.`,
+          tempo: tempoLabel,
           acaoLabel: 'Ver Pontos',
           origemRota: '/clt/pontos',
         });
@@ -1044,21 +1051,31 @@ class DashboardConsolidadoServiceClass {
       diaristasEmAnalise = safeData(resD).length;
     } catch {}
 
-    let ultimoSync = 'Hoje 07:01';
+    let ultimoSync = 'Indisponível';
     try {
       const resSync = await supabase
         .from('historico_importacoes')
-        .select('criado_em')
-        .order('criado_em', { ascending: false })
+        .select('created_at')
+        .order('created_at', { ascending: false })
         .limit(1);
-      const syncItem = safeData(resSync)[0];
-      if (syncItem?.criado_em) {
-        const d = new Date(syncItem.criado_em);
+      const syncItem = safeData(resSync as any)[0] as any;
+      if (syncItem?.created_at) {
+        const d = new Date(syncItem.created_at);
         if (!isNaN(d.getTime())) {
-          ultimoSync = `Hoje ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+          const now = new Date();
+          const isToday = d.toDateString() === now.toDateString();
+          const horaStr = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+          if (isToday) {
+            ultimoSync = `Hoje ${horaStr}`;
+          } else {
+            const dataStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+            ultimoSync = `${dataStr} ${horaStr}`;
+          }
         }
       }
-    } catch {}
+    } catch {
+      ultimoSync = 'Indisponível';
+    }
 
     const now = new Date();
     const endOfMonthDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -1112,21 +1129,21 @@ class DashboardConsolidadoServiceClass {
     let valorMensal = 0;
 
     try {
-      let qOps = applySeg(supabase
+      let qOps = applySeg((supabase as any)
         .from('operacoes_producao')
-        .select('id, quantidade, valor_total, modalidade_faturamento, status')
+        .select('id, quantidade, valor_total, status, forma_pagamento:formas_pagamento_operacional(nome, modalidade)')
         .gte('data_operacao', startRange)
         .lt('data_operacao', endRange));
       if (empresaId && empresaId !== 'all') qOps = qOps.eq('empresa_id', empresaId);
       
       const ops = safeData(await qOps);
       totalDescargas = ops.length;
-      ops.forEach(op => {
+      ops.forEach((op: any) => {
         volumeCaixas += Number(op.quantidade) || 0;
         const stat = String(op.status || '').toUpperCase();
         if (stat === 'PENDENTE' || stat === 'EM_CONFERENCIA') pendentesConferencia += 1;
         
-        const mod = String(op.modalidade_faturamento || '').toUpperCase();
+        const mod = String(op.forma_pagamento?.modalidade || op.forma_pagamento?.nome || '').toUpperCase();
         const v = Number(op.valor_total) || 0;
         if (mod.includes('CAIXA')) valorCaixaImediato += v;
         else if (mod.includes('MENSAL') || mod.includes('FATURAMENTO')) valorMensal += v;
@@ -1145,13 +1162,14 @@ class DashboardConsolidadoServiceClass {
       const resColab = await supabase.from('colaboradores').select('id, status').eq('status', 'ativo');
       totalColaboradores = safeData(resColab).length;
 
-      const resSaldos = await supabase.from('banco_horas_saldos').select('saldo_minutos, horas_extras_minutos, adicional_noturno_minutos');
-      safeData(resSaldos).forEach(s => {
-        const saldo = Number(s.saldo_minutos) || 0;
+      const resSaldos = await (supabase as any)
+        .from('banco_horas_saldos')
+        .select('saldo_atual_minutos, horas_positivas_minutos, horas_negativas_minutos');
+      safeData(resSaldos).forEach((s: any) => {
+        const saldo = Number(s.saldo_atual_minutos) || 0;
         saldoBancoGeralMinutos += saldo;
         if (saldo < -1200) colaboradoresSaldoCritico += 1;
-        horasExtrasTotal += Math.round((Number(s.horas_extras_minutos) || 0) / 60);
-        adicionalNoturnoHoras += Math.round((Number(s.adicional_noturno_minutos) || 0) / 60);
+        horasExtrasTotal += Math.round((Number(s.horas_positivas_minutos) || 0) / 60);
       });
     } catch {}
 
@@ -1163,25 +1181,34 @@ class DashboardConsolidadoServiceClass {
     let lotesConcluidosMes = 0;
 
     try {
-      const resDiaristas = await supabase.from('diaristas').select('id').eq('ativo', true);
-      totalDiaristasAtivos = safeData(resDiaristas).length;
+      const resDiaristasColab = await (supabase as any)
+        .from('colaboradores')
+        .select('id')
+        .or('regime_trabalho.ilike.%diarista%,tipo_colaborador.ilike.%diarista%')
+        .eq('status', 'ativo');
+      const diaristasColabCount = safeData(resDiaristasColab).length;
+
+      const resDiaristasTable = await supabase.from('diaristas').select('id');
+      const diaristasTableCount = safeData(resDiaristasTable).length;
+
+      totalDiaristasAtivos = Math.max(diaristasColabCount, diaristasTableCount);
 
       let qLotesD = applySeg(supabase
         .from('diaristas_lotes_fechamento')
-        .select('valor_total, status, total_diarias, periodo_inicio')
+        .select('valor_total, status, total_registros, periodo_inicio')
         .gte('periodo_inicio', startRange)
         .lt('periodo_inicio', endRange));
       if (empresaId && empresaId !== 'all') qLotesD = qLotesD.eq('empresa_id', empresaId);
 
       const lotes = safeData(await qLotesD);
-      lotes.forEach((l, idx) => {
+      lotes.forEach((l: any, idx: number) => {
         const val = Number(l.valor_total) || 0;
         valorAcumuladoDiaristas += val;
-        if (['PAGO', 'CONCLUIDO', 'CNAB_GERADO'].includes(String(l.status).toUpperCase())) {
+        if (['PAGO', 'CONCLUIDO', 'CNAB_GERADO', 'FECHADO_FINANCEIRO'].includes(String(l.status).toUpperCase())) {
           lotesConcluidosMes += 1;
         }
         if (idx === lotes.length - 1) {
-          presencasSemanaAtual = Number(l.total_diarias) || 0;
+          presencasSemanaAtual = Number(l.total_registros) || 0;
           valorSemanaAtual = val;
         }
       });
@@ -1192,7 +1219,10 @@ class DashboardConsolidadoServiceClass {
     let valorIntermitentesMes = 0;
 
     try {
-      const resInt = await supabase.from('colaboradores').select('id').eq('regime_contratual', 'intermitente');
+      const resInt = await (supabase as any)
+        .from('colaboradores')
+        .select('id, tipo_contrato, regime_trabalho')
+        .or('tipo_contrato.ilike.%intermitente%,regime_trabalho.ilike.%intermitente%');
       totalIntermitentes = safeData(resInt).length;
 
       let qInt = applySeg(supabase

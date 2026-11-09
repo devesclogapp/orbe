@@ -386,7 +386,7 @@ export default function Dashboard() {
 
           <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
             <span className="hidden sm:inline">Último sync REP:</span>
-            <strong className="text-foreground font-semibold">{statusCiclos?.ultimoSyncRhid || "Hoje 07:01"}</strong>
+            <strong className="text-foreground font-semibold">{statusCiclos?.ultimoSyncRhid || "Indisponível"}</strong>
           </div>
         </div>
 
