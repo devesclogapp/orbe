@@ -45,3 +45,7 @@ bun.lock
 bun.lockb
 temp_ts/
 
+# Sensitive operational and validation artifacts (specific)
+Fatura_benevides_2026-09_F105F927.pdf
+val_lancamentos.txt
+
