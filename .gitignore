@@ -80,3 +80,33 @@ full_error*.txt
 out_https.txt
 trigger_out.txt
 
+# Terminal dumps, diffs, temp code inspection & transient JSON (root specific)
+/arc_tree.txt
+/bad_files.txt
+/dialog_titles.txt
+/diff.txt
+/diff1.txt
+/git_branch.txt
+/git_log.txt
+/git_remote.txt
+/git_status.txt
+/modal_lines.txt
+/output.txt
+/pdf_text.txt
+/projects-list.txt
+/search_lt.txt
+/search_results.txt
+/search_slice.txt
+/status.txt
+/temp.txt
+/temp2.txt
+/temp_colabs.txt
+/temp_colabs2.txt
+/temp_lines.txt
+/temp_path.txt
+/val_colab.txt
+/excel_dump.json
+/opencode.json
+/result.json
+/transbordo_headers.json
+
