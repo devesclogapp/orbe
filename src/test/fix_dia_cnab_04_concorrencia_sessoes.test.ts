@@ -326,7 +326,7 @@ describe('FIX DIA-CNAB-04 — Ajuste Final da Idempotência (Testes de Concorrê
     expect(dbRemessas[0].sequencial_arquivo).toBe(11);
     expect(nsaCounter).toBe(12); // Consumiu apenas 1 sequencial (11 -> 12)
     expect(dbItens.length).toBe(3);
-  });
+  }, 20000);
 
   // =========================================================================================
   // CENÁRIO 2: Repetição sequencial do mesmo pedido

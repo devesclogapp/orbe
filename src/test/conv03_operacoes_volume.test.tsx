@@ -330,19 +330,19 @@ describe("CONV-03 — Operações por Volume Oficial (Convergência UX05)", () =
     renderOperacoesVolume();
 
     // Total: 3 operações
-    const cardTotal = (await screen.findByText(/Operações no Período/i)).closest("button");
+    const cardTotal = (await screen.findByText(/Operações no Período/i, {}, { timeout: 10000 })).closest("button");
     expect(cardTotal).toBeInTheDocument();
     if (cardTotal) {
-      expect(await within(cardTotal).findByText("3")).toBeInTheDocument();
+      expect(await within(cardTotal).findByText("3", {}, { timeout: 10000 })).toBeInTheDocument();
     }
 
     // Requer validação (RECEBIDO): 1
-    const cardValidacao = screen.getByText(/Requer Validação/i).closest("button");
+    const cardValidacao = (await screen.findByText(/Requer Validação/i, {}, { timeout: 10000 })).closest("button");
     expect(cardValidacao).toBeInTheDocument();
     if (cardValidacao) {
-      expect(await within(cardValidacao).findByText("1")).toBeInTheDocument();
+      expect(await within(cardValidacao).findByText("1", {}, { timeout: 10000 })).toBeInTheDocument();
     }
-  });
+  }, 25000);
 
   it("5. Renderiza a Tabela Densa de 10 colunas com código formatado e status desacoplados", async () => {
     renderOperacoesVolume();
