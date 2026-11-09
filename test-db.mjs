@@ -1,9 +1,23 @@
 import fs from 'fs';
 import https from 'https';
 
-const env = JSON.parse(fs.readFileSync('env.json', 'utf8'));
-const SUPABASE_URL = env.u;
-const SUPABASE_KEY = env.k;
+let SUPABASE_URL = process.env.VITE_SUPABASE_URL;
+let SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY;
+
+if ((!SUPABASE_URL || !SUPABASE_KEY) && fs.existsSync('.env.local')) {
+    const envStr = fs.readFileSync('.env.local', 'utf8');
+    envStr.split('\n').forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) return;
+        const [k, ...vals] = trimmed.split('=');
+        if (k && vals.length) {
+            const cleanKey = k.trim();
+            const cleanVal = vals.join('=').trim().replace(/^["']|["']$/g, '');
+            if (cleanKey === 'VITE_SUPABASE_URL' && !SUPABASE_URL) SUPABASE_URL = cleanVal;
+            if (cleanKey === 'VITE_SUPABASE_ANON_KEY' && !SUPABASE_KEY) SUPABASE_KEY = cleanVal;
+        }
+    });
+}
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
     process.exit(1);

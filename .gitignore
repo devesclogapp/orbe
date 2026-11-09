@@ -10,8 +10,17 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Environment and sensitive credential files
+.env
+.env.*
+!.env.example
+!.env.*.example
 *.local
 .env.local.backup_cloud
+env.json
+env.txt
+env_dump.json
+env_local_copy.txt
 .tmp/
 
 # Editor directories and files
