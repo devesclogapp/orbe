@@ -49,3 +49,34 @@ temp_ts/
 Fatura_benevides_2026-09_F105F927.pdf
 val_lancamentos.txt
 
+# Test logs, build logs and debug outputs (specific)
+clt_output.txt
+clt_test_out.txt
+read_trace.txt
+test_ansi.txt
+test_clt.txt
+test_e2e.txt
+test_trace.txt
+vitest_full_out.txt
+vitest_out.txt
+vitest_output.json
+vitest_output*.txt
+build_log.txt
+clean_output.txt
+created_func.txt
+deploy-log*.txt
+deploy_help.txt
+final_log.txt
+full_help.txt
+function-deploy-help.txt
+lint-output.txt
+lint_results*.txt
+_debug_out.txt
+debug.txt
+error.txt
+errors.txt
+fails.txt
+full_error*.txt
+out_https.txt
+trigger_out.txt
+
