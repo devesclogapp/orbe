@@ -177,3 +177,21 @@ trigger_out.txt
 /test2.mjs
 /test_db.mjs
 
+# Legacy diagnostics, utilities and read-only schema scripts (root specific - Sublote 2A.2.3B)
+/audit_supabase.mjs
+/build_matrix.mjs
+/build_matrix_v2.mjs
+/db_query.js
+/dump.sql
+/fetch_recent.js
+/get_data.ps1
+/get_data_2.ps1
+/get_schema.sql
+/get_triggers.sql
+/list-empresas.js
+/read_xlsx.cjs
+/schema_types.ts
+/temp_list_payments.ts
+/test_query.cjs
+/test_query.ts
+
