@@ -245,4 +245,36 @@ trigger_out.txt
 /validate_regression.ps1
 /validate_regression_2.ps1
 
+# Legacy dumps, logs and outputs from root & recovery (Lote 2A.3)
+/_check.json
+/all_colabs.txt
+/auditoria_db_output.json
+/cnab_test.txt
+/cp02-estado-inicial.json
+/db_json.txt
+/db_json2.txt
+/db_valida_final.json
+/dump.txt
+/e2e_debug_info.json
+/err_dump.txt
+/error_fetch.json
+/evidencia_b2.json
+/intermitentes-data.json
+/migrations.txt
+/orgs.txt
+/out.txt
+/projects.txt
+/report_hml.txt
+/schemas_extracted.txt
+/test.txt
+/recovery/rollback_20261018150000_fix_dia_cnab_04_atomic_idempotency.sql
+
+# Legacy duplicated skills in .opencode (Lote 2A.4)
+/.opencode/skills/Orbe design system copy.md
+/.opencode/skills/auditoria_orbe copy.md
+/.opencode/skills/plano-correcoes-relatorios copy.md
+/.opencode/skills/plano_implementacao_producao_encarregado copy.md
+/.opencode/skills/skill Claude para reforcar modelos opencode copy.md
+
+
 

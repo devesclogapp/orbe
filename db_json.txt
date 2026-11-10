@@ -1,6 +1,0 @@
-{
-  "ciclosAprovados": [],
-  "consolidados": [],
-  "clienteTop1": [],
-  "countClientes": null
-}
