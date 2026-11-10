@@ -216,3 +216,33 @@ trigger_out.txt
 /teste_query.js
 /teste_query.ts
 
+# Legacy maintenance, DDL/DML and quarantine scripts (root specific - Sublote 2A.2.4A)
+/clean_all.sql
+/deploy_fase_8.3.1_real.sql
+/reabrir_fix.sql
+/reabrir_fix_bruto.sql
+/reabrir_fix_completo.sql
+/reabrir_fix_final.sql
+/backfill.ts
+/backfill_intermitentes.ts
+/backfill_rest.js
+/run_backfill2.ts
+/test_validation.mjs
+/validate_ops.mjs
+/test-tio-import.js
+/setup_diaristas.ts
+/update_colabs.js
+
+# Legacy auxiliary, DDL adjustments and validation scripts (root specific - Sublote 2A.2.4B)
+/correcao_trigger_receitas.sql
+/fix_cnab_schema.sql
+/fix_schema.sql
+/update_constraint.sql
+/test_tio.cjs
+/validate-import.cjs
+/test-db.mjs
+/audit_writes.mjs
+/validate_regression.ps1
+/validate_regression_2.ps1
+
+
