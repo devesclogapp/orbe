@@ -35,7 +35,12 @@ env_local_copy.txt
 *.sw?
 
 # Scratch & local testing
-scratch/
+/scratch/*
+!/scratch/SIMULACAO_RETORNO_ITAU_20261015_SEQ000010.RET
+!/scratch/SIMULACAO_RETORNO_ITAU_20261019_SEQ000011.RET
+/scratch/test_db_hml02/
+
+
 
 # Build caches and transient artifacts
 *.tsbuildinfo
