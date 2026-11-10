@@ -151,3 +151,29 @@ trigger_out.txt
 /fix_mojibake.js
 /fix_mojibake2.cjs
 
+# Legacy DB pings, checks and read-only test queries (root specific - Sublote 2A.2.3A)
+/.testQuery.mjs
+/check-db.js
+/check-db.mjs
+/check-db.ts
+/check-diaristas.js
+/check-env.js
+/check-test.cjs
+/check-triggers.js
+/check_db.ts
+/check_db2.ts
+/check_duplicates.mjs
+/check_fechamento.ts
+/check_itens.js
+/check_services.js
+/test-1044.js
+/test-1044.mjs
+/test-db.js
+/test-db.ts
+/test-investigacao.js
+/test-motor.ts
+/test-schema.js
+/test2.js
+/test2.mjs
+/test_db.mjs
+
