@@ -125,3 +125,21 @@ trigger_out.txt
 /schema_out_utf8.json
 /schemas.txt
 
+# Legacy code injection, regex patches & transient test scripts (root specific)
+/fix_rh_service.py
+/inject_rh_admin.py
+/inject_rh_master.py
+/inject_rh_modal.py
+/inject_rh_reproc.py
+/patch.py
+/patch2.py
+/patch3.py
+/patch4.py
+/patch5.py
+/update_modal_labels.py
+/update_modal_ui.py
+/fix_rh_service.js
+/update_filters.js
+/teste_destructure.js
+/parse_sql.js
+
