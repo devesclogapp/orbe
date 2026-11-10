@@ -195,3 +195,24 @@ trigger_out.txt
 /test_query.cjs
 /test_query.ts
 
+# Legacy sensitive, DML mutation and privileged scripts (root specific - Sublote 2A.2.3C)
+/.checkRpc.mjs
+/backfill_rest_debug.js
+/debug_points.mjs
+/debug_reabrir.mjs
+/diagnostic.mjs
+/dump_rpc.mjs
+/get_columns.mjs
+/insert-mock.cjs
+/list-empresas-2.js
+/run_backfill.sql
+/run_test.ts
+/temp_policies.ts
+/temp_test.cjs
+/test-status.js
+/test.js
+/test_e2e_timings.js
+/test_e2e_timings.ts
+/teste_query.js
+/teste_query.ts
+
