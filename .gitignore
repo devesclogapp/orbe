@@ -284,6 +284,64 @@ trigger_out.txt
 # Local PostgreSQL cluster PGDATA (Lote 2A.5)
 /scratch/test_db_hml02/
 
+# Legacy transit dumps, scripts and SQL in .agent/ (Lote 2A.7A)
+/.agent/ast_analysis.json
+/.agent/ast_refactor.cjs
+/.agent/ast_tsmorph.cjs
+/.agent/audit.sql
+/.agent/audit_out.txt
+/.agent/audit_output.txt
+/.agent/audit_res.json
+/.agent/audit_via_rest.ts
+/.agent/backfill_competencia.js
+/.agent/bloco4_manual_apply.sql
+/.agent/build_audit.js
+/.agent/build_audit.ts
+/.agent/check_accounts.ts
+/.agent/check_lotes.mjs
+/.agent/counts.json
+/.agent/counts.txt
+/.agent/counts_v4.json
+/.agent/diag.ts
+/.agent/dump_receitas.js
+/.agent/fix_account.ts
+/.agent/get_counts.mjs
+/.agent/get_users.mjs
+/.agent/grep_results.txt
+/.agent/inject_sprint4.mjs
+/.agent/investigate_lotes.mjs
+/.agent/investigation_report.json
+/.agent/lines.txt
+/.agent/lotes.json
+/.agent/lotes_output.txt
+/.agent/match.txt
+/.agent/out.txt
+/.agent/out2.txt
+/.agent/output.txt
+/.agent/output8.txt
+/.agent/profiles_out.json
+/.agent/query_profiles.ts
+/.agent/read_audit_log.mjs
+/.agent/replace_timepicker.cjs
+/.agent/reports/db_dump_lotes.json
+/.agent/reports/db_dump_lotes2.json
+/.agent/reports/migration_dump.txt
+/.agent/scripts/check_db.js
+/.agent/scripts/debug_db.ts
+/.agent/scripts/out.txt
+/.agent/scripts/proposed_EmpresaResolver.ts
+/.agent/scripts/repara_lote_6e9b5afc.sql
+/.agent/scripts/repara_lote_6e9b5afc.ts
+/.agent/scripts/review_hard_delete_ids.sql
+/.agent/scripts/run_selects.ts
+/.agent/scripts/simula_motor_rh.js
+/.agent/scripts/simula_motor_rh.ts
+/.agent/scripts/valida_integracao_financeira.js
+/.agent/security_audit.ts
+/.agent/test_dashboard_full.js
+/.agent/test_dre_queries.js
+
+
 
 
 
