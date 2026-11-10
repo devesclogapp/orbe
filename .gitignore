@@ -143,3 +143,11 @@ trigger_out.txt
 /teste_destructure.js
 /parse_sql.js
 
+# Legacy encoding & mojibake patch scripts (root specific)
+/_fix_encoding.mjs
+/fix-mojibake.cjs
+/fix-mojibake2.cjs
+/fix_mojibake.cjs
+/fix_mojibake.js
+/fix_mojibake2.cjs
+
