@@ -276,5 +276,9 @@ trigger_out.txt
 /.opencode/skills/plano_implementacao_producao_encarregado copy.md
 /.opencode/skills/skill Claude para reforcar modelos opencode copy.md
 
+# Local PostgreSQL cluster PGDATA (Lote 2A.5)
+/scratch/test_db_hml02/
+
+
 
 
