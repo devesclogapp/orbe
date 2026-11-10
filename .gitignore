@@ -110,3 +110,18 @@ trigger_out.txt
 /result.json
 /transbordo_headers.json
 
+# Database queries, temporary DDL dumps & diagnostics (root specific)
+/__alters.txt
+/__schemas.txt
+/_check_tenants_out.txt
+/all_lines.txt
+/db_log.txt
+/db_out.json
+/db_out.txt
+/db2_out.txt
+/diagnostic_output.json
+/grep_tenant_id.txt
+/schema_out.json
+/schema_out_utf8.json
+/schemas.txt
+
