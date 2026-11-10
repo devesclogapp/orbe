@@ -1,11 +1,11 @@
-﻿-- ==============================================================================
+-- ==============================================================================
 -- SCRIPT 01: sec_02_script_01_diagnostico_pre.sql
 -- PROJETO: ERP ORBE - ESC LOG 2026
--- GATE: SEC-02.5 - DiagnÃ³stico PrÃ©-Migration (READ-ONLY)
+-- GATE: SEC-02.5 - Diagnóstico Pré-Migration (READ-ONLY)
 -- FINALIDADE:
---   Consultar o catÃ¡logo PostgreSQL no Supabase antes de aplicar a migration SEC-02.
---   Inspecionar privilÃ©gios efetivos, polÃ­ticas RLS, triggers, colunas e funÃ§Ãµes.
--- MODO: 100% READ-ONLY. NÃƒO EXECUTA DDL NEM DML.
+--   Consultar o catálogo PostgreSQL no Supabase antes de aplicar a migration SEC-02.
+--   Inspecionar privilégios efetivos, políticas RLS, triggers, colunas e funções.
+-- MODO: 100% READ-ONLY. NÃO EXECUTA DDL NEM DML.
 -- ==============================================================================
 
 -- ------------------------------------------------------------------------------
@@ -38,7 +38,7 @@ WHERE schemaname = 'public'
   AND tablename = 'profiles';
 
 -- ------------------------------------------------------------------------------
--- 3. POLÃTICAS RLS ATUALMENTE ATIVAS EM public.profiles
+-- 3. POLÍTICAS RLS ATUALMENTE ATIVAS EM public.profiles
 -- ------------------------------------------------------------------------------
 SELECT 
   schemaname,
@@ -55,7 +55,7 @@ WHERE schemaname = 'public'
 ORDER BY policyname;
 
 -- ------------------------------------------------------------------------------
--- 4. PRIVILÃ‰GIOS DE TABELA EFETIVOS (TABLE GRANTS) EM public.profiles
+-- 4. PRIVILÉGIOS DE TABELA EFETIVOS (TABLE GRANTS) EM public.profiles
 -- ------------------------------------------------------------------------------
 SELECT 
   grantee,
@@ -70,7 +70,7 @@ WHERE table_schema = 'public'
 ORDER BY grantee, privilege_type;
 
 -- ------------------------------------------------------------------------------
--- 5. PRIVILÃ‰GIOS EM COLUNAS CRÃTICAS (COLUMN GRANTS) EM public.profiles
+-- 5. PRIVILÉGIOS EM COLUNAS CRÍTICAS (COLUMN GRANTS) EM public.profiles
 -- ------------------------------------------------------------------------------
 SELECT 
   grantee,
@@ -101,7 +101,7 @@ WHERE event_object_schema = 'public'
 ORDER BY trigger_name, event_manipulation;
 
 -- ------------------------------------------------------------------------------
--- 7. FUNÃ‡Ã•ES DE AUTORIZAÃ‡ÃƒO E SEGURANÃ‡A MULTI-TENANT
+-- 7. FUNÇÕES DE AUTORIZAÇÃO E SEGURANÇA MULTI-TENANT
 -- ------------------------------------------------------------------------------
 SELECT 
   p.proname AS function_name,
@@ -126,7 +126,7 @@ WHERE n.nspname = 'public'
 ORDER BY p.proname;
 
 -- ------------------------------------------------------------------------------
--- 8. PRIVILÃ‰GIOS DE EXECUÃ‡ÃƒO NAS FUNÃ‡Ã•ES DE SEGURANÃ‡A (ROUTINE PRIVILEGES)
+-- 8. PRIVILÉGIOS DE EXECUÇÃO NAS FUNÇÕES DE SEGURANÇA (ROUTINE PRIVILEGES)
 -- ------------------------------------------------------------------------------
 SELECT 
   routine_name,
@@ -145,7 +145,7 @@ WHERE specific_schema = 'public'
 ORDER BY routine_name, grantee;
 
 -- ------------------------------------------------------------------------------
--- 9. INTEGRIDADE REFERENCIAL: DEPENDÃŠNCIAS DE FOREIGN KEY PARA profiles
+-- 9. INTEGRIDADE REFERENCIAL: DEPENDÊNCIAS DE FOREIGN KEY PARA profiles
 -- ------------------------------------------------------------------------------
 SELECT 
   tc.constraint_name,
@@ -166,7 +166,7 @@ WHERE tc.constraint_type = 'FOREIGN KEY'
 ORDER BY tc.table_name, kcu.column_name;
 
 -- ------------------------------------------------------------------------------
--- 10. CONSTRAINT DE STATUS E PRIVILÃ‰GIOS EM tenant_invitations
+-- 10. CONSTRAINT DE STATUS E PRIVILÉGIOS EM tenant_invitations
 -- ------------------------------------------------------------------------------
 SELECT 
   c.conname AS constraint_name,
