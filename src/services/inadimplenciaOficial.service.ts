@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { fetchAllSupabasePages } from "@/lib/supabasePagination";
 import { getCurrentTenantId } from "./domain/base.service";
 import { EnvironmentQueryFilter } from "./environment/EnvironmentQueryFilter";
 import { parseISO, differenceInDays } from "date-fns";
@@ -370,6 +371,119 @@ export function agruparInadimplenciaPorCliente(
   return Array.from(map.values()).sort((a, b) => b.totalInadimplente - a.totalInadimplente);
 }
 
+export interface ReceitaContextualParaInadimplencia {
+  id?: string;
+  empresa_id?: string | null;
+  competencia?: string | null;
+  created_at?: string | null;
+  vencimento?: string | null;
+  data_recebimento?: string | null;
+  status?: string | null;
+  valor_total?: number | string | null;
+}
+
+export interface ResumoInadimplenciaContextual {
+  totalInadimplente: number;
+  quantidadeTitulos: number;
+}
+
+const STATUS_LIQUIDADOS_OU_CANCELADOS_RECEITA = new Set([
+  "recebido",
+  "pago",
+  "conciliado",
+  "cancelado",
+  "estornado",
+]);
+
+function normalizeCompetenciaInadimplencia(competencia?: string): string {
+  if (!competencia) return "";
+  const trimmed = competencia.trim();
+  const matchAll = /^(\d{4})-all$/i.exec(trimmed);
+  if (matchAll) return `${matchAll[1]}-all`;
+  const matchMonth = /^(\d{4})-(\d{2})/.exec(trimmed);
+  if (matchMonth) return `${matchMonth[1]}-${matchMonth[2]}`;
+  return trimmed;
+}
+
+function getNextMonthStartDate(canonicalMonth: string): string {
+  const [yearStr, monthStr] = canonicalMonth.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return canonicalMonth;
+  }
+  const nextYear = month === 12 ? year + 1 : year;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  return `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
+}
+
+/**
+ * Calcula o total inadimplente a partir da regra oficial de `receitas_operacionais`:
+ * - status ativo (nao recebido, pago, conciliado, cancelado ou estornado)
+ * - sem data_recebimento
+ * - vencimento nao nulo e estritamente menor que dataCorte (YYYY-MM-DD)
+ * - competencia compativel com o recorte do Dashboard (YYYY-MM ou YYYY-all)
+ * - deduplicacao por id e soma em centavos para evitar erro de ponto flutuante
+ */
+export function calcularTotalInadimplenteContextual(
+  titulos: ReceitaContextualParaInadimplencia[],
+  options?: {
+    competencia?: string;
+    dataCorte?: string;
+  }
+): ResumoInadimplenciaContextual {
+  const dataCorte = options?.dataCorte || new Date().toISOString().split("T")[0];
+  const canonicalCompetencia = normalizeCompetenciaInadimplencia(options?.competencia);
+  const isAnual = canonicalCompetencia.endsWith("-all");
+  const yearPart = isAnual ? canonicalCompetencia.split("-")[0] : "";
+
+  const seenIds = new Set<string>();
+  let totalCents = 0;
+  let quantidadeTitulos = 0;
+
+  for (const item of titulos || []) {
+    if (!item) continue;
+
+    if (item.id) {
+      if (seenIds.has(item.id)) continue;
+      seenIds.add(item.id);
+    }
+
+    if (canonicalCompetencia) {
+      const itemComp =
+        item.competencia ||
+        (item.created_at ? String(item.created_at).slice(0, 7) : "");
+      if (isAnual) {
+        if (!itemComp.startsWith(`${yearPart}-`)) continue;
+      } else if (itemComp && itemComp !== canonicalCompetencia) {
+        continue;
+      }
+    }
+
+    const stat = String(item.status || "").trim().toLowerCase();
+    if (!stat || STATUS_LIQUIDADOS_OU_CANCELADOS_RECEITA.has(stat)) continue;
+    if (item.data_recebimento) continue;
+
+    const vencStr = item.vencimento ? String(item.vencimento).slice(0, 10) : "";
+    if (!vencStr || !/^\d{4}-\d{2}-\d{2}$/.test(vencStr)) continue;
+    if (vencStr >= dataCorte) continue;
+
+    const numericValor = Number(item.valor_total ?? 0);
+    if (!Number.isFinite(numericValor) || numericValor <= 0) continue;
+
+    const valorCents = Math.round(numericValor * 100);
+    if (valorCents <= 0) continue;
+
+    totalCents += valorCents;
+    quantidadeTitulos += 1;
+  }
+
+  return {
+    totalInadimplente: Number((totalCents / 100).toFixed(2)),
+    quantidadeTitulos,
+  };
+}
+
 class InadimplenciaOficialServiceClass {
   /**
    * Consulta títulos vencidos no banco com respeito rigoroso a:
@@ -388,62 +502,69 @@ class InadimplenciaOficialServiceClass {
     const hojeStr = dataCorte || new Date().toISOString().split("T")[0];
 
     // Obter testIds para aplicação de escopo de ambiente oficial
-    const { data: testEmpresas } = await supabase
+    const { data: testEmpresas, error: testEmpresasError } = await supabase
       .from("empresas")
       .select("id")
       .eq("is_teste", true);
+    if (testEmpresasError) {
+      throw testEmpresasError;
+    }
     const testIds = testEmpresas?.map((e) => e.id) || [];
 
-    let query = supabase
-      .from("receitas_operacionais")
-      .select(`
-        *,
-        empresas:empresa_id(id, nome),
-        receitas_operacionais_itens(
-          id,
-          valor_item,
-          operacao_id,
-          servico_extra_id,
-          created_at,
-          operacoes_producao(
+    const buildQuery = () => {
+      let query = supabase
+        .from("receitas_operacionais")
+        .select(`
+          *,
+          empresas:empresa_id(id, nome),
+          receitas_operacionais_itens(
             id,
-            data_operacao,
-            servicos:tipos_servico_operacional(nome),
-            produtos:produtos_carga(nome)
-          ),
-          servicos_extras_operacionais:servico_extra_id(
-            id,
-            data,
-            descricao_servico,
-            tipo_servico
+            valor_item,
+            operacao_id,
+            servico_extra_id,
+            created_at,
+            operacoes_producao(
+              id,
+              data_operacao,
+              servicos:tipos_servico_operacional(nome),
+              produtos:produtos_carga(nome)
+            ),
+            servicos_extras_operacionais:servico_extra_id(
+              id,
+              data,
+              descricao_servico,
+              tipo_servico
+            )
           )
-        )
-      `)
-      .eq("tenant_id", tenantId)
-      .not("status", "in", '("recebido","pago","conciliado","cancelado")')
-      .not("vencimento", "is", null)
-      .lt("vencimento", hojeStr);
+        `)
+        .eq("tenant_id", tenantId)
+        .not("status", "in", '("recebido","pago","conciliado","cancelado")')
+        .not("vencimento", "is", null)
+        .lt("vencimento", hojeStr);
 
-    if (empresaId && empresaId !== "all") {
-      query = query.eq("empresa_id", empresaId);
-    } else {
-      query = EnvironmentQueryFilter.applyEmpresaScope(query, {
-        tenantId,
-        column: "empresa_id",
-        includeNullInProduction: false,
-        testIds,
-      });
-    }
+      if (empresaId && empresaId !== "all") {
+        query = query.eq("empresa_id", empresaId);
+      } else {
+        query = EnvironmentQueryFilter.applyEmpresaScope(query, {
+          tenantId,
+          column: "empresa_id",
+          includeNullInProduction: false,
+          testIds,
+        });
+      }
 
-    query = query.order("vencimento", { ascending: true }).limit(1000);
+      return query
+        .order("vencimento", { ascending: true })
+        .order("id", { ascending: true });
+    };
 
-    const { data, error } = await query;
-    if (error) {
+    let rawList: any[];
+    try {
+      rawList = await fetchAllSupabasePages(buildQuery);
+    } catch (error) {
       console.error("[InadimplenciaOficialService] Erro ao buscar inadimplência:", error);
       throw error;
     }
-
-    const rawList = data || [];
 
     return rawList.map((r: any): TituloInadimplenteUI => {
       const itensRaw = r.receitas_operacionais_itens || [];
@@ -499,6 +620,89 @@ class InadimplenciaOficialServiceClass {
         raw: r,
       };
     });
+  }
+
+  /**
+   * Consulta o valor total inadimplente alinhado ao recorte contextual do Dashboard
+   * (tenant, empresa, competencia YYYY-MM ou YYYY-all, data de corte e ambiente).
+   */
+  async getTotalInadimplenteByContexto(params: {
+    tenantId?: string;
+    empresaId?: string;
+    competencia?: string;
+    dataCorte?: string;
+    environment?: string;
+  }): Promise<ResumoInadimplenciaContextual> {
+    const resolvedTenantId = params.tenantId || (await getCurrentTenantId());
+    if (!resolvedTenantId) {
+      throw new Error("Tenant não encontrado para consulta de inadimplência.");
+    }
+
+    const hojeStr = params.dataCorte || new Date().toISOString().split("T")[0];
+    const canonicalCompetencia = normalizeCompetenciaInadimplencia(params.competencia);
+    const isAnual = canonicalCompetencia.endsWith("-all");
+    const yearPart = isAnual ? Number(canonicalCompetencia.split("-")[0]) : 0;
+    const normalizedEmpresaId =
+      params.empresaId && params.empresaId !== "all" ? params.empresaId : undefined;
+
+    const { data: testEmpresas, error: testEmpresasError } = await supabase
+      .from("empresas")
+      .select("id")
+      .eq("is_teste", true);
+    if (testEmpresasError) {
+      throw testEmpresasError;
+    }
+    const testIds = testEmpresas?.map((e) => e.id) || [];
+
+    let query = supabase
+      .from("receitas_operacionais")
+      .select("id, empresa_id, competencia, created_at, vencimento, data_recebimento, status, valor_total")
+      .eq("tenant_id", resolvedTenantId)
+      .not("status", "in", '("recebido","pago","conciliado","cancelado")')
+      .is("data_recebimento", null)
+      .not("vencimento", "is", null)
+      .lt("vencimento", hojeStr);
+
+    if (canonicalCompetencia) {
+      if (isAnual && Number.isFinite(yearPart) && yearPart > 0) {
+        query = query.or(
+          `and(competencia.gte.${yearPart}-01,competencia.lt.${yearPart + 1}-01),and(competencia.is.null,created_at.gte.${yearPart}-01-01,created_at.lt.${yearPart + 1}-01-01)`
+        );
+      } else if (/^\d{4}-\d{2}$/.test(canonicalCompetencia)) {
+        const startRange = `${canonicalCompetencia}-01`;
+        const endRange = getNextMonthStartDate(canonicalCompetencia);
+        query = query.or(
+          `competencia.eq.${canonicalCompetencia},and(competencia.is.null,created_at.gte.${startRange},created_at.lt.${endRange})`
+        );
+      }
+    }
+
+    query = EnvironmentQueryFilter.applyEmpresaScope(query, {
+      tenantId: resolvedTenantId,
+      column: "empresa_id",
+      includeNullInProduction: false,
+      testIds,
+      targetEmpresaId: normalizedEmpresaId,
+      environment: params.environment,
+    });
+
+    if (normalizedEmpresaId) {
+      query = query.eq("empresa_id", normalizedEmpresaId);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error("[InadimplenciaOficialService] Erro ao buscar resumo contextual de inadimplência:", error);
+      throw error;
+    }
+
+    return calcularTotalInadimplenteContextual(
+      (data || []) as ReceitaContextualParaInadimplencia[],
+      {
+        competencia: canonicalCompetencia || undefined,
+        dataCorte: hojeStr,
+      }
+    );
   }
 }
 

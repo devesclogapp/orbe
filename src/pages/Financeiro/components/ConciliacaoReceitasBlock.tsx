@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { fetchAllSupabasePages } from "@/lib/supabasePagination";
 import { getCurrentTenantId } from "@/services/domain/base.service";
 import { ReceitasService } from "@/services/receitas/receitas.service";
 import { ReceitaOperacional } from "@/types/receitas.types";
@@ -44,19 +45,19 @@ export function ConciliacaoReceitasBlock({ highlightReceitaId, empresaId }: Conc
         queryKey: ["receitas_para_conciliacao"],
         queryFn: async () => {
             const tenantId = await getCurrentTenantId();
-            const { data, error } = await supabase
-                .from('receitas_operacionais')
-                .select(`
-                    *,
-                    empresas (nome)
-                `)
-                .eq('tenant_id', tenantId)
-                .in('status', ['recebido', 'conciliado'])
-                .order('updated_at', { ascending: false })
-                .limit(1000);
-
-            if (error) throw error;
-            return (data || []) as (ReceitaOperacional & { empresas?: { nome: string } })[];
+            const data = await fetchAllSupabasePages(() =>
+                supabase
+                    .from('receitas_operacionais')
+                    .select(`
+                        *,
+                        empresas (nome)
+                    `)
+                    .eq('tenant_id', tenantId)
+                    .in('status', ['recebido', 'conciliado'])
+                    .order('updated_at', { ascending: false })
+                    .order('id', { ascending: false })
+            );
+            return data as (ReceitaOperacional & { empresas?: { nome: string } })[];
         },
     });
 

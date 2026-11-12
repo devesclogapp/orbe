@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase';
+import { fetchAllSupabasePagesResult } from '@/lib/supabasePagination';
 import { addMonths, format } from 'date-fns';
+import { DashboardReconciliacaoSemanalService } from '@/services/dashboardReconciliacaoSemanal.service';
 
 export type AuditoriaCompetenciaStatus = 'ok' | 'divergente' | 'pendente' | 'sem_dados';
 export type TipoFluxo = 'folha_variavel' | 'intermitente' | 'diarista' | 'operacional';
@@ -120,35 +122,79 @@ function buildOrigin(
   };
 }
 
+function disableClientRetry<T>(query: T): T {
+  if (
+    query &&
+    typeof query === 'object' &&
+    'retryEnabled' in query
+  ) {
+    (query as { retryEnabled: boolean }).retryEnabled = false;
+  }
+  return query;
+}
+
 /**
  * Returns data safely from a Supabase result.
  * - If no error → returns data (or []).
- * - If the error indicates a missing table/column/relation (400/PGRST2xx/42P01) → returns [] (resilient).
- * - If the error is a real auth/permission/network error → throws.
+ * - Network, auth, permission, timeout or HTTP 5xx/0 failures ALWAYS throw before schema fallback.
+ * - If the error specifically indicates a missing table/column/relation (400/PGRST2xx/42P01/42703) → returns [].
  */
-function safeData<T>(result: { data?: T[] | null; error?: { code?: string | null; message?: string | null; details?: string | null } | null }): T[] {
+function safeData<T>(result: {
+  data?: T[] | null;
+  status?: number | null;
+  error?: {
+    code?: string | null;
+    message?: string | null;
+    details?: string | null;
+    hint?: string | null;
+    status?: number | null;
+  } | null;
+}): T[] {
   if (!result.error) return result.data ?? [];
 
   const error = result.error;
   const code = String(error.code ?? '');
-  const rawMessage = `${code} ${error.message ?? ''} ${error.details ?? ''}`.toLowerCase();
+  const httpStatus = Number(result.status ?? error.status ?? NaN);
+  const messageOnly = String(error.message ?? '').toLowerCase();
+  const hintOnly = String(error.hint ?? '').toLowerCase();
+  const detailsOnly = String(error.details ?? '').toLowerCase();
+  const combinedTransport = `${code} ${messageOnly} ${hintOnly} ${detailsOnly}`.toLowerCase();
 
-  // Treat missing table / column / relationship as empty data (migration not applied yet)
+  const isTransportOrServerFailure =
+    httpStatus === 0 ||
+    httpStatus === 401 ||
+    httpStatus === 403 ||
+    httpStatus >= 500 ||
+    /failed to fetch|networkerror|network error|load failed|fetch failed|err_internet_disconnected|internet disconnected|err_network|offline|aborterror|abort_err|request was aborted|timed out|timeout|econnrefused|econnreset|enotfound|etimedout|socket hang up/.test(
+      combinedTransport,
+    );
+
+  if (isTransportOrServerFailure) {
+    throw new Error(error.message || 'Falha de conexão ao carregar dados do dashboard.');
+  }
+
+  // Missing table / column / relationship checks deliberately ignore error.details stack traces
+  const schemaMessage = `${code} ${messageOnly} ${hintOnly}`.toLowerCase();
   const isMissingStructure =
     ['PGRST200', 'PGRST201', 'PGRST202', 'PGRST204', 'PGRST205', '42P01', '42703'].includes(code) ||
-    rawMessage.includes('does not exist') ||
-    rawMessage.includes('not found') ||
-    rawMessage.includes('relationship') ||
-    rawMessage.includes('column') ||
-    rawMessage.includes('table') ||
-    rawMessage.includes('undefined') ||
-    rawMessage.includes('invalid input syntax') ||
-    // HTTP 400 from PostgREST almost always means schema mismatch
-    rawMessage.includes('bad request');
+    schemaMessage.includes('does not exist') ||
+    schemaMessage.includes('could not find the table') ||
+    schemaMessage.includes('could not find a relationship') ||
+    schemaMessage.includes('could not find the column') ||
+    schemaMessage.includes('could not find the function') ||
+    schemaMessage.includes('schema cache') ||
+    schemaMessage.includes('relation "') ||
+    schemaMessage.includes('column "') ||
+    schemaMessage.includes('undefined_table') ||
+    schemaMessage.includes('undefined_column') ||
+    schemaMessage.includes('undefined table') ||
+    schemaMessage.includes('undefined column') ||
+    schemaMessage.includes('invalid input syntax') ||
+    schemaMessage.includes('bad request');
 
   if (isMissingStructure) return [];
 
-  // Real errors (401, 403, 5xx-equivalent, network) — still throw
+  // Real errors (401, 403, 5xx-equivalent, network, unexpected) — always throw
   throw new Error(error.message || 'Falha ao carregar dados do dashboard.');
 }
 
@@ -270,25 +316,47 @@ export function normalizeCompetencia(value: string | undefined | null): string |
   return value.substring(0, 7);
 }
 
+function resolveEnvironmentFlags(environment?: string) {
+  const raw =
+    environment ??
+    (typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null);
+  const normalized = String(raw || '').trim().toLowerCase();
+  const isHomologacao = normalized === 'homologacao' || normalized === 'homologação';
+  const isTodos = normalized === 'todos';
+  return { raw, isHomologacao, isTodos };
+}
+
+function resolveCompetenciaDateRange(competencia: string) {
+  const canonicalCompetencia = normalizeCompetencia(competencia) || '';
+  const isAnual = canonicalCompetencia.includes('all');
+  const yearPart = Number(canonicalCompetencia.split('-')[0]);
+  const startRange = isAnual ? `${yearPart}-01-01` : `${canonicalCompetencia}-01`;
+  const nextMonth = isAnual
+    ? `${yearPart + 1}-01`
+    : format(addMonths(new Date(`${canonicalCompetencia}-01T12:00:00`), 1), 'yyyy-MM');
+  const endRange = `${nextMonth}-01`;
+  return { canonicalCompetencia, isAnual, yearPart, startRange, endRange };
+}
+
 class DashboardConsolidadoServiceClass {
   async getKpisByCompetencia(
     competencia: string,
     empresaId?: string,
+    environment?: string,
   ): Promise<OperationalIntegrityKPIs> {
-    const canonicalCompetencia = normalizeCompetencia(competencia) || '';
     const consolidadoEm = new Date().toISOString();
     
     // Configuração do Isolamento de Ambiente - CHECKPOINT 06 
-    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
-    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
-    const isTodos = env === 'TODOS' || env === 'todos';
+    const { isHomologacao, isTodos } = resolveEnvironmentFlags(environment);
     
-    const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
-    const testIds = testEmpresas?.map(e => e.id) || [];
+    const resTestEmpresas = await disableClientRetry(supabase.from('empresas').select('id').eq('is_teste', true));
+    const testEmpresas = safeData<{ id: string }>(resTestEmpresas as any);
+    const testIds = testEmpresas.map(e => e.id);
     const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
     
-    const { data: contasTest } = await supabase.from('contas_bancarias_empresa').select('id').in('empresa_id', safeTestIds);
-    const contatestIds = contasTest?.map(c => c.id) || [];
+    const resContasTest = await disableClientRetry(supabase.from('contas_bancarias_empresa').select('id').in('empresa_id', safeTestIds));
+    const contasTest = safeData<{ id: string }>(resContasTest as any);
+    const contatestIds = contasTest.map(c => c.id);
     const safeContaTestIds = contatestIds.length > 0 ? contatestIds : ['11111111-1111-1111-1111-111111111111'];
 
     // Helper functions to inject the correct where clause based on the environment
@@ -304,15 +372,13 @@ class DashboardConsolidadoServiceClass {
       return q.or(`modo.eq.producao,and(modo.is.null,conta_bancaria_id.not.in.(${safeContaTestIds.join(',')}))`);
     };
     
-    // Detect if we are looking for a whole year
-    const isAnual = canonicalCompetencia.includes('all');
-    const yearPart = Number(canonicalCompetencia.split('-')[0]);
-    
-    const startRange = isAnual ? `${yearPart}-01-01` : `${canonicalCompetencia}-01`;
-    const nextMonth = isAnual 
-      ? `${yearPart + 1}-01` 
-      : format(addMonths(new Date(`${canonicalCompetencia}-01T12:00:00`), 1), 'yyyy-MM');
-    const endRange = `${nextMonth}-01`;
+    const {
+      canonicalCompetencia,
+      isAnual,
+      yearPart,
+      startRange,
+      endRange,
+    } = resolveCompetenciaDateRange(competencia);
 
     let qReceitas = applySeg(supabase
       .from('receitas_operacionais')
@@ -362,16 +428,31 @@ class DashboardConsolidadoServiceClass {
       ? qCnabArquivosBase.gte('competencia', `${yearPart}-01`).lt('competencia', `${yearPart + 1}-01`)
       : qCnabArquivosBase.eq('competencia', canonicalCompetencia);
 
-    const qRetornoItens = supabase
-      .from('cnab_retorno_itens')
-      .select(`
-        valor_retornado,
-        status,
-        created_at,
-        remessa_arquivo:cnab_remessas_arquivos!remessa_arquivo_id(
-          competencia
-        )
-      `);
+    const buildRetornoItensQuery = () => {
+      const q = supabase
+        .from('cnab_retorno_itens')
+        .select(`
+          id,
+          valor_retornado,
+          status,
+          created_at,
+          remessa_arquivo:cnab_remessas_arquivos!remessa_arquivo_id!inner(
+            competencia
+          )
+        `);
+
+      const filtered = isAnual
+        ? q
+            .gte('remessa_arquivo.competencia', `${yearPart}-01`)
+            .lt('remessa_arquivo.competencia', `${yearPart + 1}-01`)
+        : q.eq('remessa_arquivo.competencia', canonicalCompetencia);
+
+      return disableClientRetry(
+        filtered
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false }),
+      );
+    };
 
     let qCustos = applySeg(supabase
       .from('custos_extras_operacionais')
@@ -401,14 +482,14 @@ class DashboardConsolidadoServiceClass {
       resCustos,
       resServicosExtras,
     ] = await Promise.all([
-      qReceitas,
-      qLotesD,
-      qLotesRh,
-      qCnabLotes,
-      qCnabArquivos,
-      qRetornoItens,
-      qCustos,
-      qServicosExtras,
+      disableClientRetry(qReceitas),
+      disableClientRetry(qLotesD),
+      disableClientRetry(qLotesRh),
+      disableClientRetry(qCnabLotes),
+      disableClientRetry(qCnabArquivos),
+      fetchAllSupabasePagesResult(buildRetornoItensQuery),
+      disableClientRetry(qCustos),
+      disableClientRetry(qServicosExtras),
     ]);
 
     // safeData: returns [] for missing-table/column errors (migration not applied), throws only for real errors
@@ -701,9 +782,10 @@ class DashboardConsolidadoServiceClass {
     year: string,
     month: string | 'all',
     empresaId?: string,
+    environment?: string,
   ): Promise<OperationalIntegrityKPIs> {
     if (month !== 'all') {
-      return this.getKpisByCompetencia(`${year}-${month}`, empresaId);
+      return this.getKpisByCompetencia(`${year}-${month}`, empresaId, environment);
     }
 
     const snapshots = await Promise.all(
@@ -711,6 +793,7 @@ class DashboardConsolidadoServiceClass {
         this.getKpisByCompetencia(
           `${year}-${String(index + 1).padStart(2, '0')}`,
           empresaId,
+          environment,
         ),
       ),
     );
@@ -880,17 +963,19 @@ class DashboardConsolidadoServiceClass {
     return aggregate;
   }
 
-  async getRadarAlertas(competencia: string, empresaId?: string): Promise<RadarAlertaReal[]> {
-    const canonicalCompetencia = normalizeCompetencia(competencia) || '';
-    const startRange = `${canonicalCompetencia}-01`;
-    const nextMonth = format(addMonths(new Date(`${canonicalCompetencia}-01T12:00:00`), 1), 'yyyy-MM');
-    const endRange = `${nextMonth}-01`;
+  private async executeRadarChecks(
+    competencia: string,
+    empresaId?: string,
+    environment?: string,
+  ): Promise<RadarAlertasComStatusResult> {
+    const { startRange, endRange } = resolveCompetenciaDateRange(competencia);
 
-    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
-    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
-    const isTodos = env === 'TODOS' || env === 'todos';
-    const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
-    const testIds = testEmpresas?.map(e => e.id) || [];
+    const { isHomologacao, isTodos } = resolveEnvironmentFlags(environment);
+    const resTestEmpresas = await disableClientRetry(
+      supabase.from('empresas').select('id').eq('is_teste', true),
+    );
+    const testEmpresas = safeData<{ id: string }>(resTestEmpresas as any);
+    const testIds = testEmpresas.map(e => e.id);
     const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
 
     const applySeg = (q: any) => {
@@ -899,146 +984,208 @@ class DashboardConsolidadoServiceClass {
       return q.or(`empresa_id.not.in.(${safeTestIds.join(',')}),empresa_id.is.null`);
     };
 
+    const checks: Array<{
+      id: RadarAlertaFalha['id'];
+      modulo: string;
+      run: () => Promise<RadarAlertaReal | null>;
+    }> = [
+      {
+        id: 'inadimplencia',
+        modulo: 'Financeiro / Cobrança',
+        run: async () => {
+          const hoje = new Date().toISOString().substring(0, 10);
+          let qInadimplencia = applySeg(
+            supabase
+              .from('receitas_operacionais')
+              .select('id, valor_total, vencimento, status')
+              .neq('status', 'cancelado')
+              .neq('status', 'recebido')
+              .neq('status', 'pago')
+              .neq('status', 'conciliado')
+              .lt('vencimento', hoje),
+          );
+
+          if (empresaId && empresaId !== 'all') {
+            qInadimplencia = qInadimplencia.eq('empresa_id', empresaId);
+          }
+
+          const resInadimplencia = await disableClientRetry(qInadimplencia);
+          const faturasVencidas = safeData(resInadimplencia);
+          const totalVencido = faturasVencidas.reduce((acc, curr) => acc + (Number(curr.valor_total) || 0), 0);
+
+          if (faturasVencidas.length === 0) return null;
+
+          return {
+            id: 'alt-inadimplencia',
+            tipo: 'critico',
+            modulo: 'Financeiro / Cobrança',
+            titulo: `${faturasVencidas.length} fatura(s) com vencimento ultrapassado`,
+            descricao: `Existem títulos em aberto somando ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalVencido)}.`,
+            valor: totalVencido,
+            tempo: 'Vencimento expirado',
+            acaoLabel: 'Cobrar Cliente',
+            origemRota: '/financeiro/inadimplencia',
+          };
+        },
+      },
+      {
+        id: 'diaristas',
+        modulo: 'Diaristas / Fechamento',
+        run: async () => {
+          let qDiaristas = applySeg(
+            supabase
+              .from('diaristas_lotes_fechamento')
+              .select('id, valor_total, status, total_registros')
+              .eq('status', 'AGUARDANDO_VALIDACAO_RH')
+              .gte('periodo_inicio', startRange)
+              .lt('periodo_inicio', endRange),
+          );
+
+          if (empresaId && empresaId !== 'all') {
+            qDiaristas = qDiaristas.eq('empresa_id', empresaId);
+          }
+
+          const resDiaristas = await disableClientRetry(qDiaristas);
+          const lotesDiaristas = safeData(resDiaristas);
+          const totalDiaristas = lotesDiaristas.reduce((acc, curr: any) => acc + (Number(curr.valor_total) || 0), 0);
+          const totalPresencas = lotesDiaristas.reduce((acc, curr: any) => acc + (Number(curr.total_registros) || 0), 0);
+
+          if (lotesDiaristas.length === 0) return null;
+
+          return {
+            id: 'alt-diaristas-rh',
+            tipo: 'atencao',
+            modulo: 'Diaristas / Fechamento',
+            titulo: 'Lote semanal de diaristas pendente de validação',
+            descricao: `${totalPresencas > 0 ? `${totalPresencas} diárias aguardando` : 'Lotes aguardando'} validação do RH para envio ao financeiro.`,
+            valor: totalDiaristas,
+            tempo: 'Ciclo Semanal',
+            acaoLabel: 'Conferir Lote',
+            origemRota: '/operacional/diaristas',
+          };
+        },
+      },
+      {
+        id: 'custos_extras',
+        modulo: 'Custos Extras / Operação',
+        run: async () => {
+          let qCustosPend = applySeg(
+            supabase
+              .from('custos_extras_operacionais')
+              .select('id, total, status_pagamento, pipeline_status')
+              .is('deleted_at', null)
+              .eq('pipeline_status', 'PENDENTE')
+              .gte('data', startRange)
+              .lt('data', endRange),
+          );
+
+          if (empresaId && empresaId !== 'all') {
+            qCustosPend = qCustosPend.eq('empresa_id', empresaId);
+          }
+
+          const resCustosPend = await disableClientRetry(qCustosPend);
+          const custosPend = safeData(resCustosPend);
+          const totalCustosPend = custosPend.reduce((acc, curr) => acc + (Number(curr.total) || 0), 0);
+
+          if (custosPend.length === 0) return null;
+
+          return {
+            id: 'alt-custos-pend',
+            tipo: 'atencao',
+            modulo: 'Custos Extras / Operação',
+            titulo: `${custosPend.length} custo(s) extra(s) aguardando conferência`,
+            descricao: 'Lançamentos de custos necessitam de aprovação operacional.',
+            valor: totalCustosPend,
+            tempo: 'Pendente',
+            acaoLabel: 'Conferir Custos',
+            origemRota: '/operacional/custos-extras',
+          };
+        },
+      },
+      {
+        id: 'sync_rep',
+        modulo: 'Automação / REP',
+        run: async () => {
+          const qSync = supabase
+            .from('historico_importacoes')
+            .select('id, tipo_arquivo, status, created_at, quantidade_registros')
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          const resSync = await disableClientRetry(qSync);
+          const lastSync = safeData(resSync as any)[0] as any;
+          if (!lastSync?.created_at) return null;
+
+          const dataSync = new Date(lastSync.created_at);
+          const now = new Date();
+          const isToday = dataSync.toDateString() === now.toDateString();
+          const horaStr = !isNaN(dataSync.getTime())
+            ? dataSync.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            : '';
+          const tempoLabel = isToday
+            ? `Hoje ${horaStr}`
+            : `${dataSync.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}${horaStr ? ` ${horaStr}` : ''}`;
+
+          return {
+            id: 'alt-sync-rep',
+            tipo: 'info',
+            modulo: 'Automação / REP',
+            titulo: 'Sincronização de pontos executada',
+            descricao: `${lastSync.quantidade_registros ?? 'Registros'} importados (${lastSync.tipo_arquivo || 'REP'}) com status: ${lastSync.status || 'OK'}.`,
+            tempo: tempoLabel,
+            acaoLabel: 'Ver Pontos',
+            origemRota: '/clt/pontos',
+          };
+        },
+      },
+    ];
+
+    const settled = await Promise.allSettled(checks.map((c) => c.run()));
     const alertas: RadarAlertaReal[] = [];
+    const falhas: RadarAlertaFalha[] = [];
 
-    try {
-      // 1. Inadimplência / Títulos Vencidos
-      const hoje = new Date().toISOString().substring(0, 10);
-      let qInadimplencia = applySeg(supabase
-        .from('receitas_operacionais')
-        .select('id, valor_total, vencimento, status')
-        .neq('status', 'cancelado')
-        .neq('status', 'recebido')
-        .neq('status', 'pago')
-        .neq('status', 'conciliado')
-        .lt('vencimento', hoje));
-
-      if (empresaId && empresaId !== 'all') {
-        qInadimplencia = qInadimplencia.eq('empresa_id', empresaId);
-      }
-
-      const resInadimplencia = await qInadimplencia;
-      const faturasVencidas = safeData(resInadimplencia);
-      const totalVencido = faturasVencidas.reduce((acc, curr) => acc + (Number(curr.valor_total) || 0), 0);
-
-      if (faturasVencidas.length > 0) {
-        alertas.push({
-          id: 'alt-inadimplencia',
-          tipo: 'critico',
-          modulo: 'Financeiro / Cobrança',
-          titulo: `${faturasVencidas.length} fatura(s) com vencimento ultrapassado`,
-          descricao: `Existem títulos em aberto somando ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalVencido)}.`,
-          valor: totalVencido,
-          tempo: 'Vencimento expirado',
-          acaoLabel: 'Cobrar Cliente',
-          origemRota: '/financeiro/inadimplencia',
+    settled.forEach((result, index) => {
+      const descriptor = checks[index];
+      if (result.status === 'fulfilled') {
+        if (result.value) alertas.push(result.value);
+      } else {
+        const message =
+          result.reason instanceof Error
+            ? result.reason.message
+            : 'Falha ao consultar esta seção do Radar de Atenção.';
+        falhas.push({
+          id: descriptor.id,
+          modulo: descriptor.modulo,
+          mensagem: message,
         });
       }
+    });
 
-      // 2. Lote Semanal Diaristas em Análise RH
-      let qDiaristas = applySeg(supabase
-        .from('diaristas_lotes_fechamento')
-        .select('id, valor_total, status, total_registros')
-        .eq('status', 'AGUARDANDO_VALIDACAO_RH')
-        .gte('periodo_inicio', startRange)
-        .lt('periodo_inicio', endRange));
+    return { alertas, falhas };
+  }
 
-      if (empresaId && empresaId !== 'all') {
-        qDiaristas = qDiaristas.eq('empresa_id', empresaId);
-      }
-
-      const resDiaristas = await qDiaristas;
-      const lotesDiaristas = safeData(resDiaristas);
-      const totalDiaristas = lotesDiaristas.reduce((acc, curr: any) => acc + (Number(curr.valor_total) || 0), 0);
-      const totalPresencas = lotesDiaristas.reduce((acc, curr: any) => acc + (Number(curr.total_registros) || 0), 0);
-
-      if (lotesDiaristas.length > 0) {
-        alertas.push({
-          id: 'alt-diaristas-rh',
-          tipo: 'atencao',
-          modulo: 'Diaristas / Fechamento',
-          titulo: 'Lote semanal de diaristas pendente de validação',
-          descricao: `${totalPresencas > 0 ? `${totalPresencas} diárias aguardando` : 'Lotes aguardando'} validação do RH para envio ao financeiro.`,
-          valor: totalDiaristas,
-          tempo: 'Ciclo Semanal',
-          acaoLabel: 'Conferir Lote',
-          origemRota: '/operacional/diaristas',
-        });
-      }
-
-      // 3. Custos Extras Pendentes
-      let qCustosPend = applySeg(supabase
-        .from('custos_extras_operacionais')
-        .select('id, total, status_pagamento, pipeline_status')
-        .is('deleted_at', null)
-        .eq('pipeline_status', 'PENDENTE')
-        .gte('data', startRange)
-        .lt('data', endRange));
-
-      if (empresaId && empresaId !== 'all') {
-        qCustosPend = qCustosPend.eq('empresa_id', empresaId);
-      }
-
-      const resCustosPend = await qCustosPend;
-      const custosPend = safeData(resCustosPend);
-      const totalCustosPend = custosPend.reduce((acc, curr) => acc + (Number(curr.total) || 0), 0);
-
-      if (custosPend.length > 0) {
-        alertas.push({
-          id: 'alt-custos-pend',
-          tipo: 'atencao',
-          modulo: 'Custos Extras / Operação',
-          titulo: `${custosPend.length} custo(s) extra(s) aguardando conferência`,
-          descricao: 'Lançamentos de custos necessitam de aprovação operacional.',
-          valor: totalCustosPend,
-          tempo: 'Pendente',
-          acaoLabel: 'Conferir Custos',
-          origemRota: '/operacional/custos-extras',
-        });
-      }
-
-      // 4. Última Sincronização REP / Automação
-      const qSync = supabase
-        .from('historico_importacoes')
-        .select('id, tipo_arquivo, status, created_at, quantidade_registros')
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      const resSync = await qSync;
-      const lastSync = safeData(resSync as any)[0] as any;
-      if (lastSync?.created_at) {
-        const dataSync = new Date(lastSync.created_at);
-        const now = new Date();
-        const isToday = dataSync.toDateString() === now.toDateString();
-        const horaStr = !isNaN(dataSync.getTime())
-          ? dataSync.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-          : '';
-        const tempoLabel = isToday
-          ? `Hoje ${horaStr}`
-          : `${dataSync.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}${horaStr ? ` ${horaStr}` : ''}`;
-        alertas.push({
-          id: 'alt-sync-rep',
-          tipo: 'info',
-          modulo: 'Automação / REP',
-          titulo: 'Sincronização de pontos executada',
-          descricao: `${lastSync.quantidade_registros ?? 'Registros'} importados (${lastSync.tipo_arquivo || 'REP'}) com status: ${lastSync.status || 'OK'}.`,
-          tempo: tempoLabel,
-          acaoLabel: 'Ver Pontos',
-          origemRota: '/clt/pontos',
-        });
-      }
-    } catch (e) {
-      console.warn('Falha ao processar radar de alertas:', e);
+  async getRadarAlertasComStatus(
+    competencia: string,
+    empresaId?: string,
+    environment?: string,
+  ): Promise<RadarAlertasComStatusResult> {
+    if (this.getRadarAlertas !== DashboardConsolidadoServiceClass.prototype.getRadarAlertas) {
+      const alertas = await this.getRadarAlertas(competencia, empresaId, environment);
+      return { alertas, falhas: [] };
     }
+    return this.executeRadarChecks(competencia, empresaId, environment);
+  }
 
+  async getRadarAlertas(competencia: string, empresaId?: string, environment?: string): Promise<RadarAlertaReal[]> {
+    const { alertas, falhas } = await this.executeRadarChecks(competencia, empresaId, environment);
+    if (alertas.length === 0 && falhas.length === 4) {
+      throw new Error(falhas[0].mensagem || 'Falha ao consultar o Radar de Atenção.');
+    }
     return alertas;
   }
 
   async getStatusCiclos(competencia: string, empresaId?: string): Promise<StatusCiclosReal> {
-    const canonicalCompetencia = normalizeCompetencia(competencia) || '';
-    const startRange = `${canonicalCompetencia}-01`;
-    const nextMonth = format(addMonths(new Date(`${canonicalCompetencia}-01T12:00:00`), 1), 'yyyy-MM');
-    const endRange = `${nextMonth}-01`;
+    const { startRange, endRange } = resolveCompetenciaDateRange(competencia);
 
     let diaristasEmAnalise = 0;
     try {
@@ -1101,17 +1248,19 @@ class DashboardConsolidadoServiceClass {
     };
   }
 
-  async getMotoresData(competencia: string, empresaId?: string): Promise<MotoresDataReal> {
-    const canonicalCompetencia = normalizeCompetencia(competencia) || '';
-    const startRange = `${canonicalCompetencia}-01`;
-    const nextMonth = format(addMonths(new Date(`${canonicalCompetencia}-01T12:00:00`), 1), 'yyyy-MM');
-    const endRange = `${nextMonth}-01`;
+  async getMotoresData(competencia: string, empresaId?: string, environment?: string): Promise<MotoresDataReal> {
+    const {
+      canonicalCompetencia,
+      isAnual,
+      yearPart,
+      startRange,
+      endRange,
+    } = resolveCompetenciaDateRange(competencia);
 
-    const env = typeof window !== 'undefined' ? localStorage.getItem('esc-log-environment') : null;
-    const isHomologacao = env === 'HOMOLOGACAO' || env === 'homologacao';
-    const isTodos = env === 'TODOS' || env === 'todos';
-    const { data: testEmpresas } = await supabase.from('empresas').select('id').eq('is_teste', true);
-    const testIds = testEmpresas?.map(e => e.id) || [];
+    const { isHomologacao, isTodos } = resolveEnvironmentFlags(environment);
+    const resTestEmpresas = await supabase.from('empresas').select('id').eq('is_teste', true);
+    const testEmpresas = safeData<{ id: string }>(resTestEmpresas as any);
+    const testIds = testEmpresas.map(e => e.id);
     const safeTestIds = testIds.length > 0 ? testIds : ['00000000-0000-0000-0000-000000000000'];
 
     const applySeg = (q: any) => {
@@ -1225,11 +1374,13 @@ class DashboardConsolidadoServiceClass {
         .or('tipo_contrato.ilike.%intermitente%,regime_trabalho.ilike.%intermitente%');
       totalIntermitentes = safeData(resInt).length;
 
-      let qInt = applySeg(supabase
+      const qIntBase = applySeg(supabase
         .from('rh_financeiro_lotes')
         .select('status, lote_itens:rh_financeiro_lote_itens(valor_calculado)')
-        .eq('tipo', 'INTERMITENTES')
-        .eq('competencia', canonicalCompetencia));
+        .eq('tipo', 'INTERMITENTES'));
+      let qInt = isAnual
+        ? qIntBase.gte('competencia', `${yearPart}-01`).lt('competencia', `${yearPart + 1}-01`)
+        : qIntBase.eq('competencia', canonicalCompetencia);
       if (empresaId && empresaId !== 'all') qInt = qInt.eq('empresa_id', empresaId);
 
       const intLotes = safeData(await qInt);
@@ -1280,16 +1431,17 @@ class DashboardConsolidadoServiceClass {
     };
   }
 
-  async getEvolucaoSemanal(competencia: string, empresaId?: string): Promise<EvolucaoPontoReal[]> {
+  async getEvolucaoSemanal(competencia: string, empresaId?: string, environment?: string): Promise<EvolucaoPontoReal[]> {
     const canonicalCompetencia = normalizeCompetencia(competencia) || '';
     const isAnual = canonicalCompetencia.includes('all');
     const yearPart = Number(canonicalCompetencia.split('-')[0]);
+    const { raw: envRaw } = resolveEnvironmentFlags(environment);
 
     if (isAnual) {
       // Retorna os 12 meses do ano
       const snapshots = await Promise.all(
         Array.from({ length: 12 }, (_, i) =>
-          this.getKpisByCompetencia(`${yearPart}-${String(i + 1).padStart(2, '0')}`, empresaId)
+          this.getKpisByCompetencia(`${yearPart}-${String(i + 1).padStart(2, '0')}`, empresaId, environment)
         )
       );
 
@@ -1302,76 +1454,21 @@ class DashboardConsolidadoServiceClass {
       }));
     }
 
-    // Para competência mensal: agrega operações e custos diretos pelas 4/5 semanas do mês
-    const startRange = `${canonicalCompetencia}-01`;
-    const nextMonth = format(addMonths(new Date(`${canonicalCompetencia}-01T12:00:00`), 1), 'yyyy-MM');
-    const endRange = `${nextMonth}-01`;
+    // Para competência mensal: reconciliação financeira semanal estrita auditada
+    const reconciliacao = await DashboardReconciliacaoSemanalService.consultarEReconciliar({
+      competencia: canonicalCompetencia,
+      empresaId,
+      environment: envRaw,
+    });
 
-    const weeks = [
-      { label: 'Sem 1', startDay: 1, endDay: 7, receita: 0, custos: 0, lucro: 0 },
-      { label: 'Sem 2', startDay: 8, endDay: 14, receita: 0, custos: 0, lucro: 0 },
-      { label: 'Sem 3', startDay: 15, endDay: 21, receita: 0, custos: 0, lucro: 0 },
-      { label: 'Sem 4', startDay: 22, endDay: 31, receita: 0, custos: 0, lucro: 0 },
-    ];
-
-    try {
-      // Receitas realizadas com data da operação
-      let qOps = supabase
-        .from('operacoes_producao')
-        .select('valor_total, data_operacao')
-        .gte('data_operacao', startRange)
-        .lt('data_operacao', endRange);
-      if (empresaId && empresaId !== 'all') qOps = qOps.eq('empresa_id', empresaId);
-
-      const ops = safeData(await qOps);
-      ops.forEach(op => {
-        const dia = op.data_operacao ? parseInt(String(op.data_operacao).substring(8, 10), 10) : 1;
-        const val = Number(op.valor_total) || 0;
-        const targetWeek = weeks.find(w => dia >= w.startDay && dia <= w.endDay) || weeks[3];
-        targetWeek.receita += val;
-      });
-
-      // Custos extras diretos com data real
-      let qCustos = supabase
-        .from('custos_extras_operacionais')
-        .select('total, data')
-        .is('deleted_at', null)
-        .gte('data', startRange)
-        .lt('data', endRange);
-      if (empresaId && empresaId !== 'all') qCustos = qCustos.eq('empresa_id', empresaId);
-
-      const custos = safeData(await qCustos);
-      custos.forEach(c => {
-        const dia = c.data ? parseInt(String(c.data).substring(8, 10), 10) : 1;
-        const val = Number(c.total) || 0;
-        const targetWeek = weeks.find(w => dia >= w.startDay && dia <= w.endDay) || weeks[3];
-        targetWeek.custos += val;
-      });
-
-      // Lotes de diaristas semanais com periodo_inicio real
-      let qLotesD = supabase
-        .from('diaristas_lotes_fechamento')
-        .select('valor_total, periodo_inicio')
-        .gte('periodo_inicio', startRange)
-        .lt('periodo_inicio', endRange);
-      if (empresaId && empresaId !== 'all') qLotesD = qLotesD.eq('empresa_id', empresaId);
-
-      const lotesD = safeData(await qLotesD);
-      lotesD.forEach(l => {
-        const dia = l.periodo_inicio ? parseInt(String(l.periodo_inicio).substring(8, 10), 10) : 1;
-        const val = Number(l.valor_total) || 0;
-        const targetWeek = weeks.find(w => dia >= w.startDay && dia <= w.endDay) || weeks[3];
-        targetWeek.custos += val;
-      });
-    } catch (e) {
-      console.warn('Erro ao agregar evolução semanal:', e);
-    }
-
-    return weeks.map(w => ({
-      semana: w.label,
-      receita: Number(w.receita.toFixed(2)),
-      custos: Number(w.custos.toFixed(2)),
-      lucro: Number((w.receita - w.custos).toFixed(2)),
+    return reconciliacao.semanas.map((s) => ({
+      semana: s.semana,
+      receita: s.receita,
+      custos: s.custos,
+      lucro: s.lucro,
+      status: reconciliacao.status,
+      divergencias: reconciliacao.auditoria.divergenciasItensTitulo,
+      alocacoesGerenciais: reconciliacao.auditoria.alocacoesGerenciais,
     }));
   }
 }
@@ -1386,6 +1483,17 @@ export interface RadarAlertaReal {
   tempo: string;
   acaoLabel: string;
   origemRota: string;
+}
+
+export interface RadarAlertaFalha {
+  id: 'inadimplencia' | 'diaristas' | 'custos_extras' | 'sync_rep';
+  modulo: string;
+  mensagem: string;
+}
+
+export interface RadarAlertasComStatusResult {
+  alertas: RadarAlertaReal[];
+  falhas: RadarAlertaFalha[];
 }
 
 export interface StatusCiclosReal {
@@ -1439,6 +1547,9 @@ export interface EvolucaoPontoReal {
   receita: number;
   custos: number;
   lucro: number;
+  status?: 'ok' | 'sem_dados' | 'inconsistente';
+  divergencias?: any[];
+  alocacoesGerenciais?: any[];
 }
 
 export const DashboardConsolidadoService = new DashboardConsolidadoServiceClass();

@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { fetchAllSupabasePages } from "@/lib/supabasePagination";
 import { ReceitasService } from "@/services/receitas/receitas.service";
 
 // ==============================================================================
@@ -86,10 +87,13 @@ const MESES = [
 ];
 
 /**
- * Formata competência YYYY-MM para string amigável (Ex: "Outubro / 2026")
+ * Formata competência YYYY-MM ou YYYY-all para string amigável (Ex: "Outubro / 2026" ou "Ano 2026")
  */
 export function formatCompetencia(comp?: string | null): string {
-  if (!comp || !/^\d{4}-\d{2}$/.test(comp)) return comp || "—";
+  if (!comp) return "—";
+  if (comp === "all") return "Todas as Competências";
+  if (/^\d{4}-all$/.test(comp)) return `Ano ${comp.slice(0, 4)}`;
+  if (!/^\d{4}-\d{2}$/.test(comp)) return comp;
   const [ano, mes] = comp.split("-");
   const mesIndex = parseInt(mes, 10) - 1;
   return `${MESES[mesIndex] || mes} / ${ano}`;
@@ -274,7 +278,7 @@ export function calcularKpisReceitas(receitasContextuais: ReceitaItemUI[]): Kpis
 class ReceitasOficialServiceClass {
   /**
    * Consulta receitas reais do banco respeitando estritamente o contexto principal:
-   * tenant_id + empresa_id + competencia (YYYY-MM)
+   * tenant_id + empresa_id + competencia (YYYY-MM ou YYYY-all) + ambiente ativo
    */
   async getReceitasContextuais(
     tenantId: string,
@@ -284,62 +288,115 @@ class ReceitasOficialServiceClass {
     const env = typeof window !== "undefined" ? localStorage.getItem("esc-log-environment") : null;
     const isHomologacao = env === "HOMOLOGACAO" || env === "homologacao";
     const isTodos = env === "TODOS" || env === "todos";
-    const { data: testEmpresas } = await supabase.from("empresas").select("id").eq("is_teste", true);
+    const { data: testEmpresas, error: testEmpresasError } = await supabase
+      .from("empresas")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("is_teste", true);
+    if (testEmpresasError) {
+      console.error("[ReceitasOficialService] Erro ao validar escopo de ambiente:", testEmpresasError);
+      throw testEmpresasError;
+    }
     const testIds = testEmpresas?.map((e) => e.id) || [];
     const safeTestIds = testIds.length > 0 ? testIds : ["00000000-0000-0000-0000-000000000000"];
 
-    let query = supabase
-      .from("receitas_operacionais")
-      .select(`
-        *,
-        empresas:empresa_id(id, nome),
-        receitas_operacionais_itens(
-          id,
-          valor_item,
-          operacao_id,
-          servico_extra_id,
-          created_at,
-          operacoes_producao(
-            id,
-            data_operacao,
-            servicos:tipos_servico_operacional(nome),
-            produtos:produtos_carga(nome)
-          ),
-          servicos_extras_operacionais:servico_extra_id(
-            id,
-            data,
-            descricao_servico,
-            tipo_servico
-          )
-        )
-      `)
-      .eq("tenant_id", tenantId);
+    const isAnnualComp = Boolean(competencia && /^\d{4}-all$/.test(competencia));
+    const isMonthlyComp = Boolean(competencia && /^\d{4}-(0[1-9]|1[0-2])$/.test(competencia));
+    if (competencia && competencia !== "all" && !isAnnualComp && !isMonthlyComp) {
+      return [];
+    }
 
     if (empresaId && empresaId !== "all") {
-      query = query.eq("empresa_id", empresaId);
-    } else {
-      if (isHomologacao) {
-        query = query.in("empresa_id", safeTestIds);
-      } else if (!isTodos) {
-        query = query.or(`empresa_id.not.in.(${safeTestIds.join(",")}),empresa_id.is.null`);
+      const isEmpresaTeste = testIds.includes(empresaId);
+      if ((isHomologacao && !isEmpresaTeste) || (!isHomologacao && !isTodos && isEmpresaTeste)) {
+        return [];
       }
     }
 
-    query = query.order("created_at", { ascending: false }).limit(1000);
+    const buildQuery = () => {
+      let query = supabase
+        .from("receitas_operacionais")
+        .select(`
+          *,
+          empresas:empresa_id(id, nome),
+          receitas_operacionais_itens(
+            id,
+            valor_item,
+            operacao_id,
+            servico_extra_id,
+            created_at,
+            operacoes_producao(
+              id,
+              data_operacao,
+              servicos:tipos_servico_operacional(nome),
+              produtos:produtos_carga(nome)
+            ),
+            servicos_extras_operacionais:servico_extra_id(
+              id,
+              data,
+              descricao_servico,
+              tipo_servico
+            )
+          )
+        `)
+        .eq("tenant_id", tenantId);
 
-    const { data, error } = await query;
-    if (error) {
+      if (empresaId && empresaId !== "all") {
+        query = query.eq("empresa_id", empresaId);
+      } else {
+        if (isHomologacao) {
+          query = query.in("empresa_id", safeTestIds);
+        } else if (!isTodos) {
+          query = query.or(`empresa_id.not.in.(${safeTestIds.join(",")}),empresa_id.is.null`);
+        }
+      }
+
+      if (isAnnualComp && competencia) {
+        const yearNum = Number(competencia.slice(0, 4));
+        query = query.or(
+          `and(competencia.gte.${yearNum}-01,competencia.lte.${yearNum}-12),and(competencia.is.null,created_at.gte.${yearNum}-01-01,created_at.lt.${yearNum + 1}-01-01)`
+        );
+      } else if (isMonthlyComp && competencia) {
+        const [yStr, mStr] = competencia.split("-");
+        const yNum = Number(yStr);
+        const mNum = Number(mStr);
+        const nextY = mNum === 12 ? yNum + 1 : yNum;
+        const nextM = String(mNum === 12 ? 1 : mNum + 1).padStart(2, "0");
+        const startRange = `${competencia}-01`;
+        const endRange = `${nextY}-${nextM}-01`;
+        query = query.or(
+          `competencia.eq.${competencia},and(competencia.is.null,created_at.gte.${startRange},created_at.lt.${endRange})`
+        );
+      }
+
+      return query
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false });
+    };
+
+    let rawList: any[];
+    try {
+      rawList = await fetchAllSupabasePages(buildQuery);
+    } catch (error) {
       console.error("[ReceitasOficialService] Erro ao buscar receitas:", error);
       throw error;
     }
 
-    const rawList = data || [];
-
     // Filtro canônico por competência:
     // Utiliza receitas_operacionais.competencia (YYYY-MM) como fonte primária do período econômico.
     // Fallback para created_at SOMENTE se competencia for NULL em registros legados.
+    const annualPrefix = isAnnualComp && competencia ? `${competencia.slice(0, 4)}-` : null;
     const filteredByComp = competencia && competencia !== "all"
       ? rawList.filter((r: any) => {
+          if (annualPrefix) {
+            if (r.competencia) {
+              return String(r.competencia).startsWith(annualPrefix);
+            }
+            if (r.created_at) {
+              return String(r.created_at).slice(0, 5) === annualPrefix;
+            }
+            return false;
+          }
           if (r.competencia) {
             return r.competencia === competencia;
           }

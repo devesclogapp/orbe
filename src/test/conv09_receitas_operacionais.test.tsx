@@ -242,7 +242,7 @@ describe("CONV-09 — Receitas Operacionais Oficial (UX11 + Domínio Real)", () 
       path.resolve(__dirname, "../pages/Financeiro/ReceitasPipeline.tsx"),
       "utf-8"
     );
-    expect(fileContent).toContain("Central de Receitas & Contas a Receber");
+    expect(fileContent).toContain('title="Receitas Operacionais"');
     expect(fileContent).toContain("ReceitasOficialService");
     expect(fileContent).toContain("ReceitaDrawerOficial");
   });
@@ -640,7 +640,7 @@ describe("CONV-09 — Receitas Operacionais Oficial (UX11 + Domínio Real)", () 
     vi.spyOn(ReceitasOficialService, "getReceitasContextuais").mockResolvedValue(mockDataset);
     renderWithClient(<ReceitasPipeline />);
     await waitFor(() => {
-      expect(screen.getByText("Central de Receitas & Contas a Receber")).toBeInTheDocument();
+      expect(screen.getAllByText("Receitas Operacionais").length).toBeGreaterThan(0);
     });
     // Elementos principais do layout permanecem presentes
     expect(screen.getByText("Receita Reconhecida")).toBeInTheDocument();

@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
     Building2, Calendar, FileText, Search, Filter, RefreshCw, AlertTriangle,
     Wallet, TrendingUp, DollarSign, ArrowRight, Layers, Receipt, Zap, CheckCircle2,
@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/select";
 import { EmpresaService } from "@/services/domain/cadastros.service";
 import { useTenant } from "@/contexts/TenantContext";
+import { usePreferences } from "@/contexts/PreferencesContext";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -63,29 +65,148 @@ const KANBAN_CONFIGS = {
     ],
 };
 
+const COMPETENCIA_MONTHLY_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+const COMPETENCIA_ANNUAL_RE = /^\d{4}-all$/;
+
+function parseReceitasCompetenciaParam(raw: string | null): {
+    valid: boolean;
+    value: string | null;
+} {
+    if (!raw || !raw.trim()) {
+        return { valid: true, value: null };
+    }
+    const normalized = raw.trim();
+    if (
+        normalized === "all" ||
+        COMPETENCIA_MONTHLY_RE.test(normalized) ||
+        COMPETENCIA_ANNUAL_RE.test(normalized)
+    ) {
+        return { valid: true, value: normalized };
+    }
+    return { valid: false, value: null };
+}
+
+function buildCompetenciaOptions(
+    activeCompetencia: string,
+    currentMonth: string
+): Array<{ value: string; label: string }> {
+    const currentYear = currentMonth.slice(0, 4);
+    const activeYear =
+        /^\d{4}/.test(activeCompetencia) ? activeCompetencia.slice(0, 4) : currentYear;
+
+    const monthlyValues = new Set<string>();
+    const [curY, curM] = currentMonth.split("-").map(Number);
+
+    // Janela móvel de 18 meses até o mês corrente
+    for (let i = 0; i < 18; i++) {
+        const d = new Date(curY, curM - 1 - i, 1);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        monthlyValues.add(`${y}-${m}`);
+    }
+
+    // Todos os meses do ano ativo na URL/filtro
+    for (let m = 1; m <= 12; m++) {
+        monthlyValues.add(`${activeYear}-${String(m).padStart(2, "0")}`);
+    }
+
+    if (COMPETENCIA_MONTHLY_RE.test(activeCompetencia)) {
+        monthlyValues.add(activeCompetencia);
+    }
+
+    const annualValues = new Set<string>([`${currentYear}-all`, `${activeYear}-all`]);
+    if (COMPETENCIA_ANNUAL_RE.test(activeCompetencia)) {
+        annualValues.add(activeCompetencia);
+    }
+
+    const sortedMonthly = Array.from(monthlyValues)
+        .sort((a, b) => b.localeCompare(a))
+        .map((val) => ({ value: val, label: formatCompetencia(val) }));
+
+    const sortedAnnual = Array.from(annualValues)
+        .sort((a, b) => b.localeCompare(a))
+        .map((val) => ({ value: val, label: `${formatCompetencia(val)} (Anual)` }));
+
+    return [
+        { value: "all", label: "Todas as Competências" },
+        ...sortedAnnual,
+        ...sortedMonthly,
+    ];
+}
+
 export default function ReceitasPipeline() {
     const queryClient = useQueryClient();
     const { tenantId, loading: isTenantLoading } = useTenant();
+    const { environment } = usePreferences();
     const location = useLocation();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
 
-    // 1. Contexto Principal (Invariante dos KPIs): Tenant + Empresa + Competência
+    // 1. Contexto Principal (Invariante dos KPIs): Tenant + Empresa + Competência + Ambiente
     const currentMonth = useMemo(() => new Date().toISOString().substring(0, 7), []);
-    const [competenciaContexto, setCompetenciaContexto] = useState<string>(() => {
-        if (typeof window !== "undefined") {
-            const sp = new URLSearchParams(window.location.search);
-            const comp = sp.get("competencia");
-            if (comp && /^\d{4}-\d{2}$/.test(comp)) return comp;
+    const initialCompetenciaParse = parseReceitasCompetenciaParam(
+        searchParams.get("mes") ?? searchParams.get("competencia")
+    );
+    const initialEmpresaParam = (
+        searchParams.get("empresa") ?? searchParams.get("empresaId") ?? ""
+    ).trim();
+
+    const [competenciaContexto, setCompetenciaContexto] = useState<string>(
+        initialCompetenciaParse.value ?? currentMonth
+    );
+    const [filterEmpresaId, setFilterEmpresaId] = useState<string>(
+        initialEmpresaParam || "all"
+    );
+    const [competenciaWarning, setCompetenciaWarning] = useState<string | null>(() => {
+        const raw = searchParams.get("mes") ?? searchParams.get("competencia");
+        if (raw && raw.trim() && !initialCompetenciaParse.valid) {
+            return `Competência "${raw.trim()}" inválida na URL. Exibindo o período atual (${formatCompetencia(currentMonth)}).`;
         }
-        return currentMonth;
+        return null;
     });
-    const [filterEmpresaId, setFilterEmpresaId] = useState<string>(() => {
-        if (typeof window !== "undefined") {
-            const sp = new URLSearchParams(window.location.search);
-            return sp.get("empresa") || sp.get("empresaId") || "all";
-        }
-        return "all";
-    });
+    const [empresaWarning, setEmpresaWarning] = useState<string | null>(null);
+
+    const competenciaOptions = useMemo(
+        () => buildCompetenciaOptions(competenciaContexto, currentMonth),
+        [competenciaContexto, currentMonth]
+    );
+    const isAnnualCompetencia = COMPETENCIA_ANNUAL_RE.test(competenciaContexto);
+
+    const lastLocationSearchRef = useRef<string>(location.search);
+
+    const updateUrlContext = useCallback(
+        (nextCompetencia: string, nextEmpresaId: string, clearInvalidKeys = false) => {
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete("competencia");
+            nextParams.delete("empresaId");
+            if (nextCompetencia) {
+                nextParams.set("mes", nextCompetencia);
+            } else {
+                nextParams.delete("mes");
+            }
+            if (nextEmpresaId && nextEmpresaId !== "all") {
+                nextParams.set("empresa", nextEmpresaId);
+            } else if (clearInvalidKeys || nextEmpresaId === "all") {
+                nextParams.delete("empresa");
+            }
+            const nextQuery = nextParams.toString();
+            lastLocationSearchRef.current = nextQuery ? `?${nextQuery}` : "";
+            setSearchParams(nextParams, { replace: true });
+        },
+        [searchParams, setSearchParams]
+    );
+
+    const handleCompetenciaChange = (val: string) => {
+        setCompetenciaWarning(null);
+        setCompetenciaContexto(val);
+        updateUrlContext(val, filterEmpresaId);
+    };
+
+    const handleEmpresaChange = (val: string) => {
+        setEmpresaWarning(null);
+        setFilterEmpresaId(val);
+        updateUrlContext(competenciaContexto, val);
+    };
 
     // 2. Filtros Exploratórios (NÃO alteram os KPIs)
     const [estagioFiltro, setEstagioFiltro] = useState<EstagioFinanceiroUX>("TODOS");
@@ -185,13 +306,99 @@ export default function ReceitasPipeline() {
         });
     };
 
-    // Busca de Empresas do Tenant
-    const { data: empresas = [], isLoading: isEmpresasLoading } = useQuery({
-        queryKey: ["empresas"],
-        queryFn: () => EmpresaService.getAll(),
+    // Busca de Empresas do Tenant (segregada por tenant e ambiente ativo)
+    const {
+        data: allEmpresas = [],
+        isLoading: isEmpresasLoading,
+        isError: isEmpresasError,
+    } = useQuery({
+        queryKey: ["empresas", tenantId, environment],
+        queryFn: () => {
+            if (typeof window !== "undefined" && environment) {
+                localStorage.setItem("esc-log-environment", environment);
+            }
+            return EmpresaService.getAll();
+        },
+        enabled: !isTenantLoading && Boolean(tenantId),
     });
 
-    // Busca de Receitas Reais da Competência / Empresa
+    const empresas = useMemo(() => {
+        const isHomolog = environment === "HOMOLOGACAO";
+        const isTodos = environment === "TODOS";
+        return (allEmpresas || []).filter((e: any) => {
+            if (e.tenant_id && tenantId && e.tenant_id !== tenantId) return false;
+            if (isTodos) return true;
+            return isHomolog ? Boolean(e.is_teste) : !e.is_teste;
+        });
+    }, [allEmpresas, environment, tenantId]);
+
+    // Reset controlado quando tenant ou ambiente mudam em runtime
+    const contextIsolationRef = useRef({ tenantId, environment });
+    useEffect(() => {
+        if (
+            contextIsolationRef.current.tenantId !== tenantId ||
+            contextIsolationRef.current.environment !== environment
+        ) {
+            contextIsolationRef.current = { tenantId, environment };
+            if (filterEmpresaId !== "all") {
+                setFilterEmpresaId("all");
+                setEmpresaWarning(
+                    `Contexto alterado para ${environment}. Exibindo Todas as Empresas deste ambiente.`
+                );
+                updateUrlContext(competenciaContexto, "all", true);
+            }
+        }
+    }, [tenantId, environment, filterEmpresaId, competenciaContexto, updateUrlContext]);
+
+    // Sincronização reativa de URL -> filtros (navegação SPA / mudança de query params)
+    useEffect(() => {
+        if (lastLocationSearchRef.current === location.search) return;
+        lastLocationSearchRef.current = location.search;
+
+        const rawComp = searchParams.get("mes") ?? searchParams.get("competencia");
+        const parsedComp = parseReceitasCompetenciaParam(rawComp);
+        if (parsedComp.valid) {
+            setCompetenciaContexto(parsedComp.value ?? currentMonth);
+            setCompetenciaWarning(null);
+        } else {
+            setCompetenciaContexto(currentMonth);
+            setCompetenciaWarning(
+                `Competência "${rawComp?.trim()}" inválida na URL. Exibindo o período atual (${formatCompetencia(currentMonth)}).`
+            );
+        }
+
+        const rawEmp = (searchParams.get("empresa") ?? searchParams.get("empresaId") ?? "").trim();
+        setEmpresaWarning(null);
+        setFilterEmpresaId(rawEmp || "all");
+    }, [location.search, searchParams, currentMonth]);
+
+    // Validação de empresa da URL/estado contra tenant + ambiente ativo (fallback seguro)
+    useEffect(() => {
+        if (isTenantLoading || !tenantId || isEmpresasLoading || isEmpresasError) return;
+        if (filterEmpresaId !== "all" && !empresas.some((e: any) => e.id === filterEmpresaId)) {
+            setEmpresaWarning(
+                `Empresa selecionada não pertence ao tenant ou ambiente ativo (${environment}). Exibindo Todas as Empresas.`
+            );
+            setFilterEmpresaId("all");
+            updateUrlContext(competenciaContexto, "all", true);
+        }
+    }, [
+        isTenantLoading,
+        tenantId,
+        isEmpresasLoading,
+        isEmpresasError,
+        empresas,
+        filterEmpresaId,
+        environment,
+        competenciaContexto,
+        updateUrlContext,
+    ]);
+
+    const isEmpresaContextValid =
+        filterEmpresaId === "all" ||
+        (!isEmpresasLoading && empresas.some((e: any) => e.id === filterEmpresaId));
+
+    // Busca de Receitas Reais da Competência / Empresa / Ambiente
     const {
         data: receitasContextuais = [],
         isLoading: isReceitasLoading,
@@ -199,15 +406,18 @@ export default function ReceitasPipeline() {
         error: errorReceitas,
         refetch,
     } = useQuery<ReceitaItemUI[]>({
-        queryKey: ["receitas-pipeline", tenantId, filterEmpresaId, competenciaContexto],
-        queryFn: () =>
-            ReceitasOficialService.getReceitasContextuais(
+        queryKey: ["receitas-pipeline", tenantId, filterEmpresaId, competenciaContexto, environment],
+        queryFn: () => {
+            if (typeof window !== "undefined" && environment) {
+                localStorage.setItem("esc-log-environment", environment);
+            }
+            return ReceitasOficialService.getReceitasContextuais(
                 tenantId!,
                 filterEmpresaId === "all" ? undefined : filterEmpresaId,
                 competenciaContexto === "all" ? undefined : competenciaContexto
-            ),
-        enabled: Boolean(tenantId),
-        placeholderData: (previousData) => previousData,
+            );
+        },
+        enabled: !isTenantLoading && Boolean(tenantId) && isEmpresaContextValid,
     });
 
     const isGlobalLoading = isEmpresasLoading || isTenantLoading || isReceitasLoading;
@@ -413,18 +623,20 @@ export default function ReceitasPipeline() {
                             </span>
                             <Select
                                 value={competenciaContexto}
-                                onValueChange={(val) => setCompetenciaContexto(val)}
+                                onValueChange={handleCompetenciaChange}
                             >
-                                <SelectTrigger className="w-[190px] h-9 text-xs font-semibold bg-background border-border">
+                                <SelectTrigger
+                                    className="w-[210px] h-9 text-xs font-semibold bg-background border-border"
+                                    data-testid="receitas-competencia-select"
+                                >
                                     <SelectValue placeholder="Competência" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">Todas as Competências</SelectItem>
-                                    <SelectItem value="2026-10">Outubro / 2026</SelectItem>
-                                    <SelectItem value="2026-09">Setembro / 2026</SelectItem>
-                                    <SelectItem value="2026-08">Agosto / 2026</SelectItem>
-                                    <SelectItem value="2026-07">Julho / 2026</SelectItem>
-                                    <SelectItem value="2026-06">Junho / 2026</SelectItem>
+                                    {competenciaOptions.map((opt) => (
+                                        <SelectItem key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -437,14 +649,17 @@ export default function ReceitasPipeline() {
                             </span>
                             <Select
                                 value={filterEmpresaId}
-                                onValueChange={(val) => setFilterEmpresaId(val)}
+                                onValueChange={handleEmpresaChange}
                             >
-                                <SelectTrigger className="w-[240px] h-9 text-xs font-semibold bg-background border-border">
+                                <SelectTrigger
+                                    className="w-[240px] h-9 text-xs font-semibold bg-background border-border"
+                                    data-testid="receitas-empresa-select"
+                                >
                                     <SelectValue placeholder="Todas as Empresas" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">Todas as Empresas</SelectItem>
-                                    {empresas.map((emp) => (
+                                    {empresas.map((emp: any) => (
                                         <SelectItem key={emp.id} value={emp.id}>
                                             {emp.nome}
                                         </SelectItem>
@@ -467,6 +682,35 @@ export default function ReceitasPipeline() {
                         </Button>
                     </div>
                 </div>
+
+                {/* Banner de Aviso de Fallback / Contexto Inválido */}
+                {(competenciaWarning || empresaWarning) && (
+                    <div
+                        className="bg-amber-50/80 dark:bg-amber-950/30 border border-amber-300/80 dark:border-amber-800/50 rounded-lg p-3 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200 shadow-2xs"
+                        data-testid="receitas-context-warning"
+                        role="status"
+                    >
+                        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                            {competenciaWarning && <p>{competenciaWarning}</p>}
+                            {empresaWarning && <p>{empresaWarning}</p>}
+                        </div>
+                    </div>
+                )}
+
+                {/* Banner Explícito de Competência Anual (YYYY-all) */}
+                {isAnnualCompetencia && (
+                    <div
+                        className="bg-slate-50/90 dark:bg-slate-900/40 border border-slate-200/80 dark:border-slate-800/60 rounded-lg p-3 flex items-center gap-2.5 text-xs text-slate-800 dark:text-slate-200 shadow-2xs"
+                        data-testid="receitas-annual-banner"
+                    >
+                        <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                        <span>
+                            <strong>Visão Anual Consolidada ({competenciaContexto.slice(0, 4)}):</strong>{" "}
+                            exibindo receitas operacionais de Janeiro a Dezembro de {competenciaContexto.slice(0, 4)} para o tenant e ambiente ativos.
+                        </span>
+                    </div>
+                )}
 
                 {/* Banner de Contexto Operacional Ativo (quando vindo com ?origem=) */}
                 {origemParam && (
@@ -529,7 +773,7 @@ export default function ReceitasPipeline() {
                             </div>
                         </div>
                         <div className="text-2xl font-black font-display text-blue-600 dark:text-blue-400 tracking-tight">
-                            {formatCurrency(kpis.totalReconhecido)}
+                            {isGlobalLoading ? <Skeleton className="h-8 w-36" /> : errorReceitas ? "—" : formatCurrency(kpis.totalReconhecido)}
                         </div>
                         <p className="text-[11px] text-muted-foreground">
                             competência ({formatCompetencia(competenciaContexto)})
@@ -547,10 +791,12 @@ export default function ReceitasPipeline() {
                             </div>
                         </div>
                         <div className="text-2xl font-black font-display text-foreground tracking-tight">
-                            {formatCurrency(kpis.aFaturarCobrar)}
+                            {isGlobalLoading ? <Skeleton className="h-8 w-36" /> : errorReceitas ? "—" : formatCurrency(kpis.aFaturarCobrar)}
                         </div>
                         <p className="text-[11px] text-muted-foreground">
-                            {formatCurrency(kpis.valorAFaturarFechar)} a fechar • {formatCurrency(kpis.valorCobrancaPendente)} em cobrança
+                            {isGlobalLoading || errorReceitas
+                                ? "aguardando consolidação"
+                                : `${formatCurrency(kpis.valorAFaturarFechar)} a fechar • ${formatCurrency(kpis.valorCobrancaPendente)} em cobrança`}
                         </p>
                     </div>
 
@@ -565,7 +811,7 @@ export default function ReceitasPipeline() {
                             </div>
                         </div>
                         <div className="text-2xl font-black font-display text-foreground tracking-tight">
-                            {formatCurrency(kpis.aReceber)}
+                            {isGlobalLoading ? <Skeleton className="h-8 w-36" /> : errorReceitas ? "—" : formatCurrency(kpis.aReceber)}
                         </div>
                         <p className="text-[11px] text-muted-foreground">
                             cobranças enviadas e caixa pendente
@@ -583,7 +829,7 @@ export default function ReceitasPipeline() {
                             </div>
                         </div>
                         <div className="text-2xl font-black font-display text-emerald-600 dark:text-emerald-400 tracking-tight">
-                            {formatCurrency(kpis.recebido)}
+                            {isGlobalLoading ? <Skeleton className="h-8 w-36" /> : errorReceitas ? "—" : formatCurrency(kpis.recebido)}
                         </div>
                         <p className="text-[11px] text-muted-foreground">
                             liquidado no período

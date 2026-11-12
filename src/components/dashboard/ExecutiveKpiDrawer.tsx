@@ -6,6 +6,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   TrendingUp,
   ArrowRight,
@@ -24,6 +25,7 @@ import {
   Calendar,
   Layers,
   ShieldCheck,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -44,6 +46,15 @@ export interface ExecutiveKpiDrawerProps {
   onOpenChange: (open: boolean) => void;
   onNavigate: (path: string) => void;
   competencia?: string;
+  canonicalCompetencia?: string;
+  empresaId?: string;
+  isLoading?: boolean;
+  isError?: boolean;
+  isStaleError?: boolean;
+  errorMessage?: string;
+  onRetry?: () => void;
+  inadimplenciaStatus?: "ok" | "loading" | "error" | "unavailable";
+  onRetryInadimplencia?: () => void;
   data?: {
     faturamentoTotal: number;
     faturamentoAnterior?: number;
@@ -67,26 +78,192 @@ export interface ExecutiveKpiDrawerProps {
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number.isFinite(val) ? val : 0);
 
+type InadimplenciaDisplayState =
+  | { state: "loading"; aReceberTotal: number }
+  | { state: "error" | "unavailable"; aReceberTotal: number }
+  | { state: "ok"; aReceberTotal: number; noPrazo: number; vencido: number };
+
+function resolveInadimplenciaView(
+  aReceber: number,
+  inadimplenteTotal: number | undefined,
+  status?: "ok" | "loading" | "error" | "unavailable"
+): InadimplenciaDisplayState {
+  const safeAReceber = Number.isFinite(aReceber) ? Math.max(0, aReceber) : 0;
+
+  if (status === "loading") {
+    return { state: "loading", aReceberTotal: safeAReceber };
+  }
+
+  if (
+    status === "error" ||
+    status === "unavailable" ||
+    typeof inadimplenteTotal !== "number" ||
+    !Number.isFinite(inadimplenteTotal)
+  ) {
+    return {
+      state: status === "error" ? "error" : "unavailable",
+      aReceberTotal: safeAReceber,
+    };
+  }
+
+  const rawVencido = Math.max(0, inadimplenteTotal);
+  const vencido = Number(Math.min(safeAReceber, rawVencido).toFixed(2));
+  const noPrazo = Number(Math.max(0, safeAReceber - vencido).toFixed(2));
+
+  return {
+    state: "ok",
+    aReceberTotal: safeAReceber,
+    noPrazo,
+    vencido,
+  };
+}
+
+function StaleDataNotice({
+  errorMessage,
+  onRetry,
+}: {
+  errorMessage?: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <div
+      className="rounded-lg border border-amber-300/80 dark:border-amber-800/60 bg-amber-50/70 dark:bg-amber-950/30 p-3 text-xs space-y-1.5"
+      data-testid="drawer-stale-warning"
+      role="alert"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 font-semibold text-amber-800 dark:text-amber-300">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          Dados desatualizados — falha ao atualizar
+        </span>
+        {onRetry && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onRetry}
+            className="h-6 px-2 text-[10px] border-amber-400/70 dark:border-amber-700"
+          >
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Tentar novamente
+          </Button>
+        )}
+      </div>
+      <p className="text-[11px] text-amber-800/90 dark:text-amber-300/90 leading-snug">
+        {errorMessage ||
+          "Os valores abaixo referem-se à última leitura carregada deste contexto e podem não refletir o estado atual."}
+      </p>
+    </div>
+  );
+}
+
 export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
   type,
   open,
   onOpenChange,
   onNavigate,
   competencia = "Competência Atual",
-  data = {
-    faturamentoTotal: 0,
-    custosTotais: 0,
-    resultadoOperacional: 0,
-    margemOperacional: 0,
-    caixaRecebido: 0,
-    aReceber: 0,
-    folhaValor: 0,
-    diaristasValor: 0,
-    intermitentesValor: 0,
-    custosExtrasValor: 0,
-  },
+  canonicalCompetencia,
+  empresaId = "all",
+  isLoading = false,
+  isError = false,
+  isStaleError = false,
+  errorMessage,
+  onRetry,
+  inadimplenciaStatus,
+  onRetryInadimplencia,
+  data,
 }) => {
   if (!type) return null;
+
+  const staleBanner = isStaleError ? (
+    <StaleDataNotice errorMessage={errorMessage} onRetry={onRetry} />
+  ) : null;
+
+  if (isLoading || (!data && !isError)) {
+    return (
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-md p-0 flex flex-col justify-between bg-card text-card-foreground border-l border-border dark:border-border/30 shadow-2xl dark:shadow-none z-50 overflow-hidden"
+        >
+          <div className="border-b border-border/70 dark:border-border/25 p-5 bg-muted/20 dark:bg-muted/15">
+            <SheetTitle className="font-display text-lg font-bold text-foreground">
+              Carregando indicador — {competencia}
+            </SheetTitle>
+            <SheetDescription className="text-xs text-muted-foreground mt-0.5">
+              Atualizando os dados consolidados para o contexto selecionado.
+            </SheetDescription>
+            <div className="mt-4 rounded-xl border border-border/80 bg-card p-3.5 space-y-2" data-testid="drawer-loading-state">
+              <Skeleton className="h-3 w-32" />
+              <Skeleton className="h-8 w-44" />
+            </div>
+          </div>
+          <div className="flex-1 p-5 space-y-4">
+            <Skeleton className="h-24 w-full rounded-lg" />
+            <Skeleton className="h-24 w-full rounded-lg" />
+          </div>
+        </SheetContent>
+      </Sheet>
+    );
+  }
+
+  if ((isError && !isStaleError) || !data) {
+    return (
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-md p-0 flex flex-col justify-between bg-card text-card-foreground border-l border-border dark:border-border/30 shadow-2xl dark:shadow-none z-50 overflow-hidden"
+        >
+          <div className="border-b border-border/70 dark:border-border/25 p-5 bg-muted/20 dark:bg-muted/15">
+            <SheetTitle className="font-display text-lg font-bold text-foreground">
+              Indicador indisponível — {competencia}
+            </SheetTitle>
+            <SheetDescription className="text-xs text-muted-foreground mt-0.5">
+              Não foi possível carregar os dados financeiros deste KPI.
+            </SheetDescription>
+          </div>
+          <div className="flex-1 p-5 flex flex-col items-center justify-center text-center gap-3" data-testid="drawer-error-state">
+            <AlertCircle className="h-8 w-8 text-rose-500" />
+            <p className="text-sm font-semibold text-foreground">
+              Erro ao consultar os indicadores
+            </p>
+            <p className="text-xs text-muted-foreground max-w-xs">
+              {errorMessage || "Os valores financeiros não puderam ser validados. Tente novamente."}
+            </p>
+            {onRetry && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onRetry}
+                className="gap-1.5 text-xs"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Tentar novamente
+              </Button>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+    );
+  }
+
+  const buildContextualNavigationUrl = (basePath: string) => {
+    const params = new URLSearchParams();
+    if (canonicalCompetencia) {
+      params.set("mes", canonicalCompetencia);
+    }
+    if (empresaId && empresaId !== "all") {
+      params.set("empresa", empresaId);
+    }
+    const queryString = params.toString();
+    return queryString ? `${basePath}?${queryString}` : basePath;
+  };
+
+  const buildDreNavigationUrl = () => buildContextualNavigationUrl("/financeiro/dre");
+  const buildReceitasNavigationUrl = () => buildContextualNavigationUrl("/financeiro/receitas");
+  const buildFinanceiroNavigationUrl = () => buildContextualNavigationUrl("/financeiro");
 
   // 1. FATURAMENTO TOTAL
   if (type === "faturamento") {
@@ -94,25 +271,55 @@ export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
     const anterior = data.faturamentoAnterior ?? 0;
     const variacao = anterior > 0 ? ((faturamento - anterior) / anterior) * 100 : null;
     const diferenca = faturamento - anterior;
+    const inadimplenciaView = resolveInadimplenciaView(
+      data.aReceber || 0,
+      data.inadimplenteTotal,
+      inadimplenciaStatus
+    );
 
     const liquidacao = [
       {
+        id: "recebido",
+        titulo: "Recebido",
         status: "Recebido (Em Conta)",
         valor: data.caixaRecebido || 0,
         percentual: faturamento > 0 ? ((data.caixaRecebido || 0) / faturamento) * 100 : 0,
         tipo: "sucesso" as const,
+        state: "ok" as const,
       },
       {
-        status: "A Receber (No Prazo)",
-        valor: Math.max(0, (data.aReceber || 0) - (data.inadimplenteTotal || 0)),
-        percentual: faturamento > 0 ? (Math.max(0, (data.aReceber || 0) - (data.inadimplenteTotal || 0)) / faturamento) * 100 : 0,
+        id: "a-receber",
+        titulo: inadimplenciaView.state === "ok" ? "A Receber (No Prazo)" : "A Receber (Total)",
+        status: inadimplenciaView.state === "ok" ? "A Receber (No Prazo)" : "A Receber (Total)",
+        valor:
+          inadimplenciaView.state === "ok"
+            ? inadimplenciaView.noPrazo
+            : inadimplenciaView.aReceberTotal,
+        percentual:
+          faturamento > 0
+            ? ((inadimplenciaView.state === "ok"
+                ? inadimplenciaView.noPrazo
+                : inadimplenciaView.aReceberTotal) /
+                faturamento) *
+              100
+            : 0,
         tipo: "neutro" as const,
+        state: inadimplenciaView.state,
       },
       {
+        id: "vencido",
+        titulo: "Vencido",
         status: "Vencido / Inadimplente",
-        valor: data.inadimplenteTotal || 0,
-        percentual: faturamento > 0 ? ((data.inadimplenteTotal || 0) / faturamento) * 100 : 0,
-        tipo: (data.inadimplenteTotal || 0) > 0 ? ("critico" as const) : ("neutro" as const),
+        valor: inadimplenciaView.state === "ok" ? inadimplenciaView.vencido : null,
+        percentual:
+          faturamento > 0 && inadimplenciaView.state === "ok"
+            ? (inadimplenciaView.vencido / faturamento) * 100
+            : null,
+        tipo:
+          inadimplenciaView.state === "ok" && inadimplenciaView.vencido > 0
+            ? ("critico" as const)
+            : ("neutro" as const),
+        state: inadimplenciaView.state,
       },
     ];
 
@@ -173,6 +380,7 @@ export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
 
           {/* Corpo com Scroll */}
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            {staleBanner}
             {/* Bloco 1: Liquidação Financeira */}
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -185,7 +393,7 @@ export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
               <div className="grid grid-cols-3 gap-2">
                 {liquidacao.map((item) => (
                   <div
-                    key={item.status}
+                    key={item.id}
                     className={cn(
                       "rounded-lg border p-2 text-left flex flex-col justify-between",
                       item.tipo === "critico"
@@ -194,20 +402,47 @@ export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
                     )}
                   >
                     <div className="text-[10px] font-medium text-muted-foreground truncate" title={item.status}>
-                      {item.status.split(" ")[0]}
+                      {item.titulo}
                     </div>
-                    <div className={cn(
-                      "font-display text-xs font-bold mt-1",
-                      item.tipo === "critico" ? "text-rose-700 dark:text-rose-400" : "text-foreground"
-                    )}>
-                      {formatCurrency(item.valor)}
-                    </div>
-                    <div className={cn(
-                      "text-[9px] mt-0.5 font-medium",
-                      item.tipo === "critico" ? "text-rose-600 dark:text-rose-400 font-bold" : "text-muted-foreground"
-                    )}>
-                      {item.percentual.toFixed(0)}% do total
-                    </div>
+                    {item.id === "vencido" && item.state === "loading" ? (
+                      <>
+                        <Skeleton className="h-4 w-16 mt-1" />
+                        <span className="text-[9px] mt-0.5 text-muted-foreground">Carregando...</span>
+                      </>
+                    ) : item.id === "vencido" && (item.state === "error" || item.state === "unavailable") ? (
+                      <>
+                        <div className="font-display text-xs font-semibold mt-1 text-amber-700 dark:text-amber-400">
+                          Indisponível
+                        </div>
+                        <div className="text-[9px] mt-0.5 text-muted-foreground flex items-center justify-between gap-1">
+                          <span>{item.state === "error" ? "Falha na fonte" : "Sem fonte"}</span>
+                          {item.state === "error" && onRetryInadimplencia && (
+                            <button
+                              type="button"
+                              onClick={onRetryInadimplencia}
+                              className="underline font-medium text-foreground hover:opacity-80"
+                            >
+                              Tentar
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className={cn(
+                          "font-display text-xs font-bold mt-1",
+                          item.tipo === "critico" ? "text-rose-700 dark:text-rose-400" : "text-foreground"
+                        )}>
+                          {formatCurrency(item.valor ?? 0)}
+                        </div>
+                        <div className={cn(
+                          "text-[9px] mt-0.5 font-medium",
+                          item.tipo === "critico" ? "text-rose-600 dark:text-rose-400 font-bold" : "text-muted-foreground"
+                        )}>
+                          {(item.percentual ?? 0).toFixed(0)}% do total
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
@@ -234,7 +469,7 @@ export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
           <div className="border-t border-border/70 dark:border-border/25 p-4 bg-muted/20 dark:bg-muted/15">
             <Button
               type="button"
-              onClick={() => onNavigate("/financeiro/receitas")}
+              onClick={() => onNavigate(buildReceitasNavigationUrl())}
               className="w-full bg-blue-600 text-white hover:bg-blue-700 font-medium text-xs flex items-center justify-center gap-2 h-9 shadow-xs"
             >
               Abrir Receitas Operacionais
@@ -329,6 +564,7 @@ export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
 
           {/* Corpo com Scroll */}
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            {staleBanner}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
@@ -376,7 +612,7 @@ export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
           <div className="border-t border-border/70 dark:border-border/25 p-4 bg-muted/20 dark:bg-muted/15">
             <Button
               type="button"
-              onClick={() => onNavigate("/financeiro")}
+              onClick={() => onNavigate(buildFinanceiroNavigationUrl())}
               className="w-full bg-blue-600 text-white hover:bg-blue-700 font-medium text-xs flex items-center justify-center gap-2 h-9 shadow-xs"
             >
               Abrir Central Financeira
@@ -440,6 +676,7 @@ export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
 
           {/* Corpo com Scroll */}
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            {staleBanner}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
@@ -495,7 +732,7 @@ export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
           <div className="border-t border-border/70 dark:border-border/25 p-4 bg-muted/20 dark:bg-muted/15">
             <Button
               type="button"
-              onClick={() => onNavigate("/financeiro/dre")}
+              onClick={() => onNavigate(buildDreNavigationUrl())}
               className="w-full bg-blue-600 text-white hover:bg-blue-700 font-medium text-xs flex items-center justify-center gap-2 h-9 shadow-xs"
             >
               Abrir DRE Gerencial
@@ -562,6 +799,7 @@ export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
 
           {/* Corpo com Scroll */}
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            {staleBanner}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
@@ -594,7 +832,7 @@ export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
           <div className="border-t border-border/70 dark:border-border/25 p-4 bg-muted/20 dark:bg-muted/15">
             <Button
               type="button"
-              onClick={() => onNavigate("/financeiro/dre")}
+              onClick={() => onNavigate(buildDreNavigationUrl())}
               className="w-full bg-blue-600 text-white hover:bg-blue-700 font-medium text-xs flex items-center justify-center gap-2 h-9 shadow-xs"
             >
               Abrir DRE Gerencial
@@ -610,7 +848,11 @@ export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
   if (type === "caixa") {
     const recebido = data.caixaRecebido || 0;
     const aReceber = data.aReceber || 0;
-    const inadimplente = data.inadimplenteTotal || 0;
+    const inadimplenciaView = resolveInadimplenciaView(
+      aReceber,
+      data.inadimplenteTotal,
+      inadimplenciaStatus
+    );
 
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
@@ -652,6 +894,7 @@ export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
 
           {/* Corpo com Scroll */}
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            {staleBanner}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
@@ -662,19 +905,64 @@ export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-lg border border-border/80 dark:border-border/25 bg-card dark:bg-card/60 p-2.5">
-                  <div className="text-[10px] text-muted-foreground">A Receber no Prazo</div>
-                  <div className="font-display text-sm font-bold text-foreground mt-0.5">
-                    {formatCurrency(Math.max(0, aReceber - inadimplente))}
+                  <div className="text-[10px] text-muted-foreground">
+                    {inadimplenciaView.state === "ok" ? "A Receber no Prazo" : "A Receber (Total)"}
                   </div>
-                  <div className="text-[9px] text-muted-foreground mt-0.5">vencimento no ciclo</div>
+                  {inadimplenciaView.state === "loading" ? (
+                    <Skeleton className="h-5 w-24 mt-1" />
+                  ) : (
+                    <div className="font-display text-sm font-bold text-foreground mt-0.5">
+                      {formatCurrency(
+                        inadimplenciaView.state === "ok"
+                          ? inadimplenciaView.noPrazo
+                          : inadimplenciaView.aReceberTotal
+                      )}
+                    </div>
+                  )}
+                  <div className="text-[9px] text-muted-foreground mt-0.5">
+                    {inadimplenciaView.state === "ok"
+                      ? "vencimento no ciclo"
+                      : "saldo pendente na competência"}
+                  </div>
                 </div>
 
                 <div className="rounded-lg border border-rose-200/80 dark:border-rose-900/40 bg-rose-50/30 dark:bg-rose-950/20 p-2.5">
                   <div className="text-[10px] text-rose-700 dark:text-rose-400 font-medium">Vencido / Atrasado</div>
-                  <div className="font-display text-sm font-bold text-rose-700 dark:text-rose-400 mt-0.5">
-                    {formatCurrency(inadimplente)}
-                  </div>
-                  <div className="text-[9px] text-rose-600 dark:text-rose-400 font-semibold mt-0.5">faturas vencidas</div>
+                  {inadimplenciaView.state === "loading" ? (
+                    <>
+                      <Skeleton className="h-5 w-24 mt-1" />
+                      <div className="text-[9px] text-muted-foreground mt-0.5">Consultando vencimentos...</div>
+                    </>
+                  ) : inadimplenciaView.state === "error" || inadimplenciaView.state === "unavailable" ? (
+                    <>
+                      <div className="font-display text-sm font-semibold text-amber-700 dark:text-amber-400 mt-0.5">
+                        Indisponível
+                      </div>
+                      <div className="text-[9px] text-muted-foreground mt-0.5 flex items-center justify-between gap-2">
+                        <span>
+                          {inadimplenciaView.state === "error"
+                            ? "Falha ao consultar vencidos"
+                            : "Detalhamento indisponível"}
+                        </span>
+                        {inadimplenciaView.state === "error" && onRetryInadimplencia && (
+                          <button
+                            type="button"
+                            onClick={onRetryInadimplencia}
+                            className="underline font-semibold text-rose-700 dark:text-rose-400"
+                          >
+                            Tentar novamente
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="font-display text-sm font-bold text-rose-700 dark:text-rose-400 mt-0.5">
+                        {formatCurrency(inadimplenciaView.vencido)}
+                      </div>
+                      <div className="text-[9px] text-rose-600 dark:text-rose-400 font-semibold mt-0.5">faturas vencidas</div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -684,19 +972,11 @@ export const ExecutiveKpiDrawer: React.FC<ExecutiveKpiDrawerProps> = ({
           <div className="border-t border-border/70 dark:border-border/25 p-4 bg-muted/20 dark:bg-muted/15 flex flex-col gap-2">
             <Button
               type="button"
-              onClick={() => onNavigate("/financeiro/receitas")}
+              onClick={() => onNavigate(buildReceitasNavigationUrl())}
               className="w-full bg-blue-600 text-white hover:bg-blue-700 font-medium text-xs flex items-center justify-center gap-2 h-9 shadow-xs"
             >
               Abrir Receitas & Cobranças
               <ArrowRight className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onNavigate("/bancario")}
-              className="w-full border-border font-medium text-xs flex items-center justify-center gap-2 h-8"
-            >
-              Abrir Central Bancária
             </Button>
           </div>
         </SheetContent>

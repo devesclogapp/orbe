@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { addMonths, format, startOfMonth } from "date-fns";
@@ -51,11 +51,14 @@ import {
   DashboardConsolidadoService,
   OperationalIntegrityKPIs,
   RadarAlertaReal,
+  RadarAlertaFalha,
+  RadarAlertasComStatusResult,
   StatusCiclosReal,
   MotoresDataReal,
   EvolucaoPontoReal,
 } from "@/services/dashboard.service";
 import { EmpresaService } from "@/services/domain/cadastros.service";
+import { InadimplenciaOficialService } from "@/services/inadimplenciaOficial.service";
 import { ExecutiveMetricCard } from "@/components/dashboard/ExecutiveMetricCard";
 import { ExecutiveKpiDrawer, ExecutiveKpiDrawerType } from "@/components/dashboard/ExecutiveKpiDrawer";
 
@@ -109,6 +112,18 @@ export default function Dashboard() {
     localStorage.setItem("orbe_dashboard_month", selectedMonthNumber);
   }, [selectedMonthNumber]);
 
+  // Reset controlado de empresa selecionada quando tenant ou ambiente mudam
+  const contextIsolationRef = useRef({ tenantId, environment });
+  useEffect(() => {
+    if (
+      contextIsolationRef.current.tenantId !== tenantId ||
+      contextIsolationRef.current.environment !== environment
+    ) {
+      contextIsolationRef.current = { tenantId, environment };
+      setSelectedEmpresaId("all");
+    }
+  }, [tenantId, environment]);
+
   // Alternador visual para o gráfico: Barras vs Linhas
   const [evolucaoChartMode, setEvolucaoChartMode] = useState<"barras" | "linhas">("barras");
 
@@ -132,73 +147,204 @@ export default function Dashboard() {
 
   const empresaParam = selectedEmpresaId !== "all" ? selectedEmpresaId : undefined;
 
-  // 1. Query: Lista de Empresas para filtro
+  // 1. Query: Lista de Empresas para filtro (segregada por tenant e ambiente)
   const { data: empresas = [] } = useQuery({
-    queryKey: ["dashboard-empresas-lista", tenantId],
+    queryKey: ["dashboard-empresas-lista", tenantId, environment],
     queryFn: () => EmpresaService.getAll(),
     enabled: !isTenantLoading && !!tenantId,
     staleTime: 1000 * 60 * 10,
+    networkMode: "always",
+    retry: false,
   });
 
   // 2. Query: KPIs Consolidada Competência Atual
   const {
     data: kpisAtual,
     isLoading: isLoadingKpis,
+    isFetching: isFetchingKpis,
+    isPaused: isPausedKpis,
     isError: isErrorKpis,
+    isRefetchError: isRefetchErrorKpis,
+    error: errorKpis,
     refetch: refetchKpis,
   } = useQuery<OperationalIntegrityKPIs>({
     queryKey: ["dashboard-kpis-atual", tenantId, selectedYear, selectedMonthNumber, selectedEmpresaId, environment],
-    queryFn: () => DashboardConsolidadoService.getKpisAggregate(selectedYear, selectedMonthNumber, empresaParam),
+    queryFn: () => {
+      if (typeof window !== "undefined" && environment) {
+        localStorage.setItem("esc-log-environment", environment);
+      }
+      return DashboardConsolidadoService.getKpisAggregate(selectedYear, selectedMonthNumber, empresaParam);
+    },
     enabled: !isTenantLoading && !!tenantId,
-    placeholderData: (previousData) => previousData,
+    networkMode: "always",
+    retry: false,
   });
 
   // 3. Query: KPIs Consolidada Competência Anterior (para DELTA-CALC real)
-  const { data: kpisAnterior } = useQuery<OperationalIntegrityKPIs>({
+  const {
+    data: kpisAnterior,
+    isLoading: isLoadingKpisAnterior,
+    isFetching: isFetchingKpisAnterior,
+    isPaused: isPausedKpisAnterior,
+    isError: isErrorKpisAnterior,
+    refetch: refetchKpisAnterior,
+  } = useQuery<OperationalIntegrityKPIs>({
     queryKey: ["dashboard-kpis-anterior", tenantId, previousCompetencia, selectedEmpresaId, environment],
     queryFn: () => {
       const [pYear, pMonth] = previousCompetencia.split("-");
-      return DashboardConsolidadoService.getKpisAggregate(pYear, pMonth, empresaParam);
+      return DashboardConsolidadoService.getKpisAggregate(pYear, pMonth, empresaParam, environment);
     },
     enabled: !isTenantLoading && !!tenantId,
     staleTime: 1000 * 60 * 15,
-    placeholderData: (previousData) => previousData,
+    networkMode: "always",
+    retry: false,
   });
 
-  // 4. Query: Radar de Alertas Reais
-  const { data: radarAlertas = [] } = useQuery<RadarAlertaReal[]>({
+  // 4. Query: Radar de Alertas Reais (consultas independentes com falha por seção)
+  const {
+    data: radarData,
+    isLoading: isLoadingRadar,
+    isFetching: isFetchingRadar,
+    isPaused: isPausedRadar,
+    isError: isErrorRadar,
+    error: errorRadar,
+    refetch: refetchRadar,
+  } = useQuery<RadarAlertasComStatusResult>({
     queryKey: ["dashboard-radar-alertas", tenantId, canonicalCompetencia, selectedEmpresaId, environment],
-    queryFn: () => DashboardConsolidadoService.getRadarAlertas(canonicalCompetencia, empresaParam),
+    queryFn: () =>
+      typeof DashboardConsolidadoService.getRadarAlertasComStatus === "function"
+        ? DashboardConsolidadoService.getRadarAlertasComStatus(
+            canonicalCompetencia,
+            empresaParam,
+            environment
+          )
+        : DashboardConsolidadoService.getRadarAlertas(
+            canonicalCompetencia,
+            empresaParam,
+            environment
+          ).then((alertas) => ({ alertas, falhas: [] })),
     enabled: !isTenantLoading && !!tenantId,
-    placeholderData: (previousData) => previousData,
+    networkMode: "always",
+    retry: false,
   });
+
+  const radarAlertas: RadarAlertaReal[] = radarData?.alertas ?? [];
+  const radarFalhas: RadarAlertaFalha[] = radarData?.falhas ?? [];
 
   // 5. Query: Status dos Ciclos
   const { data: statusCiclos } = useQuery<StatusCiclosReal>({
     queryKey: ["dashboard-status-ciclos", tenantId, canonicalCompetencia, selectedEmpresaId, environment],
     queryFn: () => DashboardConsolidadoService.getStatusCiclos(canonicalCompetencia, empresaParam),
     enabled: !isTenantLoading && !!tenantId,
-    placeholderData: (previousData) => previousData,
+    networkMode: "always",
+    retry: false,
   });
 
   // 6. Query: Síntese dos 4 Motores do ORBE
   const { data: motoresData } = useQuery<MotoresDataReal>({
     queryKey: ["dashboard-motores-data", tenantId, canonicalCompetencia, selectedEmpresaId, environment],
-    queryFn: () => DashboardConsolidadoService.getMotoresData(canonicalCompetencia, empresaParam),
+    queryFn: () => DashboardConsolidadoService.getMotoresData(canonicalCompetencia, empresaParam, environment),
     enabled: !isTenantLoading && !!tenantId,
-    placeholderData: (previousData) => previousData,
+    networkMode: "always",
+    retry: false,
   });
 
   // 7. Query: Gráfico de Evolução Semanal / Factual
-  const { data: evolucaoSemanal = [] } = useQuery<EvolucaoPontoReal[]>({
+  const {
+    data: evolucaoSemanal = [],
+    isLoading: isLoadingEvolucao,
+    isFetching: isFetchingEvolucao,
+    isPaused: isPausedEvolucao,
+    isError: isErrorEvolucao,
+    error: errorEvolucao,
+    refetch: refetchEvolucao,
+  } = useQuery<EvolucaoPontoReal[]>({
     queryKey: ["dashboard-evolucao-semanal", tenantId, canonicalCompetencia, selectedEmpresaId, environment],
-    queryFn: () => DashboardConsolidadoService.getEvolucaoSemanal(canonicalCompetencia, empresaParam),
+    queryFn: () => DashboardConsolidadoService.getEvolucaoSemanal(canonicalCompetencia, empresaParam, environment),
     enabled: !isTenantLoading && !!tenantId,
-    placeholderData: (previousData) => previousData,
+    networkMode: "always",
+    retry: false,
   });
 
-  // DELTA-CALC: Cálculo Real dos Deltas vs Competência Anterior
+  // 8. Query: Inadimplência Oficial Contextual (receitas_operacionais vencidas e em aberto)
+  const {
+    data: inadimplenciaResumo,
+    isLoading: isLoadingInadimplencia,
+    isFetching: isFetchingInadimplencia,
+    isPaused: isPausedInadimplencia,
+    isError: isErrorInadimplencia,
+    refetch: refetchInadimplencia,
+  } = useQuery({
+    queryKey: ["dashboard-inadimplencia", tenantId, canonicalCompetencia, selectedEmpresaId, environment],
+    queryFn: () =>
+      InadimplenciaOficialService.getTotalInadimplenteByContexto({
+        tenantId: tenantId || undefined,
+        empresaId: empresaParam,
+        competencia: canonicalCompetencia,
+        environment,
+      }),
+    enabled: !isTenantLoading && !!tenantId && Boolean(kpisAtual) && !isErrorKpis,
+    networkMode: "always",
+    retry: false,
+  });
+
+  // Identificação do status de reconciliação semanal retornado pelo serviço
+  const statusEvolucao = useMemo(() => {
+    if (selectedMonthNumber === "all") return "ok";
+    return evolucaoSemanal[0]?.status || "ok";
+  }, [selectedMonthNumber, evolucaoSemanal]);
+
+  const isKpisLoadingState =
+    isTenantLoading || isLoadingKpis || (isFetchingKpis && !kpisAtual);
+  const isKpisRefetchErrorState =
+    !isKpisLoadingState &&
+    Boolean(kpisAtual) &&
+    (isRefetchErrorKpis || isErrorKpis || isPausedKpis);
+  const isKpisErrorState =
+    !isKpisLoadingState &&
+    !kpisAtual &&
+    (isErrorKpis || isPausedKpis || !tenantId);
+  const hasKpisData = !isKpisLoadingState && !isKpisErrorState && Boolean(kpisAtual);
+
+  const isRadarLoadingState =
+    isTenantLoading || isLoadingRadar || (isFetchingRadar && !radarData);
+  const isRadarErrorState =
+    !isRadarLoadingState &&
+    (isErrorRadar || isPausedRadar || (!radarData && !isTenantLoading));
+
+  // DELTA-CALC: Cálculo Real dos Deltas vs Competência Anterior (apenas com contextos compatíveis carregados)
   const deltas = useMemo(() => {
+    if (
+      !hasKpisData ||
+      isKpisRefetchErrorState ||
+      !kpisAtual ||
+      isLoadingKpisAnterior ||
+      isFetchingKpisAnterior ||
+      isPausedKpisAnterior ||
+      isErrorKpisAnterior ||
+      !kpisAnterior
+    ) {
+      return null;
+    }
+
+    if (
+      kpisAtual.competencia &&
+      canonicalCompetencia &&
+      !canonicalCompetencia.includes("all") &&
+      kpisAtual.competencia !== canonicalCompetencia
+    ) {
+      return null;
+    }
+
+    if (
+      kpisAnterior.competencia &&
+      previousCompetencia &&
+      !previousCompetencia.includes("all") &&
+      kpisAnterior.competencia !== previousCompetencia
+    ) {
+      return null;
+    }
+
     const calcDelta = (atual: number, anterior: number, invertido: boolean = false) => {
       if (!anterior || anterior === 0) {
         if (atual > 0) return { value: "+100%", isPositive: !invertido, isNeutral: false };
@@ -214,14 +360,14 @@ export default function Dashboard() {
       };
     };
 
-    const faturamentoAtual = kpisAtual?.faturamentoTotal || 0;
-    const faturamentoAnt = kpisAnterior?.faturamentoTotal || 0;
+    const faturamentoAtual = kpisAtual.faturamentoTotal || 0;
+    const faturamentoAnt = kpisAnterior.faturamentoTotal || 0;
 
-    const custosAtual = (kpisAtual?.finValorAprovado || 0) + (kpisAtual?.custosGerais || 0);
-    const custosAnt = (kpisAnterior?.finValorAprovado || 0) + (kpisAnterior?.custosGerais || 0);
+    const custosAtual = (kpisAtual.finValorAprovado || 0) + (kpisAtual.custosGerais || 0);
+    const custosAnt = (kpisAnterior.finValorAprovado || 0) + (kpisAnterior.custosGerais || 0);
 
-    const resultadoAtual = kpisAtual?.lucroReal || 0;
-    const resultadoAnt = kpisAnterior?.lucroReal || 0;
+    const resultadoAtual = kpisAtual.lucroReal || 0;
+    const resultadoAnt = kpisAnterior.lucroReal || 0;
 
     const margemAtual = faturamentoAtual > 0 ? (resultadoAtual / faturamentoAtual) * 100 : 0;
     const margemAnt = faturamentoAnt > 0 ? (resultadoAnt / faturamentoAnt) * 100 : 0;
@@ -237,7 +383,18 @@ export default function Dashboard() {
         isNeutral: Math.abs(margemDiffPP) < 0.01,
       },
     };
-  }, [kpisAtual, kpisAnterior]);
+  }, [
+    hasKpisData,
+    isKpisRefetchErrorState,
+    kpisAtual,
+    isLoadingKpisAnterior,
+    isFetchingKpisAnterior,
+    isPausedKpisAnterior,
+    isErrorKpisAnterior,
+    kpisAnterior,
+    canonicalCompetencia,
+    previousCompetencia,
+  ]);
 
   // Composição dos Custos Reais (Ranking Consolidado)
   const distribuicaoCustos = useMemo(() => {
@@ -273,6 +430,10 @@ export default function Dashboard() {
 
   const handleRefresh = () => {
     refetchKpis();
+    refetchKpisAnterior();
+    refetchRadar();
+    refetchInadimplencia();
+    refetchEvolucao();
   };
 
   // Paleta adaptativa Recharts
@@ -287,7 +448,13 @@ export default function Dashboard() {
     tooltipText: "hsl(var(--foreground))",
   };
 
-  const isEmpresaSemMovimentacao = !isLoadingKpis && faturamentoTotal === 0 && custosTotais === 0;
+  const isEmpresaSemMovimentacao =
+    hasKpisData &&
+    !isKpisRefetchErrorState &&
+    !isPausedKpis &&
+    !isFetchingKpis &&
+    faturamentoTotal === 0 &&
+    custosTotais === 0;
 
   return (
     <AppShell
@@ -392,25 +559,88 @@ export default function Dashboard() {
 
         {/* 1. COMO ESTAMOS? — 5 KPIs EXECUTIVOS SUPERIORES (COM DRILL-DOWN REAL) */}
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {isLoadingKpis && !kpisAtual ? (
-            Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="rounded-xl border border-border p-4 bg-card space-y-2">
-                <Skeleton className="h-3 w-24" />
-                <Skeleton className="h-7 w-32" />
-                <Skeleton className="h-3 w-20" />
+          {isKpisLoadingState ? (
+            <div className="col-span-full grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5" data-testid="dashboard-kpis-loading">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="rounded-xl border border-border p-4 bg-card space-y-2">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-7 w-32" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+              ))}
+            </div>
+          ) : isKpisErrorState ? (
+            <div
+              className="col-span-full rounded-xl border border-rose-200/80 dark:border-rose-900/40 bg-rose-50/40 dark:bg-rose-950/20 p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+              data-testid="dashboard-kpis-error"
+              role="alert"
+            >
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">
+                    Não foi possível carregar os indicadores financeiros
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {errorKpis instanceof Error
+                      ? errorKpis.message
+                      : "Falha ao consultar os dados consolidados da competência. Os valores não foram exibidos para evitar leitura incorreta."}
+                  </p>
+                </div>
               </div>
-            ))
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                className="shrink-0 gap-1.5 text-xs border-rose-300/80 dark:border-rose-800"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Tentar novamente
+              </Button>
+            </div>
           ) : (
             <>
+              {isKpisRefetchErrorState && (
+                <div
+                  className="col-span-full rounded-xl border border-amber-300/80 dark:border-amber-800/60 bg-amber-50/70 dark:bg-amber-950/30 px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+                  data-testid="dashboard-kpis-refetch-error"
+                  role="alert"
+                >
+                  <div className="flex items-start gap-2.5 text-xs">
+                    <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold text-amber-900 dark:text-amber-200">
+                        Não foi possível atualizar os indicadores financeiros — exibindo dados desatualizados.
+                      </span>{" "}
+                      <span className="text-amber-800/90 dark:text-amber-300/90">
+                        {errorKpis instanceof Error
+                          ? errorKpis.message
+                          : "Os números abaixo refletem a última consulta válida deste contexto."}
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRefresh}
+                    className="h-7 shrink-0 gap-1.5 text-xs border-amber-400/70 dark:border-amber-700"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Tentar novamente
+                  </Button>
+                </div>
+              )}
               {/* KPI 1: Faturamento Total */}
               <ExecutiveMetricCard
                 label="Faturamento Total"
                 value={formatCurrency(faturamentoTotal)}
-                delta={{
+                delta={deltas ? {
                   value: deltas.faturamento.value,
                   isPositive: deltas.faturamento.isPositive,
                   isNeutral: deltas.faturamento.isNeutral,
-                }}
+                } : undefined}
                 subtitle="Receitas apuradas · Clique p/ detalhar"
                 icon={TrendingUp}
                 isClickable={true}
@@ -421,11 +651,11 @@ export default function Dashboard() {
               <ExecutiveMetricCard
                 label="Custos & Despesas"
                 value={formatCurrency(custosTotais)}
-                delta={{
+                delta={deltas ? {
                   value: deltas.custos.value,
                   isPositive: deltas.custos.isPositive,
                   isNeutral: deltas.custos.isNeutral,
-                }}
+                } : undefined}
                 subtitle="CLT, Diaristas e Extras · Detalhar"
                 icon={DollarSign}
                 isClickable={true}
@@ -436,11 +666,11 @@ export default function Dashboard() {
               <ExecutiveMetricCard
                 label="Resultado Operacional"
                 value={formatCurrency(resultadoOperacional)}
-                delta={{
+                delta={deltas ? {
                   value: deltas.resultado.value,
                   isPositive: deltas.resultado.isPositive,
                   isNeutral: deltas.resultado.isNeutral,
-                }}
+                } : undefined}
                 subtitle="Receita − Custos · DRE Gerencial"
                 icon={Activity}
                 isClickable={true}
@@ -451,11 +681,11 @@ export default function Dashboard() {
               <ExecutiveMetricCard
                 label="Margem Operacional"
                 value={`${margemOperacional.toFixed(1)}%`}
-                delta={{
+                delta={deltas ? {
                   value: deltas.margem.value,
                   isPositive: deltas.margem.isPositive,
                   isNeutral: deltas.margem.isNeutral,
-                }}
+                } : undefined}
                 subtitle="Rentabilidade apurada · Detalhar"
                 icon={FileText}
                 isClickable={true}
@@ -505,87 +735,169 @@ export default function Dashboard() {
               </h3>
             </div>
             <span className="text-[11px] font-medium text-muted-foreground/80">
-              {radarAlertas.length} ações imediatas sugeridas
+              {isRadarLoadingState
+                ? "Verificando pendências..."
+                : isRadarErrorState
+                ? "Radar indisponível"
+                : radarFalhas.length > 0
+                ? `${radarAlertas.length} alerta(s) · ${radarFalhas.length} seção(ões) indisponível(is)`
+                : `${radarAlertas.length} ações imediatas sugeridas`}
             </span>
           </div>
 
-          {radarAlertas.length === 0 ? (
-            <div className="py-6 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              Nenhuma pendência crítica ou alerta ativo registrado para o escopo selecionado.
+          {isRadarLoadingState ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 py-2" data-testid="dashboard-radar-loading">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="space-y-2 p-2">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-full" />
+                </div>
+              ))}
+            </div>
+          ) : isRadarErrorState ? (
+            <div
+              className="rounded-lg border border-rose-200/80 dark:border-rose-900/40 bg-rose-50/40 dark:bg-rose-950/20 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+              data-testid="dashboard-radar-error"
+              role="alert"
+            >
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="h-4 w-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-semibold text-foreground">
+                    Não foi possível carregar o Radar de Atenção Operacional & Financeira
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {errorRadar instanceof Error
+                      ? errorRadar.message
+                      : "Falha ao consultar as pendências e alertas para o escopo selecionado."}
+                  </p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => refetchRadar()}
+                className="shrink-0 h-7 gap-1.5 text-xs border-rose-300/80 dark:border-rose-800"
+              >
+                <RefreshCw className="h-3 w-3" />
+                Tentar novamente
+              </Button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border/60 pt-0.5">
-              {radarAlertas.map((alerta) => {
-                const isCritico = alerta.tipo === "critico";
-                const isAtencao = alerta.tipo === "atencao";
-
-                return (
-                  <div
-                    key={alerta.id}
-                    className="flex flex-col justify-between py-2 sm:py-0 px-0 sm:px-3.5 first:sm:pl-1 last:sm:pr-1 transition-colors hover:bg-muted/15 rounded-lg group"
-                  >
+            <div className="space-y-3">
+              {radarFalhas.length > 0 && (
+                <div
+                  className="rounded-lg border border-amber-300/80 dark:border-amber-800/60 bg-amber-50/60 dark:bg-amber-950/25 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
+                  data-testid="dashboard-radar-partial-error"
+                  role="alert"
+                >
+                  <div className="flex items-start gap-2 text-xs">
+                    <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
                     <div>
-                      <div className="flex items-center justify-between gap-1.5 text-[10px] font-bold uppercase tracking-wider">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={cn(
-                              "h-1.5 w-1.5 rounded-full shrink-0",
-                              isCritico
-                                ? "bg-rose-500"
-                                : isAtencao
-                                ? "bg-amber-500"
-                                : "bg-muted-foreground/50"
-                            )}
-                          />
-                          <span
-                            className={cn(
-                              "font-semibold",
-                              isCritico
-                                ? "text-rose-600 dark:text-rose-400"
-                                : isAtencao
-                                ? "text-amber-600 dark:text-amber-400"
-                                : "text-muted-foreground"
-                            )}
-                          >
-                            {alerta.modulo}
-                          </span>
-                        </div>
-                        <span className="text-muted-foreground/70 font-normal text-[10px]">
-                          {alerta.tempo}
-                        </span>
-                      </div>
-
-                      <h5 className="mt-1.5 text-xs font-semibold text-foreground leading-snug">
-                        {alerta.titulo}
-                      </h5>
-
-                      <p className="mt-1 text-[11px] text-muted-foreground/80 line-clamp-2 leading-relaxed">
-                        {alerta.descricao}
+                      <p className="font-semibold text-amber-900 dark:text-amber-200">
+                        Indisponibilidade parcial no Radar de Atenção
+                      </p>
+                      <p className="text-[11px] text-amber-800/90 dark:text-amber-300/90">
+                        Não foi possível verificar: {radarFalhas.map((f) => f.modulo).join(", ")}.
                       </p>
                     </div>
-
-                    <div className="mt-3 pt-2 border-t border-border/40 flex items-center justify-between">
-                      {alerta.valor ? (
-                        <span className="font-display text-xs font-bold text-foreground">
-                          {formatCurrency(alerta.valor)}
-                        </span>
-                      ) : (
-                        <span />
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => navigate(alerta.origemRota)}
-                        className="h-6 text-[10px] font-medium px-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                      >
-                        {alerta.acaoLabel}{" "}
-                        <ChevronRight className="ml-0.5 h-3 w-3 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
-                      </Button>
-                    </div>
                   </div>
-                );
-              })}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refetchRadar()}
+                    className="shrink-0 h-7 gap-1.5 text-xs border-amber-400/70 dark:border-amber-700"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Tentar novamente
+                  </Button>
+                </div>
+              )}
+
+              {radarAlertas.length === 0 ? (
+                radarFalhas.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    Nenhuma pendência crítica ou alerta ativo registrado para o escopo selecionado.
+                  </div>
+                ) : null
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border/60 pt-0.5">
+                  {radarAlertas.map((alerta) => {
+                    const isCritico = alerta.tipo === "critico";
+                    const isAtencao = alerta.tipo === "atencao";
+
+                    return (
+                      <div
+                        key={alerta.id}
+                        className="flex flex-col justify-between py-2 sm:py-0 px-0 sm:px-3.5 first:sm:pl-1 last:sm:pr-1 transition-colors hover:bg-muted/15 rounded-lg group"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-1.5 text-[10px] font-bold uppercase tracking-wider">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={cn(
+                                  "h-1.5 w-1.5 rounded-full shrink-0",
+                                  isCritico
+                                    ? "bg-rose-500"
+                                    : isAtencao
+                                    ? "bg-amber-500"
+                                    : "bg-muted-foreground/50"
+                                )}
+                              />
+                              <span
+                                className={cn(
+                                  "font-semibold",
+                                  isCritico
+                                    ? "text-rose-600 dark:text-rose-400"
+                                    : isAtencao
+                                    ? "text-amber-600 dark:text-amber-400"
+                                    : "text-muted-foreground"
+                                )}
+                              >
+                                {alerta.modulo}
+                              </span>
+                            </div>
+                            <span className="text-muted-foreground/70 font-normal text-[10px]">
+                              {alerta.tempo}
+                            </span>
+                          </div>
+
+                          <h5 className="mt-1.5 text-xs font-semibold text-foreground leading-snug">
+                            {alerta.titulo}
+                          </h5>
+
+                          <p className="mt-1 text-[11px] text-muted-foreground/80 line-clamp-2 leading-relaxed">
+                            {alerta.descricao}
+                          </p>
+                        </div>
+
+                        <div className="mt-3 pt-2 border-t border-border/40 flex items-center justify-between">
+                          {alerta.valor ? (
+                            <span className="font-display text-xs font-bold text-foreground">
+                              {formatCurrency(alerta.valor)}
+                            </span>
+                          ) : (
+                            <span />
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate(alerta.origemRota)}
+                            className="h-6 text-[10px] font-medium px-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                          >
+                            {alerta.acaoLabel}{" "}
+                            <ChevronRight className="ml-0.5 h-3 w-3 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -655,89 +967,140 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Aviso de Inconsistência de Reconciliação (quando dados possuem divergência estrutural) */}
+            {statusEvolucao === "inconsistente" && (
+              <div className="mb-2 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>
+                  <strong>Atenção:</strong> Foram identificadas divergências na distribuição operacional das receitas. Valores exibidos com ressalva de auditoria.
+                </span>
+              </div>
+            )}
+
             {/* Área do Gráfico */}
             <div className="h-[230px] w-full pt-1">
-              <ResponsiveContainer width="100%" height="100%">
-                {evolucaoChartMode === "barras" ? (
-                  <BarChart data={evolucaoSemanal} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <XAxis
-                      dataKey="semana"
-                      tick={{ fontSize: 11, fill: chartTheme.axisTick }}
-                      axisLine={{ stroke: chartTheme.axisLine }}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 11, fill: chartTheme.axisTick }}
-                      axisLine={false}
-                      tickLine={false}
-                      tickFormatter={(v) => `R$${Math.round(v / 1000)}k`}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: chartTheme.tooltipBg,
-                        borderColor: chartTheme.tooltipBorder,
-                        color: chartTheme.tooltipText,
-                        borderRadius: "8px",
-                        fontSize: "12px",
-                      }}
-                      formatter={(val: number) => [formatCurrency(val), ""]}
-                    />
-                    <Bar dataKey="receita" fill={chartTheme.receita} radius={[4, 4, 0, 0]} name="Receita" />
-                    <Bar dataKey="custos" fill={chartTheme.custos} radius={[4, 4, 0, 0]} name="Custos" />
-                    <Bar dataKey="lucro" fill={chartTheme.lucro} radius={[4, 4, 0, 0]} name="Resultado" />
-                  </BarChart>
-                ) : (
-                  <LineChart data={evolucaoSemanal} margin={{ top: 10, right: 15, left: -20, bottom: 0 }}>
-                    <XAxis
-                      dataKey="semana"
-                      tick={{ fontSize: 11, fill: chartTheme.axisTick }}
-                      axisLine={{ stroke: chartTheme.axisLine }}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 11, fill: chartTheme.axisTick }}
-                      axisLine={false}
-                      tickLine={false}
-                      tickFormatter={(v) => `R$${Math.round(v / 1000)}k`}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: chartTheme.tooltipBg,
-                        borderColor: chartTheme.tooltipBorder,
-                        color: chartTheme.tooltipText,
-                        borderRadius: "8px",
-                        fontSize: "12px",
-                      }}
-                      formatter={(val: number) => [formatCurrency(val), ""]}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="receita"
-                      stroke={chartTheme.receita}
-                      strokeWidth={2}
-                      dot={{ r: 3, fill: chartTheme.receita }}
-                      name="Receita"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="custos"
-                      stroke={chartTheme.custos}
-                      strokeWidth={1.75}
-                      strokeDasharray="4 4"
-                      dot={{ r: 2.5, fill: chartTheme.custos }}
-                      name="Custos"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="lucro"
-                      stroke={chartTheme.lucro}
-                      strokeWidth={2}
-                      dot={{ r: 3.5, fill: chartTheme.lucro }}
-                      name="Resultado"
-                    />
-                  </LineChart>
-                )}
-              </ResponsiveContainer>
+              {isLoadingEvolucao || (isFetchingEvolucao && evolucaoSemanal.length === 0) ? (
+                <div className="flex h-full w-full flex-col justify-end gap-2 pb-4">
+                  <div className="flex h-full items-end gap-3 px-4">
+                    <Skeleton className="h-3/4 flex-1 rounded-t-md" />
+                    <Skeleton className="h-1/2 flex-1 rounded-t-md" />
+                    <Skeleton className="h-5/6 flex-1 rounded-t-md" />
+                    <Skeleton className="h-2/3 flex-1 rounded-t-md" />
+                  </div>
+                  <Skeleton className="h-3 w-full rounded-sm" />
+                </div>
+              ) : isErrorEvolucao || isPausedEvolucao ? (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center p-4">
+                  <AlertTriangle className="h-8 w-8 text-destructive/80" />
+                  <p className="text-xs font-semibold text-foreground">
+                    Erro ao carregar dados de evolução financeira
+                  </p>
+                  <p className="text-[11px] text-muted-foreground max-w-sm">
+                    {errorEvolucao instanceof Error ? errorEvolucao.message : "Falha na comunicação com a base de dados."}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refetchEvolucao()}
+                    className="mt-1 h-7 text-xs"
+                  >
+                    <RefreshCw className="mr-1.5 h-3 w-3" />
+                    Tentar novamente
+                  </Button>
+                </div>
+              ) : statusEvolucao === "sem_dados" ? (
+                <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-center p-4">
+                  <Minus className="h-8 w-8 text-muted-foreground/40" />
+                  <p className="text-xs font-semibold text-foreground">
+                    Sem movimentação financeira elegível
+                  </p>
+                  <p className="text-[11px] text-muted-foreground max-w-sm">
+                    Nenhuma receita ou custo direto aprovado/homologado foi localizado para a competência {monthLabel}.
+                  </p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  {evolucaoChartMode === "barras" ? (
+                    <BarChart data={evolucaoSemanal} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <XAxis
+                        dataKey="semana"
+                        tick={{ fontSize: 11, fill: chartTheme.axisTick }}
+                        axisLine={{ stroke: chartTheme.axisLine }}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 11, fill: chartTheme.axisTick }}
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={(v) => `R$${Math.round(v / 1000)}k`}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: chartTheme.tooltipBg,
+                          borderColor: chartTheme.tooltipBorder,
+                          color: chartTheme.tooltipText,
+                          borderRadius: "8px",
+                          fontSize: "12px",
+                        }}
+                        formatter={(val: number) => [formatCurrency(val), ""]}
+                      />
+                      <Bar dataKey="receita" fill={chartTheme.receita} radius={[4, 4, 0, 0]} name="Receita" />
+                      <Bar dataKey="custos" fill={chartTheme.custos} radius={[4, 4, 0, 0]} name="Custos" />
+                      <Bar dataKey="lucro" fill={chartTheme.lucro} radius={[4, 4, 0, 0]} name="Resultado" />
+                    </BarChart>
+                  ) : (
+                    <LineChart data={evolucaoSemanal} margin={{ top: 10, right: 15, left: -20, bottom: 0 }}>
+                      <XAxis
+                        dataKey="semana"
+                        tick={{ fontSize: 11, fill: chartTheme.axisTick }}
+                        axisLine={{ stroke: chartTheme.axisLine }}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 11, fill: chartTheme.axisTick }}
+                        axisLine={false}
+                        tickLine={false}
+                        tickFormatter={(v) => `R$${Math.round(v / 1000)}k`}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: chartTheme.tooltipBg,
+                          borderColor: chartTheme.tooltipBorder,
+                          color: chartTheme.tooltipText,
+                          borderRadius: "8px",
+                          fontSize: "12px",
+                        }}
+                        formatter={(val: number) => [formatCurrency(val), ""]}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="receita"
+                        stroke={chartTheme.receita}
+                        strokeWidth={2}
+                        dot={{ r: 3, fill: chartTheme.receita }}
+                        name="Receita"
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="custos"
+                        stroke={chartTheme.custos}
+                        strokeWidth={1.75}
+                        strokeDasharray="4 4"
+                        dot={{ r: 2.5, fill: chartTheme.custos }}
+                        name="Custos"
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="lucro"
+                        stroke={chartTheme.lucro}
+                        strokeWidth={2}
+                        dot={{ r: 3.5, fill: chartTheme.lucro }}
+                        name="Resultado"
+                      />
+                    </LineChart>
+                  )}
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
 
@@ -749,7 +1112,11 @@ export default function Dashboard() {
                   Composição dos Custos de Operação
                 </h3>
                 <p className="text-xs text-muted-foreground/80 mt-0.5">
-                  Total: {formatCurrency(custosTotais)}
+                  {isKpisLoadingState
+                    ? "Carregando composição de custos..."
+                    : isKpisErrorState
+                    ? "Composição indisponível no momento"
+                    : `Total: ${formatCurrency(custosTotais)}`}
                 </p>
               </div>
               <span className="text-[11px] font-semibold text-muted-foreground/80">
@@ -757,45 +1124,69 @@ export default function Dashboard() {
               </span>
             </div>
 
-            {/* Ranking de Barras */}
-            <div className="py-2.5 space-y-2.5">
-              {distribuicaoCustos.map((item, idx) => {
-                const isPrincipal = idx === 0 && item.valor > 0;
-                return (
-                  <div key={item.categoria} className="space-y-1">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-medium text-foreground truncate max-w-[200px]" title={item.categoria}>
-                        {item.categoria}
-                      </span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-muted-foreground font-mono text-[11px]">
-                          {formatCurrency(item.valor)}
-                        </span>
-                        <span className="font-bold text-foreground text-xs w-8 text-right">
-                          {item.percentual.toFixed(0)}%
-                        </span>
-                      </div>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-muted/60 dark:bg-slate-800/40 overflow-hidden">
-                      <div
-                        className={cn(
-                          "h-full rounded-full transition-all duration-500",
-                          isPrincipal ? "bg-blue-600 dark:bg-blue-500" : "bg-muted-foreground/35 dark:bg-slate-700/50"
-                        )}
-                        style={{
-                          width: `${Math.min(100, item.percentual)}%`,
-                        }}
-                      />
-                    </div>
+            {isKpisLoadingState ? (
+              <div className="py-3 space-y-3">
+                {Array.from({ length: 4 }).map((_, idx) => (
+                  <div key={idx} className="space-y-1.5">
+                    <Skeleton className="h-3 w-full" />
+                    <Skeleton className="h-2 w-full rounded-full" />
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            ) : isKpisErrorState ? (
+              <div className="py-6 flex flex-col items-center justify-center text-center gap-2">
+                <AlertTriangle className="h-6 w-6 text-rose-500" />
+                <p className="text-xs text-muted-foreground">
+                  Não foi possível apurar a composição de custos desta competência.
+                </p>
+                <Button type="button" variant="outline" size="sm" onClick={handleRefresh} className="h-7 text-xs gap-1.5">
+                  <RefreshCw className="h-3 w-3" />
+                  Tentar novamente
+                </Button>
+              </div>
+            ) : (
+              <>
+                {/* Ranking de Barras */}
+                <div className="py-2.5 space-y-2.5">
+                  {distribuicaoCustos.map((item, idx) => {
+                    const isPrincipal = idx === 0 && item.valor > 0;
+                    return (
+                      <div key={item.categoria} className="space-y-1">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-medium text-foreground truncate max-w-[200px]" title={item.categoria}>
+                            {item.categoria}
+                          </span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-muted-foreground font-mono text-[11px]">
+                              {formatCurrency(item.valor)}
+                            </span>
+                            <span className="font-bold text-foreground text-xs w-8 text-right">
+                              {item.percentual.toFixed(0)}%
+                            </span>
+                          </div>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-muted/60 dark:bg-slate-800/40 overflow-hidden">
+                          <div
+                            className={cn(
+                              "h-full rounded-full transition-all duration-500",
+                              isPrincipal ? "bg-blue-600 dark:bg-blue-500" : "bg-muted-foreground/35 dark:bg-slate-700/50"
+                            )}
+                            style={{
+                              width: `${Math.min(100, item.percentual)}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
 
-            <div className="border-t border-border/50 pt-2 text-[11px] text-muted-foreground flex justify-between items-center">
-              <span>Maior centro: <strong className="text-foreground">{distribuicaoCustos[0]?.categoria || "Folha CLT"}</strong></span>
-              <span className="text-emerald-700 dark:text-emerald-400 font-semibold">Base consolidada</span>
-            </div>
+                <div className="border-t border-border/50 pt-2 text-[11px] text-muted-foreground flex justify-between items-center">
+                  <span>Maior centro: <strong className="text-foreground">{distribuicaoCustos[0]?.categoria || "Folha CLT"}</strong></span>
+                  <span className="text-emerald-700 dark:text-emerald-400 font-semibold">Base consolidada</span>
+                </div>
+              </>
+            )}
           </div>
         </section>
 
@@ -1062,22 +1453,54 @@ export default function Dashboard() {
         onOpenChange={(open) => !open && setActiveDrawer(null)}
         onNavigate={(path) => navigate(path)}
         competencia={monthLabel}
-        data={{
-          faturamentoTotal,
-          faturamentoAnterior: kpisAnterior?.faturamentoTotal,
-          custosTotais,
-          custosAnterior: (kpisAnterior?.finValorAprovado || 0) + (kpisAnterior?.custosGerais || 0),
-          resultadoOperacional,
-          resultadoAnterior: kpisAnterior?.lucroReal,
-          margemOperacional,
-          margemAnterior: kpisAnterior && kpisAnterior.faturamentoTotal > 0 ? (kpisAnterior.lucroReal / kpisAnterior.faturamentoTotal) * 100 : 0,
-          caixaRecebido,
-          aReceber,
-          folhaValor: kpisAtual?.folhaValorAprovado || 0,
-          diaristasValor: kpisAtual?.diaristasValorAprovado || 0,
-          intermitentesValor: kpisAtual?.intermitentesValorAprovado || 0,
-          custosExtrasValor: kpisAtual?.custosGerais || 0,
+        canonicalCompetencia={canonicalCompetencia}
+        empresaId={selectedEmpresaId}
+        isLoading={isKpisLoadingState}
+        isError={isKpisErrorState}
+        isStaleError={isKpisRefetchErrorState}
+        errorMessage={errorKpis instanceof Error ? errorKpis.message : undefined}
+        onRetry={handleRefresh}
+        inadimplenciaStatus={
+          isLoadingInadimplencia || (isFetchingInadimplencia && !inadimplenciaResumo)
+            ? "loading"
+            : isErrorInadimplencia || isPausedInadimplencia
+            ? "error"
+            : inadimplenciaResumo
+            ? "ok"
+            : "unavailable"
+        }
+        onRetryInadimplencia={() => {
+          refetchInadimplencia();
         }}
+        data={
+          hasKpisData && kpisAtual
+            ? {
+                faturamentoTotal,
+                faturamentoAnterior: deltas ? kpisAnterior?.faturamentoTotal : undefined,
+                custosTotais,
+                custosAnterior:
+                  deltas && kpisAnterior
+                    ? (kpisAnterior.finValorAprovado || 0) + (kpisAnterior.custosGerais || 0)
+                    : undefined,
+                resultadoOperacional,
+                resultadoAnterior: deltas ? kpisAnterior?.lucroReal : undefined,
+                margemOperacional,
+                margemAnterior:
+                  deltas && kpisAnterior
+                    ? kpisAnterior.faturamentoTotal > 0
+                      ? (kpisAnterior.lucroReal / kpisAnterior.faturamentoTotal) * 100
+                      : 0
+                    : undefined,
+                caixaRecebido,
+                aReceber,
+                inadimplenteTotal: inadimplenciaResumo?.totalInadimplente,
+                folhaValor: kpisAtual.folhaValorAprovado || 0,
+                diaristasValor: kpisAtual.diaristasValorAprovado || 0,
+                intermitentesValor: kpisAtual.intermitentesValorAprovado || 0,
+                custosExtrasValor: kpisAtual.custosGerais || 0,
+              }
+            : undefined
+        }
       />
     </AppShell>
   );

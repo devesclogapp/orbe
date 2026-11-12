@@ -6,20 +6,47 @@ export type EnvironmentScopeOptions = {
   includeNullInProduction?: boolean;
   testIds: string[];
   targetEmpresaId?: string;
+  environment?: string;
 };
+
+function normalizeEnvironmentScope(
+  environment?: string
+): 'production' | 'homologacao' | 'todos' {
+  if (!environment) {
+    return EnvironmentService.getCurrentEnvironment();
+  }
+  const normalized = environment.trim().toLowerCase();
+  if (normalized === 'homologacao' || normalized === 'homologação') {
+    return 'homologacao';
+  }
+  if (normalized === 'todos') {
+    return 'todos';
+  }
+  if (normalized === 'producao' || normalized === 'produção' || normalized === 'production') {
+    return 'production';
+  }
+  return EnvironmentService.getCurrentEnvironment();
+}
 
 class EnvironmentQueryFilterClass {
   applyEmpresaScope<T>(
     query: T,
     options: EnvironmentScopeOptions
   ): T {
-    const { tenantId, column = 'empresa_id', includeNullInProduction = false, testIds, targetEmpresaId } = options;
+    const {
+      tenantId,
+      column = 'empresa_id',
+      includeNullInProduction = false,
+      testIds,
+      targetEmpresaId,
+      environment,
+    } = options;
     
     if (!tenantId) {
       throw new EnvironmentScopeResolutionError("EnvironmentQueryFilter: Nenhum tenantId definido para a aplicacao do escopo.");
     }
     
-    const env = EnvironmentService.getCurrentEnvironment();
+    const env = normalizeEnvironmentScope(environment);
     
     const q = query as any;
 

@@ -103,28 +103,78 @@ export default function RelatorioDRE() {
   const { environment } = usePreferences();
   const [searchParams] = useSearchParams();
 
+  // 1. Query: Lista de Empresas do Tenant (filtrada por ambiente)
+  const { data: allEmpresas = [] } = useQuery({
+    queryKey: ["dre_empresas_lista", tenant?.id],
+    queryFn: () => EmpresaService.getAll(),
+    enabled: !!tenant?.id,
+    staleTime: 1000 * 60 * 10,
+  });
+
+  const empresas = useMemo(() => {
+    const isHomolog = environment === "HOMOLOGACAO";
+    return allEmpresas.filter((e) => (isHomolog ? Boolean(e.is_teste) : !e.is_teste));
+  }, [allEmpresas, environment]);
+
   const mesParam = searchParams.get("mes") || searchParams.get("competencia");
   const empresaParamUrl = searchParams.get("empresa") || searchParams.get("empresaId");
 
-  const initialYear = mesParam && /^\d{4}-\d{2}$/.test(mesParam) ? mesParam.slice(0, 4) : "2026";
-  const initialMonth = mesParam && /^\d{4}-\d{2}$/.test(mesParam) ? mesParam.slice(5, 7) : "10";
+  const now = new Date();
+  const defaultYear = String(now.getFullYear());
+  const defaultMonth = String(now.getMonth() + 1).padStart(2, "0");
+
+  const parseCompetencia = (param: string | null) => {
+    if (!param) return null;
+    if (/^\d{4}-all$/.test(param)) {
+      return { year: param.slice(0, 4), month: "all" };
+    }
+    if (/^\d{4}-\d{2}$/.test(param)) {
+      return { year: param.slice(0, 4), month: param.slice(5, 7) };
+    }
+    return null;
+  };
+
+  const parsed = parseCompetencia(mesParam);
+  const initialYear = parsed ? parsed.year : defaultYear;
+  const initialMonth = parsed ? parsed.month : defaultMonth;
 
   // Filtros Globais
   const [year, setYear] = useState<string>(initialYear);
   const [month, setMonth] = useState<string>(initialMonth);
   const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>(empresaParamUrl || "all");
 
+  // Efeito reativo para SearchParams
   useEffect(() => {
     const mes = searchParams.get("mes") || searchParams.get("competencia");
     const emp = searchParams.get("empresa") || searchParams.get("empresaId");
-    if (mes && /^\d{4}-\d{2}$/.test(mes)) {
-      setYear(mes.slice(0, 4));
-      setMonth(mes.slice(5, 7));
+
+    const parsedMes = parseCompetencia(mes);
+    if (parsedMes) {
+      setYear(parsedMes.year);
+      setMonth(parsedMes.month);
     }
+
     if (emp) {
-      setSelectedEmpresaId(emp);
+      if (emp === "all") {
+        setSelectedEmpresaId("all");
+      } else if (allEmpresas.length > 0) {
+        const isValid = empresas.some((e) => e.id === emp);
+        setSelectedEmpresaId(isValid ? emp : "all");
+      } else {
+        setSelectedEmpresaId(emp);
+      }
     }
-  }, [searchParams]);
+  }, [searchParams, empresas, allEmpresas.length]);
+
+  // Efeito de validação de tenant/ambiente sobre empresa selecionada
+  useEffect(() => {
+    if (selectedEmpresaId !== "all" && empresas.length > 0) {
+      const isValid = empresas.some((e) => e.id === selectedEmpresaId);
+      if (!isValid) {
+        setSelectedEmpresaId("all");
+      }
+    }
+  }, [empresas, selectedEmpresaId]);
 
   // Comparação Temporal
   const [isComparing, setIsComparing] = useState(false);
@@ -157,19 +207,6 @@ export default function RelatorioDRE() {
   }, [isComparing, compYear, compMonth, year, month]);
 
   const empresaParam = selectedEmpresaId !== "all" ? selectedEmpresaId : undefined;
-
-  // 1. Query: Lista de Empresas do Tenant (filtrada por ambiente)
-  const { data: allEmpresas = [] } = useQuery({
-    queryKey: ["dre_empresas_lista", tenant?.id],
-    queryFn: () => EmpresaService.getAll(),
-    enabled: !!tenant?.id,
-    staleTime: 1000 * 60 * 10,
-  });
-
-  const empresas = useMemo(() => {
-    const isHomolog = environment === "HOMOLOGACAO";
-    return allEmpresas.filter((e) => (isHomolog ? Boolean(e.is_teste) : !e.is_teste));
-  }, [allEmpresas, environment]);
 
   // 2. Query Principal: KPIs da Competência Atual
   const {

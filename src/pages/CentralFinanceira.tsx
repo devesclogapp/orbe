@@ -56,6 +56,8 @@ import { IntermitentesLoteService } from "@/services/domain/intermitentes.servic
 import { RHFinanceiroService } from "@/services/rhFinanceiro.service";
 import { buildFolhaVariavelPipeline, buildDiaristasPipeline, useOperationalPipeline } from "@/contexts/OperationalPipelineContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
+import { usePreferences } from "@/contexts/PreferencesContext";
 import {
   DespesasContasPagarOficialService,
   DespesaFederadaItem,
@@ -73,9 +75,50 @@ import {
 import { DespesaDrawerOficial } from "./Financeiro/components/DespesaDrawerOficial";
 
 const formatCompetenciaLabel = (competencia: string) => {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(competencia)) return competencia || "—";
   const [year, month] = competencia.split("-").map(Number);
   return new Date(year, month - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 };
+
+const MONTHLY_COMPETENCIA_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+const ANNUAL_COMPETENCIA_RE = /^\d{4}-all$/;
+
+function parseCentralCompetenciaParam(raw: string | null): {
+  valid: boolean;
+  isAnnual: boolean;
+  competencia: string;
+  warning: string | null;
+} {
+  const currentMonth = new Date().toISOString().substring(0, 7);
+  if (!raw || !raw.trim()) {
+    return { valid: true, isAnnual: false, competencia: currentMonth, warning: null };
+  }
+  const trimmed = raw.trim();
+  if (MONTHLY_COMPETENCIA_RE.test(trimmed)) {
+    return { valid: true, isAnnual: false, competencia: trimmed, warning: null };
+  }
+  if (ANNUAL_COMPETENCIA_RE.test(trimmed)) {
+    const year = trimmed.slice(0, 4);
+    const fallbackMonth = year === currentMonth.slice(0, 4) ? currentMonth : `${year}-01`;
+    return {
+      valid: false,
+      isAnnual: true,
+      competencia: fallbackMonth,
+      warning: `A Central Financeira opera por competência mensal (YYYY-MM). O contexto anual (${trimmed}) não é suportado nesta tela; exibindo ${fallbackMonth}.`,
+    };
+  }
+  return {
+    valid: false,
+    isAnnual: false,
+    competencia: currentMonth,
+    warning: `Competência "${trimmed}" inválida. Exibindo o mês corrente (${currentMonth}).`,
+  };
+}
+
+function parseCentralEmpresaParam(raw: string | null): string | null {
+  if (!raw || !raw.trim() || raw.trim() === "all") return null;
+  return raw.trim();
+}
 
 const formatPipelineTimestamp = (value?: string | null) => {
   if (!value) return undefined;
@@ -87,21 +130,24 @@ const CentralFinanceira = () => {
   const navigate = useNavigate();
   const { openPipeline } = useOperationalPipeline();
   const { user } = useAuth();
+  const { tenantId } = useTenant();
+  const { environment } = usePreferences();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [filterMonth, setFilterMonth] = useState<string>(
-    () => searchParams.get("competencia") || new Date().toISOString().substring(0, 7)
+
+  const initialParsedComp = parseCentralCompetenciaParam(
+    searchParams.get("mes") ?? searchParams.get("competencia")
   );
-  const [filterEmpresaId, setFilterEmpresaId] = useState<string | null>(
-    () => searchParams.get("empresaId") || null
+  const initialEmpresaParam = parseCentralEmpresaParam(
+    searchParams.get("empresa") ?? searchParams.get("empresaId")
   );
 
-  const [selectedMonth, setSelectedMonth] = useState<string>(
-    () => searchParams.get("competencia") || new Date().toISOString().substring(0, 7)
-  );
-  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(
-    () => searchParams.get("empresaId") || null
-  );
+  const [filterMonth, setFilterMonth] = useState<string>(initialParsedComp.competencia);
+  const [filterEmpresaId, setFilterEmpresaId] = useState<string | null>(initialEmpresaParam);
+
+  const [selectedMonth, setSelectedMonth] = useState<string>(initialParsedComp.competencia);
+  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string | null>(initialEmpresaParam);
+  const [contextWarning, setContextWarning] = useState<string | null>(initialParsedComp.warning);
   const [searchTerm, setSearchTerm] = useState("");
   const [custosPipelineFilter, setCustosPipelineFilter] = useState<string>("todos");
 
@@ -116,8 +162,8 @@ const CentralFinanceira = () => {
     return {
       id: deepId,
       tipo: searchParams.get("tipo") || undefined,
-      competencia: searchParams.get("competencia") || undefined,
-      empresa_id: searchParams.get("empresaId") || undefined,
+      competencia: searchParams.get("mes") || searchParams.get("competencia") || undefined,
+      empresa_id: searchParams.get("empresa") || searchParams.get("empresaId") || undefined,
     };
   });
 
@@ -170,24 +216,69 @@ const CentralFinanceira = () => {
   const [observacaoAprovacao, setObservacaoAprovacao] = useState("");
   const [showLogHistorico, setShowLogHistorico] = useState(false);
   const deepLinkLoteId = searchParams.get("rhLoteId");
-  const deepLinkCompetencia = searchParams.get("competencia");
-  const deepLinkEmpresaId = searchParams.get("empresaId");
+  const deepLinkCompetencia = searchParams.get("mes") ?? searchParams.get("competencia");
+  const deepLinkEmpresaId = searchParams.get("empresa") ?? searchParams.get("empresaId");
   const deepLinkTipo = searchParams.get("tipo");
   const selectedCompetenciaLabel = useMemo(() => formatCompetenciaLabel(selectedMonth), [selectedMonth]);
 
-  const { data: empresas = [], isLoading: loadingEmps } = useQuery<any[]>({
-    queryKey: ["empresas"],
+  const { data: allEmpresas = [], isLoading: loadingEmps } = useQuery<any[]>({
+    queryKey: ["empresas", tenantId, environment],
     queryFn: () => EmpresaService.getAll(),
   });
 
-  useEffect(() => {
-    // Só seleciona empresas[0] se não houver NENHUMA empresa explícita nem no estado nem na URL
-    const explicitEmpresa = filterEmpresaId || selectedEmpresaId || searchParams.get("empresaId");
-    if (empresas.length > 0 && !explicitEmpresa) {
-      setFilterEmpresaId(empresas[0].id);
-      setSelectedEmpresaId(empresas[0].id);
+  const empresas = useMemo(() => {
+    if (environment === "HOMOLOGACAO") {
+      return allEmpresas.filter((e) => Boolean(e.is_teste));
     }
-  }, [empresas, filterEmpresaId, selectedEmpresaId, searchParams]);
+    if (environment === "TODOS") {
+      return allEmpresas;
+    }
+    return allEmpresas.filter((e) => !e.is_teste);
+  }, [allEmpresas, environment]);
+
+  const isEmpresaContextValid = useMemo(() => {
+    if (!selectedEmpresaId) return true;
+    if (loadingEmps) return false;
+    return empresas.some((e) => e.id === selectedEmpresaId);
+  }, [selectedEmpresaId, loadingEmps, empresas]);
+
+  // Sincronização reativa quando searchParams mudar externamente (preserva navegação Dashboard -> Central Financeira e histórico)
+  useEffect(() => {
+    if (deepLinkLoteId) return;
+    const parsedComp = parseCentralCompetenciaParam(
+      searchParams.get("mes") ?? searchParams.get("competencia")
+    );
+    const parsedEmp = parseCentralEmpresaParam(
+      searchParams.get("empresa") ?? searchParams.get("empresaId")
+    );
+
+    setFilterMonth(parsedComp.competencia);
+    setSelectedMonth(parsedComp.competencia);
+    setFilterEmpresaId(parsedEmp);
+    setSelectedEmpresaId(parsedEmp);
+    if (parsedComp.warning) {
+      setContextWarning(parsedComp.warning);
+    }
+  }, [searchParams, deepLinkLoteId]);
+
+  // Validação estrita de tenant/ambiente para empresa recebida via URL/estado (sem auto-selecionar outra empresa)
+  useEffect(() => {
+    if (loadingEmps || !selectedEmpresaId) return;
+    const isValid = empresas.some((e) => e.id === selectedEmpresaId);
+    if (!isValid) {
+      setFilterEmpresaId(null);
+      setSelectedEmpresaId(null);
+      setContextWarning(
+        `A empresa selecionada não pertence ao tenant ou ambiente ativo (${environment}). Exibindo Consolidado Geral.`
+      );
+      const next = new URLSearchParams(searchParams);
+      if (next.has("empresa") || next.has("empresaId")) {
+        next.delete("empresa");
+        next.delete("empresaId");
+        setSearchParams(next, { replace: true });
+      }
+    }
+  }, [loadingEmps, empresas, selectedEmpresaId, environment, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!deepLinkLoteId) return;
@@ -493,7 +584,8 @@ const CentralFinanceira = () => {
     error: errorFederado,
     refetch: refetchFederado,
   } = useQuery({
-    queryKey: ["despesas-federadas-oficial", selectedMonth, selectedEmpresaId],
+    queryKey: ["despesas-federadas-oficial", tenantId, environment, selectedMonth, selectedEmpresaId],
+    enabled: isEmpresaContextValid,
     queryFn: async () => {
       try {
         return await DespesasContasPagarOficialService.fetchDespesasFederadas({
@@ -768,6 +860,15 @@ const CentralFinanceira = () => {
       pipelineTrigger={isCustosExtrasContext ? undefined : financePipelineReviewTrigger}
     >
       <div className="space-y-6">
+        {contextWarning && (
+          <div
+            data-testid="central-financeira-context-warning"
+            className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2"
+          >
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <span>{contextWarning}</span>
+          </div>
+        )}
         <section className="rounded-lg border border-border/80 dark:border-white/[0.08] bg-card dark:bg-[#15191F] p-3 sm:p-4 shadow-2xs">
           <div className="flex flex-col gap-3.5 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-2.5">
@@ -819,8 +920,23 @@ const CentralFinanceira = () => {
                   (filterMonth !== selectedMonth || filterEmpresaId !== selectedEmpresaId) && "bg-[#2563EB] hover:bg-[#1D4ED8] text-white"
                 )}
                 onClick={() => {
-                  setSelectedMonth(filterMonth);
+                  const nextComp = MONTHLY_COMPETENCIA_RE.test(filterMonth)
+                    ? filterMonth
+                    : new Date().toISOString().substring(0, 7);
+                  setFilterMonth(nextComp);
+                  setSelectedMonth(nextComp);
                   setSelectedEmpresaId(filterEmpresaId);
+                  setContextWarning(null);
+                  const next = new URLSearchParams(searchParams);
+                  next.set("mes", nextComp);
+                  next.delete("competencia");
+                  if (filterEmpresaId) {
+                    next.set("empresa", filterEmpresaId);
+                  } else {
+                    next.delete("empresa");
+                  }
+                  next.delete("empresaId");
+                  setSearchParams(next, { replace: true });
                 }}
               >
                 {filterMonth !== selectedMonth || filterEmpresaId !== selectedEmpresaId ? "⚡ Aplicar Filtros" : "Aplicar"}

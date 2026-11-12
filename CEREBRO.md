@@ -122,6 +122,7 @@ O ERP ORBE é construído sobre uma arquitetura serverless desacoplada com separ
 ## 7. Diretrizes para Agentes de IA
 
 1. **Leitura Obrigatória:** Ler este documento ([CEREBRO.md](CEREBRO.md)) e [MEMORIA.md](MEMORIA.md) antes de qualquer proposição arquitetural.
-2. **Prioridade de Regras:** Workspace Rules ([.agent/rules/](.agent/rules/) e [.agents/rules/](.agents/rules/)) > `CEREBRO.md` > Código local.
-3. **Regra de Ouro:** Extensão, nunca substituição destrutiva de contratos já homologados.
-4. **Verificação Mandatória:** Após qualquer alteração de código, rodar `npm run type-check` e `npm run build`.
+2. **Índice Técnico & Rastreabilidade:** Consultar e manter atualizado o [docs/REGISTRO_TECNICO.md](docs/REGISTRO_TECNICO.md) para verificar o status de homologação, Git e deploy de cada demanda, fix, auditoria ou gate do sistema.
+3. **Prioridade de Regras:** Workspace Rules ([.agent/rules/](.agent/rules/) e [.agents/rules/](.agents/rules/)) > `CEREBRO.md` > Código local.
+4. **Regra de Ouro:** Extensão, nunca substituição destrutiva de contratos já homologados.
+5. **Verificação Mandatória:** Após qualquer alteração de código, rodar `npm run type-check` e `npm run build`.
