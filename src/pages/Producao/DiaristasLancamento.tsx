@@ -150,7 +150,7 @@ const DiaristasLancamento = () => {
         queryKey: ["profile_usuario", user?.id],
         queryFn: async () => {
             if (!user?.id) return null;
-            const { data } = await supabase.from("profiles").select("role, full_name, empresa_id").eq("user_id", user.id).maybeSingle();
+            const { data } = await supabase.from("profiles").select("role, full_name, tenant_id").eq("user_id", user.id).maybeSingle();
             return data;
         },
         enabled: !!user?.id,
@@ -241,9 +241,10 @@ const DiaristasLancamento = () => {
         const empresasArr = empresas as any[];
         if (!empresasArr.length) return;
 
+        const metaEmpresaId = user?.user_metadata?.empresa_id;
+        const validMetaEmpresa = metaEmpresaId && empresasArr.some((e: any) => e.id === metaEmpresaId) ? metaEmpresaId : null;
         const empresaIdPreferencial =
-            (perfil as any)?.empresa_id ||
-            user?.user_metadata?.empresa_id ||
+            validMetaEmpresa ||
             empresasArr[0]?.id ||
             "";
 

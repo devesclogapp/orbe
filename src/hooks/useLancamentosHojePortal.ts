@@ -117,11 +117,15 @@ export function useLancamentosHojePortal({ date, contextEmpresaId }: UseLancamen
     queryKey: ["profile_portal_encarregado", user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("profiles")
-        .select("id, role, empresa_id, tenant_id")
+        .select("id, role, tenant_id")
         .eq("user_id", user.id)
         .maybeSingle();
+      if (error) {
+        console.warn("Erro ao buscar perfil do usuário no portal:", error.message);
+        return null;
+      }
       return data;
     },
     enabled: !!user?.id,
@@ -130,25 +134,24 @@ export function useLancamentosHojePortal({ date, contextEmpresaId }: UseLancamen
 
   // 3. Resolução Segura do Escopo de Empresa (Fail-Closed)
   const effectiveEmpresaId = useMemo(() => {
-    // a) Contexto explícito válido
+    // a) Contexto explícito válido e autorizado no tenant
     if (contextEmpresaId && contextEmpresaId !== "all") {
-      return contextEmpresaId;
+      const match = empresasAutorizadas.find((e) => e.id === contextEmpresaId);
+      if (match) return match.id;
     }
-    // b) Empresa fixa no perfil do usuário
-    if (userProfile?.empresa_id) {
-      return userProfile.empresa_id;
-    }
-    // c) Fallback de metadados do JWT
-    if (user?.user_metadata?.empresa_id) {
-      return user.user_metadata.empresa_id;
-    }
-    // d) REGRA PREFERENCIAL: Se existe exatamente 1 empresa operacional autorizada, usar automaticamente
+    // b) REGRA PREFERENCIAL: Se existe exatamente 1 empresa operacional autorizada, usar automaticamente
     if (empresasAutorizadas.length === 1) {
       return empresasAutorizadas[0].id;
     }
-    // e) Se existirem múltiplas empresas ou nenhuma, NÃO escolher arbitrariamente
+    // c) Fallback de metadados somente se validado contra as empresas autorizadas do tenant
+    const metaEmpresaId = user?.user_metadata?.empresa_id;
+    if (metaEmpresaId) {
+      const matchMeta = empresasAutorizadas.find((e) => e.id === metaEmpresaId);
+      if (matchMeta) return matchMeta.id;
+    }
+    // d) Se existirem múltiplas empresas ou nenhuma, NÃO escolher arbitrariamente (fail-closed)
     return null;
-  }, [contextEmpresaId, userProfile?.empresa_id, user?.user_metadata?.empresa_id, empresasAutorizadas]);
+  }, [contextEmpresaId, user?.user_metadata?.empresa_id, empresasAutorizadas]);
 
   const isLoadingConfig = isLoadingProfile || isLoadingEmpresas;
   const isIndeterminateScope = !isLoadingConfig && !effectiveEmpresaId;

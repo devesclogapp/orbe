@@ -1678,7 +1678,7 @@ class OperacaoProducaoServiceClass {
   async getProfile(userId: string) {
     return supabase
       .from('profiles')
-      .select('*, perfis:perfis_usuarios(*)')
+      .select('id, user_id, tenant_id, full_name, role')
       .eq('user_id', userId)
       .maybeSingle();
   }

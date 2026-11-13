@@ -283,7 +283,7 @@ const Configuracoes = () => {
       if (!user?.id) return null;
       const { data } = await supabase
         .from("profiles")
-        .select("empresa_id")
+        .select("id, role, tenant_id")
         .eq("user_id", user.id)
         .maybeSingle();
       return data;
@@ -299,8 +299,10 @@ const Configuracoes = () => {
 
   const empresaId = useMemo(() => {
     const empresasArr = empresas as any[];
-    return perfil?.empresa_id || user?.user_metadata?.empresa_id || empresasArr[0]?.id || "";
-  }, [empresas, perfil?.empresa_id, user?.user_metadata?.empresa_id]);
+    const metaEmpresaId = user?.user_metadata?.empresa_id;
+    const validMetaEmpresa = metaEmpresaId && empresasArr.some((e: any) => e.id === metaEmpresaId) ? metaEmpresaId : null;
+    return validMetaEmpresa || empresasArr[0]?.id || "";
+  }, [empresas, user?.user_metadata?.empresa_id]);
 
   const { data: opSettings, isLoading: loadingSettings } = useQuery({
     queryKey: ['config_operacional', empresaId],

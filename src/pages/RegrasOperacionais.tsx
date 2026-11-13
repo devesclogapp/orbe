@@ -826,8 +826,8 @@ const RegrasOperacionais = () => {
     queryKey: ["profile_regras_operacionais", user?.id],
     queryFn: async () => {
       if (!user?.id) return null;
-      const { data } = await supabase.from("profiles").select("role, empresa_id").eq("user_id", user.id).maybeSingle();
-      return data as { role: string; empresa_id: string } | null;
+      const { data } = await supabase.from("profiles").select("role, tenant_id").eq("user_id", user.id).maybeSingle();
+      return data as { role: string; tenant_id: string } | null;
     },
     enabled: !!user?.id,
   });

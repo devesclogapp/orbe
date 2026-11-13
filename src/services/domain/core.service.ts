@@ -920,7 +920,7 @@ class UnidadeOperacionalServiceClass {
         .order('nome', { ascending: true }),
       operationalClient
         .from('unidades')
-        .select('id, nome, status')
+        .select('id, nome')
         .eq('empresa_id', empresaId)
         .order('nome', { ascending: true }),
     ]);
@@ -930,7 +930,10 @@ class UnidadeOperacionalServiceClass {
       : [];
 
     const legada: any[] = resLegada.status === 'fulfilled' && !resLegada.value.error
-      ? (resLegada.value.data ?? [])
+      ? (resLegada.value.data ?? []).map((u: any) => ({
+          ...u,
+          status: 'ativo'
+        }))
       : [];
 
     // Deduplicar por id
