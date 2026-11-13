@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts"
 import { EmpresaResolver } from "../_shared/EmpresaResolver.ts"
+import { buildCanonicalPontoKey, ingestPontosBatch, validatePontoIngestAuth, type PontoIngestionRecord } from "../_shared/pontoIntegrity.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -44,6 +45,18 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // FIX 01 — Autenticação de Entrada Obrigatória (Fail-Closed antes de qualquer leitura ou escrita)
+    const authCheck = await validatePontoIngestAuth({
+      req,
+      supabase,
+      serviceRoleKey: supabaseKey,
+      webhookSecretEnv: Deno.env.get('PONTO_IMPORT_SECRET'),
+    });
+
+    if (!authCheck.authorized && authCheck.errorResponse) {
+      return authCheck.errorResponse;
+    }
+
     const bodyStr = await req.text();
     if (!bodyStr) {
       return new Response(JSON.stringify({ error: "Empty body" }), { 
@@ -55,6 +68,17 @@ serve(async (req) => {
     const schemaVersion = payload.schema_version ?? 1; 
 
     let explicitTenantId = req.headers.get('x-tenant-id') || payload.tenant_id || null;
+
+    // Se o chamador forneceu JWT de operador, amarrar estritamente ao tenant do operador
+    if (authCheck.authType === 'jwt' && authCheck.tenantId) {
+      if (explicitTenantId && explicitTenantId !== authCheck.tenantId) {
+        return new Response(JSON.stringify({
+          error: "TenantMismatch",
+          message: "Acesso negado: operador não possui autorização para importar dados em outro tenant."
+        }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      explicitTenantId = authCheck.tenantId;
+    }
     const items = Array.isArray(payload) ? payload : (Array.isArray(payload.items) ? payload.items : []);
     
     if (items.length === 0) {
@@ -218,24 +242,32 @@ serve(async (req) => {
             }
         }
 
-        // Hashing Idempotente: SHA256(tenant_id + empresa_id + origem + matricula/cpf/nome + data)
-        const idenForte = rawCpf ? String(rawCpf).replace(/\D/g, '') : (item.pessoa_matricula ? String(item.pessoa_matricula).trim() : normalizeText(item.pessoa_nome));
-        const hashStr = `${finalTenantId}_${matchedEmpresaId ?? 'null'}_api_${idenForte}_${item.data}`;
-        const chaveImportacao = await sha256Hex(hashStr);
+        // Hashing Idempotente canônico (preserva CPF/matrícula do mesmo colaborador, empresa, data e turno)
+        const jornadaDiscriminator = item.jornada_id || item.turno || item.sequencia || item.escala || null;
+        const chaveImportacao = await buildCanonicalPontoKey({
+          tenantId: finalTenantId,
+          empresaId: matchedEmpresaId,
+          colaboradorId: matchedColab ? matchedColab.id : null,
+          cpf: rawCpf ? String(rawCpf).replace(/\D/g, '') : null,
+          matricula: item.pessoa_matricula ? String(item.pessoa_matricula).trim() : null,
+          nome: item.pessoa_nome,
+          data: item.data,
+          jornadaDiscriminator,
+        }, sha256Hex);
 
-        const pointBase = {
+        const pointBase: PontoIngestionRecord = {
             tenant_id: finalTenantId,
             importacao_id: importacaoId,
             chave_importacao: chaveImportacao,
             data: item.data,
             competencia: item.data ? item.data.slice(0, 7) : null,
-            entrada: item.entrada,
-            saida_almoco: item.saida_almoco,
-            retorno_almoco: item.retorno_almoco,
-            saida: item.saida,
+            entrada: item.entrada ?? null,
+            saida_almoco: item.saida_almoco ?? null,
+            retorno_almoco: item.retorno_almoco ?? null,
+            saida: item.saida ?? null,
             origem: 'api',
-            status: matchedColab ? 'pendente' : 'inconsistente',
-            status_processamento: 'pendente',
+            status: matchedColab ? 'Pendente' : 'Inconsistente',
+            status_processamento: matchedColab ? 'PENDENTE_PROCESSAMENTO' : 'INCONSISTENTE',
             nome_colaborador: item.pessoa_nome,
             matricula_colaborador: item.pessoa_matricula,
             cpf_colaborador: rawCpf ? String(rawCpf).replace(/\D/g, '') : null,
@@ -246,8 +278,10 @@ serve(async (req) => {
             hora_extra: item.hora_extra || item.extras || null,
             falta: item.falta || null,
             atraso: item.atraso || null,
-            observacoes: item.observacoes || JSON.stringify({ matched_by: matchedBy, schema: schemaVersion }),
-            inconsistencias: matchedColab ? null : "Registro recusou Self-Healing por falta de identificador forte (CPF/Matrícula)."
+            observacoes: item.observacoes || JSON.stringify({ matched_by: matchedBy, schema: schemaVersion, ...(jornadaDiscriminator ? { jornada_discriminator: jornadaDiscriminator } : {}) }),
+            inconsistencias: matchedColab ? null : "Registro recusou Self-Healing por falta de identificador forte (CPF/Matrícula).",
+            jornada_discriminator: jornadaDiscriminator,
+            ...(typeof item.is_teste === 'boolean' ? { is_teste: item.is_teste } : {}),
         };
 
         const existingRecord = registrosMap.get(chaveImportacao);
@@ -266,40 +300,63 @@ serve(async (req) => {
     }
 
     const registrosParaSalvar = Array.from(registrosMap.values());
-    let inseridos_ou_atualizados = 0;
 
-    // --- PASSO UPSERT IDEMPOTENTE ---
-    if (registrosParaSalvar.length > 0) {
-      // Faz upsert com base na Constraint Unica uix_registros_ponto_chave_importacao_tenant
-      const { error: upsertError } = await supabase
-          .from('registros_ponto')
-          .upsert(registrosParaSalvar, { onConflict: 'tenant_id,chave_importacao' });
+    // --- PASSO INGESTÃO CONTROLADA E IDEMPOTENTE ---
+    let ingestionResult = {
+      inseridos: 0,
+      atualizados: 0,
+      ignorados_duplicados: 0,
+      correcoes_pendentes: [] as any[],
+      bloqueados_fechamento: 0,
+    };
 
-      if (upsertError) {
-        console.error("[ERROR] Erro upsert de registros_ponto: ", upsertError.message);
-        throw upsertError;
+    try {
+      ingestionResult = await ingestPontosBatch({
+        supabase,
+        tenantId: finalTenantId,
+        importacaoId: importacaoId ?? null,
+        records: registrosParaSalvar,
+      });
+    } catch (ingestErr: any) {
+      console.error("[ERROR] Erro na ingestão controlada de registros_ponto: ", ingestErr.message);
+      if (importacaoId) {
+        await supabase.from('historico_importacoes')
+          .update({
+            status: 'ERRO',
+            erro_processamento: ingestErr.message,
+            finalizado_em: new Date().toISOString(),
+          })
+          .eq('id', importacaoId);
       }
-      inseridos_ou_atualizados = registrosParaSalvar.length;
+      throw ingestErr;
     }
+
+    const inseridos_ou_atualizados = ingestionResult.inseridos + ingestionResult.atualizados;
 
     // 4. Finalizar Lote (historico_importacoes)
     if (importacaoId) {
-       const finalStatus = quantidadeInconsistente > 0 ? 'INCONSISTENTE' : 'PROCESSADO';
+       const totalInconsistentesFinal = quantidadeInconsistente + ingestionResult.correcoes_pendentes.length;
+       const finalStatus = totalInconsistentesFinal > 0 ? 'INCONSISTENTE' : 'PROCESSADO';
        
        await supabase.from('historico_importacoes')
           .update({
             status: finalStatus,
             quantidade_registros: items.length, // total recebido
             quantidade_importada: inseridos_ou_atualizados,
-            quantidade_inconsistencias: quantidadeInconsistente,
-            quantidade_ignorada: quantidadeIgnorada,
+            quantidade_inconsistencias: totalInconsistentesFinal,
+            quantidade_ignorada: quantidadeIgnorada + ingestionResult.ignorados_duplicados,
             processado_em: new Date().toISOString(),
             finalizado_em: new Date().toISOString(),
             logs: { 
                mensagem: "Requisição finalizada.", 
                clts_autocriados: cltsCriados, 
                empresas_criadas: resolver.empresasCriadas,
-               esquema_utilizado: schemaVersion
+               esquema_utilizado: schemaVersion,
+               inseridos: ingestionResult.inseridos,
+               atualizados: ingestionResult.atualizados,
+               ignorados_duplicados: ingestionResult.ignorados_duplicados,
+               bloqueados_fechamento: ingestionResult.bloqueados_fechamento,
+               correcoes_pendentes: ingestionResult.correcoes_pendentes,
             }
           })
           .eq('id', importacaoId);
@@ -312,8 +369,13 @@ serve(async (req) => {
        resumo: {
           recebidos: items.length,
           importados_vazados: inseridos_ou_atualizados,
-          ignorados: quantidadeIgnorada,
-          inconsistentes: quantidadeInconsistente,
+          inseridos: ingestionResult.inseridos,
+          atualizados: ingestionResult.atualizados,
+          ignorados: quantidadeIgnorada + ingestionResult.ignorados_duplicados,
+          ignorados_duplicados: ingestionResult.ignorados_duplicados,
+          inconsistentes: quantidadeInconsistente + ingestionResult.correcoes_pendentes.length,
+          correcoes_pendentes: ingestionResult.correcoes_pendentes.length,
+          bloqueados_fechamento: ingestionResult.bloqueados_fechamento,
           clts_criados: cltsCriados,
           empresas_criadas: resolver.empresasCriadas,
           schema: schemaVersion

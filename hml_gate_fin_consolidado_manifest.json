@@ -1,0 +1,39 @@
+{
+  "tenantId": "09ccafb6-2cf2-4c83-ac3d-a2913947693c",
+  "empresaId": "28a560b5-37ef-403d-ae4f-b28a608b6a68",
+  "competencia": "2027-12",
+  "timestamp": "2026-11-13T03:00:09.042Z",
+  "status": "CONCLUIDO_COM_SUCESSO",
+  "fluxos": {
+    "diaristas": {
+      "loteId": "f5bd1e4b-e308-4a90-ba53-bfac57914be5",
+      "valorEsperado": 150,
+      "status": "APROVADO"
+    },
+    "servicosExtras": {
+      "id": "4e5506d6-67eb-4c90-b31e-7598a7a21cbf",
+      "receitaId": "324adf2c-100c-4805-9da3-5fba55d432ef",
+      "itemId": "ff8da215-8db6-4ec8-829a-228b53a1ec83",
+      "valorEsperado": 250,
+      "status": "APROVADO"
+    },
+    "custosExtras": {
+      "id": "5290ddca-7700-4c3f-b590-d6bbafc33d7f",
+      "valorEsperado": 120,
+      "status": "APROVADO"
+    }
+  },
+  "etapa": "HOMOLOGACAO_CONSOLIDADA_APROVADA",
+  "dreTotais": {
+    "hml": {
+      "faturamento": 1250,
+      "diaristas": 150,
+      "custosExtras": 120
+    },
+    "prod": {
+      "faturamento": 0,
+      "diaristas": 0,
+      "custosExtras": 0
+    }
+  }
+}

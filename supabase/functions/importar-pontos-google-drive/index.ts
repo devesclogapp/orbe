@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import * as XLSX from "https://esm.sh/xlsx"
+import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts"
+import { EmpresaResolver } from "../_shared/EmpresaResolver.ts"
+import { buildCanonicalPontoKey, ingestPontosBatch, validatePontoIngestAuth, type PontoIngestionRecord } from "../_shared/pontoIntegrity.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,7 +11,14 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-// Helpers copy-pasted/adapted from Orbe codebase
+async function sha256Hex(message: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 const normalizeText = (value: string) =>
   value
     .normalize("NFD")
@@ -17,29 +27,6 @@ const normalizeText = (value: string) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
     .replace(/\s+/g, " ");
-
-const normalizeCompanyText = (value: string) => {
-  const normalized = normalizeText(value);
-  return normalized
-    .replace(/\b(ltda|me|eireli)\b/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-};
-
-const normalizeStatus = (status?: string | null): string => {
-  const value = status?.toString().trim();
-  if (!value) return "Pendente";
-  const map: Record<string, string> = {
-    presente: "Presente", ausente: "Ausente", falta: "Falta", atestado: "Atestado",
-    folga: "Folga", ferias: "Férias", férias: "Férias", homeoffice: "Home Office",
-    "home office": "Home Office", bancohoras: "Banco de Horas",
-    "banco de horas": "Banco de Horas", pendente: "Pendente",
-    processado: "Processado", inconsistente: "Inconsistente",
-    ok: "ok", ajustado: "ajustado", incompleto: "incompleto",
-  };
-  const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "").toLowerCase();
-  return map[normalized] || "Pendente";
-};
 
 const parseIsoDateLike = (value: string) => {
   const raw = value.trim();
@@ -83,12 +70,6 @@ const getImportRowValue = (row: Record<string, unknown>, ...columns: string[]) =
   return String(entry?.[1] ?? "").trim();
 };
 
-const generatePlaceholderCnpj = (): string => {
-  const ts = Date.now().toString().slice(-6);
-  const rand = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
-  return `00000${ts}${rand}`;
-};
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -116,21 +97,31 @@ serve(async (req) => {
     let nome_arquivo = body.nome_arquivo
     let tipo_arquivo = body.tipo_arquivo
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    let parentImport = null
+    // FIX 01 — Autenticação de Entrada Obrigatória (Fail-Closed antes de qualquer leitura ou escrita)
+    const authCheck = await validatePontoIngestAuth({
+      req,
+      supabase,
+      serviceRoleKey: supabaseKey,
+      webhookSecretEnv: Deno.env.get('PONTO_IMPORT_SECRET'),
+    });
+
+    if (!authCheck.authorized && authCheck.errorResponse) {
+      return authCheck.errorResponse;
+    }
+
+    let parentImport: any = null
     if (parent_importacao_id) {
-        const { data } = await supabase
+        const { data, error } = await supabase
             .from('historico_importacoes')
             .select('*')
             .eq('id', parent_importacao_id)
             .single()
-        parentImport = data
-        
-        if (parentImport) {
+        if (!error && data) {
+            parentImport = data
             empresa_id = empresa_id || parentImport.empresa_id
             unidade_id = unidade_id || parentImport.unidade_id
             coletor_id = coletor_id || parentImport.coletor_id
@@ -143,19 +134,25 @@ serve(async (req) => {
     }
 
     if (!file && !parent_importacao_id) throw new Error("Arquivo não enviado.")
-    
-    // For reprocessing without a file, we'd need to fetch it from Drive or Storage.
-    // If not possible, user must provide file in the reprocess request.
     if (!file && parent_importacao_id) {
-        // Here we could add logic to fetch from Drive if we had credentials
-        // For now, let's assume the caller must provide the file if it's not a background retry
         throw new Error("Dados do arquivo não encontrados para reprocessamento automático. Por favor, envie o arquivo novamente.")
     }
-
     if (!file) throw new Error("Arquivo não disponível.")
 
-    // 1. Get Tenant ID
-    let tenantId = body.tenant_id
+    // 1. Get Tenant ID com amarração estrita da identidade
+    let tenantId = body.tenant_id;
+
+    // Se a requisição foi autenticada via JWT do operador, o tenant é OBRIGATORIAMENTE o do operador autenticado
+    if (authCheck.authType === 'jwt' && authCheck.tenantId) {
+      if (tenantId && tenantId !== authCheck.tenantId) {
+        return new Response(JSON.stringify({
+          error: "TenantMismatch",
+          message: "Acesso negado: operador não possui autorização para importar dados em outro tenant."
+        }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      tenantId = authCheck.tenantId;
+    }
+
     if (!tenantId && empresa_id) {
        const { data: emp } = await supabase.from('empresas').select('tenant_id').eq('id', empresa_id).single()
        tenantId = emp?.tenant_id
@@ -186,6 +183,7 @@ serve(async (req) => {
         unidade_id: unidade_id || null,
         coletor_id: coletor_id || null,
         origem,
+        workflow: 'importar-pontos-google-drive',
         nome_arquivo: nome_arquivo || file.name,
         tipo_arquivo: tipo_arquivo || file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         drive_file_id,
@@ -228,26 +226,46 @@ serve(async (req) => {
     const jsonRows = (XLSX.utils.sheet_to_json(worksheet, { defval: "", raw: false }) as Record<string, any>[])
       .filter(row => Object.values(row).some(v => String(v ?? "").trim() !== ""));
 
-    // 4. Load common data for resolution
-    const [
-      { data: empresasList },
-      { data: colaboradoresList }
-    ] = await Promise.all([
-      supabase.from('empresas').select('id, nome').eq('tenant_id', tenantId),
-      supabase.from('colaboradores').select('id, tenant_id, empresa_id, nome, cpf, matricula, cargo').eq('tenant_id', tenantId)
-    ])
+    // 4. Resolver Empresa e Colaboradores com EmpresaResolver padronizado
+    const resolver = new EmpresaResolver(supabase, tenantId, origem);
+    await resolver.loadCache();
 
-    const empresaCache = new Map<string, any>((empresasList || []).map(e => [normalizeCompanyText(e.nome), e]))
-    const colabCache = new Map<string, any>()
-    ;(colaboradoresList || []).forEach(c => {
-      if (c.cpf) colabCache.set(`cpf:${String(c.cpf).replace(/\D/g, '')}`, c)
-      if (c.matricula && c.empresa_id) colabCache.set(`mat:${c.matricula}:${c.empresa_id}`, c)
-      if (c.nome && c.empresa_id) colabCache.set(`nome:${normalizeText(c.nome)}:${c.empresa_id}`, c)
-    })
+    const cpfs = new Set<string>();
+    const matriculas = new Set<string>();
+    const nomes = new Set<string>();
 
-    const pointRecords: any[] = []
-    let novosColabs = 0
-    let novasEmpresas = 0
+    for (const row of jsonRows) {
+      const cpf = getImportRowValue(row, "CPF", "DOCUMENTO", "CPF DO COLABORADOR");
+      const matricula = getImportRowValue(row, "MATRICULA", "MATRÍCULA", "CODIGO", "CÓDIGO", "CÓDIGO DO COLABORADOR");
+      const nome = getImportRowValue(row, "COLABORADOR", "NOME", "FUNCIONÁRIO", "FUNCIONARIO", "TRABALHADOR", "NOME DO COLABORADOR", "NOME DO FUNCIONÁRIO");
+      if (cpf) cpfs.add(String(cpf).replace(/\D/g, ''));
+      if (matricula) matriculas.add(String(matricula).trim());
+      if (nome) nomes.add(normalizeText(nome));
+    }
+
+    let colabQuery = supabase.from('colaboradores').select('id, nome, matricula, cpf, empresa_id').eq('tenant_id', tenantId);
+    const colabFilter: string[] = [];
+    if (cpfs.size > 0) colabFilter.push(`cpf.in.(${Array.from(cpfs).join(',')})`);
+    if (matriculas.size > 0) colabFilter.push(`matricula.in.(${Array.from(matriculas).join(',')})`);
+    if (nomes.size > 0) colabFilter.push(`nome.in.(${Array.from(nomes).map(n => '"' + n + '"').join(',')})`);
+    if (colabFilter.length > 0) {
+      colabQuery = colabQuery.or(colabFilter.join(','));
+    }
+
+    const { data: dbColabs } = await colabQuery;
+    const colabMap = new Map<string, any>();
+    if (dbColabs) {
+      dbColabs.forEach(c => {
+        if (c.cpf) colabMap.set(`CPF_${String(c.cpf).replace(/\D/g, '')}`, c);
+        if (c.matricula) colabMap.set(`MAT_${String(c.matricula).trim()}`, c);
+        if (c.nome) colabMap.set(`NOME_${normalizeText(c.nome)}`, c);
+      });
+    }
+
+    const registrosMap = new Map<string, PontoIngestionRecord>();
+    let novosColabs = 0;
+    let quantidadeIgnorada = 0;
+    let quantidadeInconsistente = 0;
 
     // 5. Process Rows
     for (const row of jsonRows) {
@@ -258,85 +276,90 @@ serve(async (req) => {
       const cargo = getImportRowValue(row, "CARGO", "FUNÇÃO", "FUNCAO", "CARGO DO COLABORADOR");
       const dataStr = parseIsoDateLike(getImportRowValue(row, "DATA", "DATA DO PONTO", "DATA DE REGISTRO"));
       
-      if (!colaboradorNome || !dataStr) continue
-
-      // Resolve Empresa
-      let targetEmpresaId = empresa_id || null
-      if (!targetEmpresaId && empresaNome) {
-        const normName = normalizeCompanyText(empresaNome)
-        let emp = empresaCache.get(normName)
-        if (!emp) {
-          // Create minimal empresa
-          const { data: newEmp, error: errNewEmp } = await supabase.from('empresas').insert({
-            tenant_id: tenantId,
-            nome: empresaNome,
-            cnpj: generatePlaceholderCnpj(),
-            status: 'ativa',
-            origem: 'ponto',
-            cadastro_provisorio: true,
-            unidade: 'Não informado',
-            cidade: 'Não informado'
-          }).select().single()
-          if (!errNewEmp) {
-            emp = newEmp
-            empresaCache.set(normName, emp)
-            novasEmpresas++
-          }
-        }
-        targetEmpresaId = emp?.id
+      if (!colaboradorNome || !dataStr) {
+        quantidadeIgnorada++;
+        continue;
       }
 
-      // Resolve Colaborador
-      const cpfNorm = cpf ? String(cpf).replace(/\D/g, '') : null
-      const nomeNorm = normalizeText(colaboradorNome)
-      const lookupKeys = [
-        cpfNorm ? `cpf:${cpfNorm}` : null,
-        matricula && targetEmpresaId ? `mat:${matricula}:${targetEmpresaId}` : null,
-        nomeNorm && targetEmpresaId ? `nome:${nomeNorm}:${targetEmpresaId}` : null
-      ].filter(Boolean)
+      // Resolve Empresa via EmpresaResolver
+      let targetEmpresaId = empresa_id || null;
+      if (!targetEmpresaId && empresaNome) {
+        targetEmpresaId = await resolver.resolveOrCreate(empresaNome);
+      }
 
-      let collab = lookupKeys.map(k => colabCache.get(k!)).find(Boolean)
+      // Resolve Colaborador com fallback CPF -> matricula -> nome
+      const rawCpf = cpf ? String(cpf).replace(/\D/g, '') : null;
+      const matQuery = matricula ? `MAT_${String(matricula).trim()}` : null;
+      const cpfQuery = rawCpf ? `CPF_${rawCpf}` : null;
+      const nomeQuery = colaboradorNome ? `NOME_${normalizeText(colaboradorNome)}` : null;
 
-      if (!collab) {
-        // Create pre-registration
-        const { data: newCollab, error: errNewCollab } = await supabase.from('colaboradores').insert({
-          tenant_id: tenantId,
-          empresa_id: targetEmpresaId,
-          nome: colaboradorNome,
-          cpf: cpfNorm,
-          matricula: matricula || null,
-          cargo: cargo || null,
-          tipo_contrato: 'mensal',
-          modelo_calculo: 'CLT_MENSAL',
-          regime_trabalho: 'CLT',
-          tipo_colaborador: 'clt',
-          status: 'pendente',
-          status_cadastro: 'pendente_complemento',
-          origem: 'ponto',
-          origem_cadastro: 'ponto_importado',
-          cadastro_provisorio: true
-        }).select().single()
+      let matchedColab: any = null;
+      let matchedBy: string | null = null;
 
-        if (!errNewCollab) {
-          collab = newCollab
-          novosColabs++
-          if (cpfNorm) colabCache.set(`cpf:${cpfNorm}`, collab)
-          if (matricula && targetEmpresaId) colabCache.set(`mat:${matricula}:${targetEmpresaId}`, collab)
-          if (nomeNorm && targetEmpresaId) colabCache.set(`nome:${nomeNorm}:${targetEmpresaId}`, collab)
+      if (cpfQuery && colabMap.has(cpfQuery)) { matchedColab = colabMap.get(cpfQuery); matchedBy = 'cpf'; }
+      else if (matQuery && colabMap.has(matQuery)) { matchedColab = colabMap.get(matQuery); matchedBy = 'matricula'; }
+      else if (nomeQuery && colabMap.has(nomeQuery)) { matchedColab = colabMap.get(nomeQuery); matchedBy = 'nome'; }
+
+      if (!matchedColab) {
+        const possuiIdentificadorForte = (cpfQuery || matQuery);
+        if (possuiIdentificadorForte) {
+          const { data: newCollab } = await supabase.from('colaboradores').insert({
+            tenant_id: tenantId,
+            empresa_id: targetEmpresaId || null,
+            nome: colaboradorNome.trim(),
+            cpf: rawCpf,
+            matricula: matricula ? String(matricula).trim() : null,
+            cargo: cargo || null,
+            tipo_contrato: 'mensal',
+            modelo_calculo: 'CLT_MENSAL',
+            regime_trabalho: 'CLT',
+            tipo_colaborador: 'clt',
+            status: 'pendente',
+            status_cadastro: 'pendente_complemento',
+            origem,
+            origem_cadastro: 'ponto_importado',
+            origem_detalhe: 'Self-healing Google Drive',
+            cadastro_provisorio: true,
+            permitir_lancamento_operacional: false
+          }).select('id, nome, matricula, cpf, empresa_id').single();
+
+          if (newCollab) {
+            matchedColab = newCollab;
+            matchedBy = 'self_healing';
+            novosColabs++;
+            if (cpfQuery) colabMap.set(cpfQuery, newCollab);
+            if (matQuery) colabMap.set(matQuery, newCollab);
+            if (nomeQuery) colabMap.set(nomeQuery, newCollab);
+          }
+        } else {
+          quantidadeInconsistente++;
         }
       }
 
       // Point Data
-      const entrada = parseTimeLike(getImportRowValue(row, "ENTRADA"))
-      const saidaAlmoco = parseTimeLike(getImportRowValue(row, "SAIDA ALMOCO"))
-      const retornoAlmoco = parseTimeLike(getImportRowValue(row, "RETORNO ALMOCO"))
-      const saida = parseTimeLike(getImportRowValue(row, "SAIDA"))
+      const entrada = parseTimeLike(getImportRowValue(row, "ENTRADA", "INICIO", "INÍCIO", "HORA DE ENTRADA"))
+      const saidaAlmoco = parseTimeLike(getImportRowValue(row, "SAIDA ALMOCO", "SAÍDA ALMOÇO", "SAIDA INTERVALO"))
+      const retornoAlmoco = parseTimeLike(getImportRowValue(row, "RETORNO ALMOCO", "RETORNO ALMOÇO", "RETORNO INTERVALO"))
+      const saida = parseTimeLike(getImportRowValue(row, "SAIDA", "FIM", "SAÍDA", "HORA DE SAÍDA"))
 
-      pointRecords.push({
+      const jornadaDiscriminator = getImportRowValue(row, "TURNO", "JORNADA", "ESCALA", "SEQUENCIA") || null;
+      const chaveImportacao = await buildCanonicalPontoKey({
+        tenantId,
+        empresaId: targetEmpresaId,
+        colaboradorId: matchedColab?.id ?? null,
+        cpf: rawCpf,
+        matricula: matricula ? String(matricula).trim() : null,
+        nome: colaboradorNome,
+        data: dataStr,
+        jornadaDiscriminator,
+      }, sha256Hex);
+
+      const pointBase: PontoIngestionRecord = {
         tenant_id: tenantId,
-        lote_id: historico.id,
-        execution_id: execution_id,
-        colaborador_id: collab?.id,
+        importacao_id: historico.id,
+        execution_id,
+        chave_importacao: chaveImportacao,
+        colaborador_id: matchedColab?.id ?? null,
         empresa_id: targetEmpresaId,
         coletor_id: coletor_id || null,
         unidade_id: unidade_id || null,
@@ -347,33 +370,88 @@ serve(async (req) => {
         saida_almoco: saidaAlmoco,
         retorno_almoco: retornoAlmoco,
         saida,
-        status: normalizeStatus(getImportRowValue(row, "STATUS")),
-        // Raw fields for audit
+        status: matchedColab ? 'Pendente' : 'Inconsistente',
+        status_processamento: matchedColab ? 'PENDENTE_PROCESSAMENTO' : 'INCONSISTENTE',
         nome_colaborador: colaboradorNome,
         empresa_nome: empresaNome || null,
         matricula_colaborador: matricula || null,
-        cpf_colaborador: cpf || null,
-        horas_trabalhadas: getImportRowValue(row, "HORAS TRABALHADAS"),
-        hora_extra: getImportRowValue(row, "HORA EXTRA"),
-        falta: getImportRowValue(row, "FALTA"),
-        atraso: getImportRowValue(row, "ATRASO"),
-        observacoes: getImportRowValue(row, "OBSERVACOES"),
-        origem: origem === 'google_drive' ? 'google_drive' : 'importacao'
-      })
+        cpf_colaborador: rawCpf,
+        cargo_colaborador: cargo || null,
+        horas_trabalhadas: getImportRowValue(row, "HORAS TRABALHADAS", "HORAS TRAB", "HR TRABALHADAS") || null,
+        hora_extra: getImportRowValue(row, "HORA EXTRA", "HORAS EXTRAS", "HE") || null,
+        falta: getImportRowValue(row, "FALTA", "FALTAS") || null,
+        atraso: getImportRowValue(row, "ATRASO", "ATRASOS", "ATRASO MINUTOS") || null,
+        observacoes: getImportRowValue(row, "OBSERVACOES", "OBSERVAÇÕES", "OBS") || JSON.stringify({ matched_by: matchedBy, ...(jornadaDiscriminator ? { jornada_discriminator: jornadaDiscriminator } : {}) }),
+        origem,
+        inconsistencias: matchedColab ? null : "Registro recusou Self-Healing por falta de identificador forte (CPF/Matrícula).",
+        jornada_discriminator: jornadaDiscriminator,
+      };
+
+      const existingRecord = registrosMap.get(chaveImportacao);
+      let mergedPoint = pointBase;
+      if (existingRecord) {
+        mergedPoint = {
+          ...existingRecord,
+          ...pointBase,
+          entrada: pointBase.entrada || existingRecord.entrada,
+          saida_almoco: pointBase.saida_almoco || existingRecord.saida_almoco,
+          retorno_almoco: pointBase.retorno_almoco || existingRecord.retorno_almoco,
+          saida: pointBase.saida || existingRecord.saida,
+        };
+      }
+      registrosMap.set(chaveImportacao, mergedPoint);
     }
 
-    // 6. Bulk Insert Points
-    if (pointRecords.length > 0) {
-      const { error: insertError } = await supabase.from('registros_ponto').upsert(pointRecords, { onConflict: 'colaborador_id,data' })
-      if (insertError) throw insertError
+    const registrosParaSalvar = Array.from(registrosMap.values());
+    let ingestionResult = {
+      inseridos: 0,
+      atualizados: 0,
+      ignorados_duplicados: 0,
+      correcoes_pendentes: [] as any[],
+      bloqueados_fechamento: 0,
+    };
+
+    // 6. Ingestão controlada compartilhada
+    try {
+      ingestionResult = await ingestPontosBatch({
+        supabase,
+        tenantId,
+        importacaoId: historico.id,
+        records: registrosParaSalvar,
+      });
+    } catch (insertError: any) {
+      await supabase.from('historico_importacoes').update({
+        status: 'ERRO',
+        erro_processamento: insertError.message,
+        finalizado_em: new Date().toISOString(),
+      }).eq('id', historico.id);
+      throw insertError;
     }
+
+    const inseridos_ou_atualizados = ingestionResult.inseridos + ingestionResult.atualizados;
+    const totalInconsistentesFinal = quantidadeInconsistente + ingestionResult.correcoes_pendentes.length;
+    const finalStatus = totalInconsistentesFinal > 0 ? 'INCONSISTENTE' : 'PROCESSADO';
 
     // 7. Update History
     await supabase.from('historico_importacoes').update({
-      status: 'PROCESSADO',
-      quantidade_registros: pointRecords.length,
-      processado_em: new Date().toISOString()
-    }).eq('id', historico.id)
+      status: finalStatus,
+      quantidade_registros: jsonRows.length,
+      quantidade_importada: inseridos_ou_atualizados,
+      quantidade_inconsistencias: totalInconsistentesFinal,
+      quantidade_ignorada: quantidadeIgnorada + ingestionResult.ignorados_duplicados,
+      processado_em: new Date().toISOString(),
+      finalizado_em: new Date().toISOString(),
+      logs: {
+        mensagem: "Importação Google Drive concluída.",
+        clts_autocriados: novosColabs,
+        empresas_criadas: resolver.empresasCriadas,
+        inseridos: ingestionResult.inseridos,
+        atualizados: ingestionResult.atualizados,
+        ignorados_duplicados: ingestionResult.ignorados_duplicados,
+        bloqueados_fechamento: ingestionResult.bloqueados_fechamento,
+        correcoes_pendentes: ingestionResult.correcoes_pendentes,
+      }
+    }).eq('id', historico.id);
 
     return new Response(
       JSON.stringify({
@@ -383,16 +461,22 @@ serve(async (req) => {
         unidade_id: historico.unidade_id,
         coletor_id: historico.coletor_id,
         origem,
-        quantidade_registros: pointRecords.length,
+        quantidade_registros: jsonRows.length,
+        inseridos: ingestionResult.inseridos,
+        atualizados: ingestionResult.atualizados,
+        ignorados_duplicados: ingestionResult.ignorados_duplicados,
+        bloqueados_fechamento: ingestionResult.bloqueados_fechamento,
+        inconsistentes: totalInconsistentesFinal,
+        correcoes_pendentes: ingestionResult.correcoes_pendentes.length,
         novos_colaboradores: novosColabs,
-        novas_empresas: novasEmpresas,
-        status: 'PROCESSADO'
+        novas_empresas: resolver.empresasCriadas,
+        status: finalStatus,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
-    )
+    );
 
   } catch (error: any) {
-    console.error("Erro na importação:", error)
+    console.error("Erro na importação Google Drive:", error)
     return new Response(
       JSON.stringify({ 
         success: false, 

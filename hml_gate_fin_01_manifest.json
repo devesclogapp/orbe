@@ -1,0 +1,13 @@
+{
+  "operacaoId": "85d23790-f5b4-432f-8ad0-3025b72a89c0",
+  "receitaId": "91b9cbec-71a7-4693-95a9-fbf5eb9559d7",
+  "itemId": "b3524e33-83a0-47df-b09d-b9056093fcc9",
+  "tenantId": "09ccafb6-2cf2-4c83-ac3d-a2913947693c",
+  "empresaId": "28a560b5-37ef-403d-ae4f-b28a608b6a68",
+  "colaboradorId": "d0a663d7-383e-4720-be53-1b8a1f162090",
+  "competencia": "2027-12",
+  "identificador": "HML_GATE_FIN_01_TESTE_VOLUME",
+  "timestamp": "2026-11-13T01:14:59.390Z",
+  "etapa": "HOMOLOGACAO_APROVADA",
+  "status": "CONCLUIDO_COM_SUCESSO"
+}

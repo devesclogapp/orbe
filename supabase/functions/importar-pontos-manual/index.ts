@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import * as XLSX from "https://esm.sh/xlsx"
 import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts"
 import { EmpresaResolver } from "../_shared/EmpresaResolver.ts"
+import { buildCanonicalPontoKey, ingestPontosBatch, type PontoIngestionRecord } from "../_shared/pontoIntegrity.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -272,17 +273,24 @@ serve(async (req) => {
           }
       }
 
-      const idenForte = rawCpf || (matricula ? String(matricula).trim() : normalizeText(colaboradorNome));
-      const hashStr = `${tenantId}_${matchedEmpresaId ?? 'null'}_manual_${idenForte}_${dataStr}`;
-      const chaveImportacao = await sha256Hex(hashStr);
+      const jornadaDiscriminator = getImportRowValue(row, "TURNO", "JORNADA", "ESCALA", "SEQUENCIA") || null;
+      const chaveImportacao = await buildCanonicalPontoKey({
+        tenantId,
+        empresaId: matchedEmpresaId,
+        colaboradorId: matchedColab?.id ?? null,
+        cpf: rawCpf,
+        matricula: matricula ? String(matricula).trim() : null,
+        nome: colaboradorNome,
+        data: dataStr,
+        jornadaDiscriminator,
+      }, sha256Hex);
 
       const entrada = parseTimeLike(getImportRowValue(row, "ENTRADA", "INICIO", "INÍCIO", "HORA DE ENTRADA"))
       const saidaAlmoco = parseTimeLike(getImportRowValue(row, "SAIDA ALMOCO", "SAÍDA ALMOÇO", "SAIDA INTERVALO"))
       const retornoAlmoco = parseTimeLike(getImportRowValue(row, "RETORNO ALMOCO", "RETORNO ALMOÇO", "RETORNO INTERVALO"))
       const saida = parseTimeLike(getImportRowValue(row, "SAIDA", "FIM", "SAÍDA", "HORA DE SAÍDA"))
-      const rowStatus = normalizeStatus(getImportRowValue(row, "STATUS", "SITUAÇÃO", "SITUACAO"))
 
-      const pointBase = {
+      const pointBase: PontoIngestionRecord = {
         tenant_id: tenantId,
         importacao_id: importacaoId,
         chave_importacao: chaveImportacao,
@@ -294,8 +302,8 @@ serve(async (req) => {
         saida_almoco: saidaAlmoco,
         retorno_almoco: retornoAlmoco,
         saida,
-        status: matchedColab ? rowStatus : 'inconsistente',
-        status_processamento: 'pendente',
+        status: matchedColab ? 'Pendente' : 'Inconsistente',
+        status_processamento: matchedColab ? 'PENDENTE_PROCESSAMENTO' : 'INCONSISTENTE',
         nome_colaborador: colaboradorNome,
         empresa_nome: empresaNome || null,
         matricula_colaborador: matricula || null,
@@ -305,9 +313,10 @@ serve(async (req) => {
         hora_extra: getImportRowValue(row, "HORA EXTRA", "HORAS EXTRAS", "HE") || null,
         falta: getImportRowValue(row, "FALTA", "FALTAS") || null,
         atraso: getImportRowValue(row, "ATRASO", "ATRASOS", "ATRASO MINUTOS") || null,
-        observacoes: getImportRowValue(row, "OBSERVACOES", "OBSERVAÇÕES", "OBS") || JSON.stringify({ matched_by: matchedBy, schema: schemaVersion }),
+        observacoes: getImportRowValue(row, "OBSERVACOES", "OBSERVAÇÕES", "OBS") || JSON.stringify({ matched_by: matchedBy, schema: schemaVersion, ...(jornadaDiscriminator ? { jornada_discriminator: jornadaDiscriminator } : {}) }),
         origem: 'manual', // mantém manual
-        inconsistencias: matchedColab ? null : "Registro recusou Self-Healing por falta de identificador forte (CPF/Matrícula)."
+        inconsistencias: matchedColab ? null : "Registro recusou Self-Healing por falta de identificador forte (CPF/Matrícula).",
+        jornada_discriminator: jornadaDiscriminator,
       };
 
       const existingRecord = registrosMap.get(chaveImportacao);
@@ -326,30 +335,50 @@ serve(async (req) => {
     }
 
     const registrosParaSalvar = Array.from(registrosMap.values());
-    let inseridos_ou_atualizados = 0;
+    let ingestionResult = {
+      inseridos: 0,
+      atualizados: 0,
+      ignorados_duplicados: 0,
+      correcoes_pendentes: [] as any[],
+      bloqueados_fechamento: 0,
+    };
 
-    if (registrosParaSalvar.length > 0) {
-      const { error: insertError } = await supabase.from('registros_ponto').upsert(registrosParaSalvar, { onConflict: 'tenant_id,chave_importacao' })
-      if (insertError) {
-        await supabase.from('historico_importacoes').update({ status: 'ERRO', erro_processamento: insertError.message }).eq('id', importacaoId)
-        throw insertError
-      }
-      inseridos_ou_atualizados = registrosParaSalvar.length;
+    try {
+      ingestionResult = await ingestPontosBatch({
+        supabase,
+        tenantId,
+        importacaoId,
+        records: registrosParaSalvar,
+      });
+    } catch (insertError: any) {
+      await supabase.from('historico_importacoes').update({
+        status: 'ERRO',
+        erro_processamento: insertError.message,
+        finalizado_em: new Date().toISOString(),
+      }).eq('id', importacaoId);
+      throw insertError;
     }
 
-    const finalStatus = quantidadeInconsistente > 0 ? 'INCONSISTENTE' : 'PROCESSADO';
+    const inseridos_ou_atualizados = ingestionResult.inseridos + ingestionResult.atualizados;
+    const totalInconsistentesFinal = quantidadeInconsistente + ingestionResult.correcoes_pendentes.length;
+    const finalStatus = totalInconsistentesFinal > 0 ? 'INCONSISTENTE' : 'PROCESSADO';
     await supabase.from('historico_importacoes').update({
       status: finalStatus,
       quantidade_importada: inseridos_ou_atualizados,
-      quantidade_inconsistencias: quantidadeInconsistente,
-      quantidade_ignorada: quantidadeIgnorada,
+      quantidade_inconsistencias: totalInconsistentesFinal,
+      quantidade_ignorada: quantidadeIgnorada + ingestionResult.ignorados_duplicados,
       processado_em: new Date().toISOString(),
       finalizado_em: new Date().toISOString(),
       logs: { 
          mensagem: "Importação Manual concluída.", 
          clts_autocriados: novosColabs, 
          empresas_criadas: resolver.empresasCriadas,
-         esquema_utilizado: schemaVersion
+         esquema_utilizado: schemaVersion,
+         inseridos: ingestionResult.inseridos,
+         atualizados: ingestionResult.atualizados,
+         ignorados_duplicados: ingestionResult.ignorados_duplicados,
+         bloqueados_fechamento: ingestionResult.bloqueados_fechamento,
+         correcoes_pendentes: ingestionResult.correcoes_pendentes,
       }
     }).eq('id', importacaoId)
 
@@ -360,8 +389,13 @@ serve(async (req) => {
         resumo: {
           recebidos: jsonRows.length,
           importados_vazados: inseridos_ou_atualizados,
-          ignorados: quantidadeIgnorada,
-          inconsistentes: quantidadeInconsistente,
+          inseridos: ingestionResult.inseridos,
+          atualizados: ingestionResult.atualizados,
+          ignorados: quantidadeIgnorada + ingestionResult.ignorados_duplicados,
+          ignorados_duplicados: ingestionResult.ignorados_duplicados,
+          inconsistentes: totalInconsistentesFinal,
+          correcoes_pendentes: ingestionResult.correcoes_pendentes.length,
+          bloqueados_fechamento: ingestionResult.bloqueados_fechamento,
           clts_criados: novosColabs,
           empresas_criadas: resolver.empresasCriadas,
           schema: schemaVersion
