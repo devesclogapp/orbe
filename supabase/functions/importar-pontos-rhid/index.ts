@@ -14,6 +14,7 @@ import {
   parseCpfInput,
   processRhidItems,
   reconciliarContagensAposIngestao,
+  sanitizeDbColaboradorPayload,
   tratarFalhaCriacaoColaborador,
   normalizeText,
   type RhidColaboradorLookup,
@@ -234,9 +235,12 @@ serve(async (req) => {
     // Se a inserção de um colaborador falhar, os pontos dele NÃO podem ser gravados: vão para inconsistente!
     if (!dryRun && batchResult.novosColaboradoresParaCriar.length > 0) {
       for (const colPayload of batchResult.novosColaboradoresParaCriar) {
+        // Sanitizar payload para tabela colaboradores (remove temp_key e garante whitelist estrita)
+        const dbColPayload = sanitizeDbColaboradorPayload(colPayload);
+
         const { error: createColErr } = await supabase
           .from('colaboradores')
-          .insert(colPayload);
+          .insert(dbColPayload);
 
         if (createColErr) {
           console.error(`[ERROR] Falha ao persistir self-healing para colaborador ${colPayload.nome} (id: ${colPayload.id}):`, createColErr.message);

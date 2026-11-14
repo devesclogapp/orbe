@@ -445,11 +445,15 @@ export const VALID_REGISTROS_PONTO_COLUMNS = new Set<string>([
 export function sanitizeDbPayload(record: PontoIngestionRecord): Record<string, unknown> {
   const sanitized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(record)) {
-    // Descarta explicitamente campos de controle em memória
+    // Descarta explicitamente campos de controle em memória (comportamento esperado silencioso)
     if (key === 'importacao_id' || key === 'jornada_discriminator') continue;
+
     // Garante que apenas colunas válidas no schema de registros_ponto sejam enviadas
     if (VALID_REGISTROS_PONTO_COLUMNS.has(key)) {
       sanitized[key] = value;
+    } else {
+      // Registra aviso para campos desconhecidos descartados para fins de rastreabilidade
+      console.warn(`[SANITIZE_DB_PAYLOAD] Campo descartado não reconhecido no schema de registros_ponto: "${key}"`);
     }
   }
   return sanitized;

@@ -10,6 +10,8 @@ import {
   cleanMatricula,
   processRhidItems,
   reconciliarContagensAposIngestao,
+  sanitizeDbColaboradorPayload,
+  VALID_COLABORADORES_COLUMNS,
   tratarFalhaCriacaoColaborador,
   type RhidColaboradorLookup,
   type RhidRawItem,
@@ -830,6 +832,91 @@ describe('FIX-RHID-IDENTIDADE-01: Identificação, Ambiguidade, Reconciliação 
       expect(novosPontosInseridos).toBe(0);
       expect(pontosIgnoradosPorDuplicidade).toBe(2);
       expect(dbPontos.size).toBe(2); // Total no banco não aumentou
+    });
+  });
+
+  // =========================================================================
+  // PONTO 4: SANITIZAÇÃO DE PAYLOAD E WHITELIST DA TABELA COLABORADORES
+  // =========================================================================
+  describe('Ponto 4: Sanitização de Payload e Whitelist da Tabela Colaboradores', () => {
+    it('Descarta explicitamente temp_key e qualquer campo estranho, mantendo apenas colunas reais de colaboradores', () => {
+      const rawColPayload = {
+        id: '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d',
+        temp_key: 'CPF_12345678901', // Campo de controle em memória que causou erro no Supabase
+        tenant_id: TENANT_ID,
+        empresa_id: 'emp-uuid-123',
+        nome: 'Colaborador Sanitizado Teste',
+        cpf: '12345678901',
+        matricula: 'MAT-999',
+        tipo_colaborador: 'clt',
+        regime_trabalho: 'CLT',
+        modelo_calculo: 'CLT_MENSAL',
+        tipo_contrato: 'mensal',
+        status: 'pendente',
+        status_cadastro: 'pendente_complemento',
+        origem: 'api',
+        origem_cadastro: 'ponto_importado',
+        origem_detalhe: 'Self-healing teste',
+        cadastro_provisorio: true,
+        permitir_lancamento_operacional: false,
+        campo_fantasma_invalido: 'deve_ser_descartado',
+        outro_campo_estranho: 12345,
+      };
+
+      const sanitized = sanitizeDbColaboradorPayload(rawColPayload);
+
+      // temp_key deve ser removido
+      expect(sanitized).not.toHaveProperty('temp_key');
+      expect(sanitized).not.toHaveProperty('campo_fantasma_invalido');
+      expect(sanitized).not.toHaveProperty('outro_campo_estranho');
+
+      // Campos canônicos essenciais devem ser estritamente preservados
+      expect(sanitized.id).toBe(rawColPayload.id);
+      expect(sanitized.tenant_id).toBe(TENANT_ID);
+      expect(sanitized.empresa_id).toBe('emp-uuid-123');
+      expect(sanitized.nome).toBe('Colaborador Sanitizado Teste');
+      expect(sanitized.cpf).toBe('12345678901');
+      expect(sanitized.matricula).toBe('MAT-999');
+      expect(sanitized.tipo_colaborador).toBe('clt');
+      expect(sanitized.cadastro_provisorio).toBe(true);
+
+      // Todos os campos no objeto sanitizado DEVEM constar na whitelist oficial
+      for (const colName of Object.keys(sanitized)) {
+        expect(VALID_COLABORADORES_COLUMNS.has(colName)).toBe(true);
+      }
+    });
+
+    it('Garante que novosColaboradoresParaCriar gerados por processRhidItems passam sem perda na sanitização', async () => {
+      const items: RhidRawItem[] = [
+        {
+          data: '2026-11-13',
+          pessoa_nome: 'Colab Novo Self-Healing',
+          cpf: '88877766655',
+          entrada: '08:00',
+        },
+      ];
+
+      const batchResult = await processRhidItems({
+        tenantId: TENANT_ID,
+        items,
+        identityMaps: buildRhidIdentityMaps([]),
+        resolveEmpresaId: async () => 'emp-1',
+        sha256Hex,
+      });
+
+      expect(batchResult.novosColaboradoresParaCriar.length).toBe(1);
+      const col = batchResult.novosColaboradoresParaCriar[0];
+
+      const dbPayload = sanitizeDbColaboradorPayload(col);
+
+      expect(dbPayload).not.toHaveProperty('temp_key');
+      expect(dbPayload.nome).toBe('Colab Novo Self-Healing');
+      expect(dbPayload.cpf).toBe('88877766655');
+      expect(dbPayload.id).toBe(col.id);
+
+      for (const colName of Object.keys(dbPayload)) {
+        expect(VALID_COLABORADORES_COLUMNS.has(colName)).toBe(true);
+      }
     });
   });
 });

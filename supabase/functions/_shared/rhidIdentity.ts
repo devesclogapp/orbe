@@ -88,7 +88,7 @@ export interface ReconciliacaoContagem {
 
 export interface NovoColaboradorPayload {
   id: string; // ID canônico pré-gerado (crypto.randomUUID) para vínculo determinístico
-  temp_key: string; // Chave de identidade temporária para correlação rápida
+  temp_key?: string; // Campo opcional de controle em memória (descartado no sanitizeDbColaboradorPayload)
   tenant_id: string;
   empresa_id: string | null;
   nome: string;
@@ -105,6 +105,71 @@ export interface NovoColaboradorPayload {
   origem_detalhe: string;
   cadastro_provisorio: true;
   permitir_lancamento_operacional: false;
+}
+
+export const VALID_COLABORADORES_COLUMNS = new Set<string>([
+  'id',
+  'tenant_id',
+  'empresa_id',
+  'nome',
+  'cpf',
+  'matricula',
+  'cargo',
+  'tipo_colaborador',
+  'regime_trabalho',
+  'modelo_calculo',
+  'tipo_contrato',
+  'status',
+  'status_cadastro',
+  'origem',
+  'origem_cadastro',
+  'origem_detalhe',
+  'cadastro_provisorio',
+  'permitir_lancamento_operacional',
+  'gera_faturamento',
+  'flag_faturamento',
+  'salario_base',
+  'valor_hora',
+  'valor_diaria',
+  'valor_base',
+  'data_admissao',
+  'telefone',
+  'nome_completo',
+  'banco_codigo',
+  'agencia',
+  'agencia_digito',
+  'conta',
+  'conta_digito',
+  'tipo_conta',
+  'pis',
+  'is_teste',
+  'jornada_id',
+]);
+
+/**
+ * Sanitiza o payload para inserção na tabela colaboradores:
+ * - Descarta campos de controle em memória (ex: temp_key).
+ * - Garante que somente colunas existentes na tabela colaboradores sejam enviadas.
+ * - Emite console.warn para qualquer coluna não mapeada descartada.
+ */
+export function sanitizeDbColaboradorPayload(
+  payload: NovoColaboradorPayload | Record<string, unknown>,
+): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    // Descarta explicitamente campos de controle em memória
+    if (key === 'temp_key') continue;
+
+    // Filtra através da whitelist oficial da tabela colaboradores
+    if (VALID_COLABORADORES_COLUMNS.has(key)) {
+      sanitized[key] = value;
+    } else {
+      console.warn(
+        `[SANITIZE_COLABORADOR_PAYLOAD] Campo descartado não reconhecido no schema de colaboradores: "${key}"`,
+      );
+    }
+  }
+  return sanitized;
 }
 
 export interface ProcessedRhidBatch {
