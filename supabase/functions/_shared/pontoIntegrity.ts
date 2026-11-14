@@ -61,6 +61,9 @@ export interface PontoIngestionResult {
   ignorados_duplicados: number;
   correcoes_pendentes: CorrecaoPendenteItem[];
   bloqueados_fechamento: number;
+  chavesInseridas?: string[];
+  chavesAtualizadas?: string[];
+  chavesDuplicadas?: string[];
 }
 
 export type Sha256Fn = (message: string) => Promise<string>;
@@ -519,6 +522,10 @@ export async function ingestPontosBatch(params: {
   let ignoradosDuplicados = 0;
   let bloqueadosFechamento = 0;
 
+  const chavesInseridas: string[] = [];
+  const chavesAtualizadas: string[] = [];
+  const chavesDuplicadas: string[] = [];
+
   for (const rec of records) {
     const comp = rec.competencia || rec.data.slice(0, 7);
     const compKey = `${rec.empresa_id ?? 'null'}_${comp}`;
@@ -537,6 +544,7 @@ export async function ingestPontosBatch(params: {
     if (isClosedComp) {
       if (existing && !hasPunchDifference(existing, rec)) {
         ignoradosDuplicados++;
+        chavesDuplicadas.push(rec.chave_importacao);
       } else {
         bloqueadosFechamento++;
         const tipo: CorrecaoPendenteItem['tipo'] = existing
@@ -579,6 +587,7 @@ export async function ingestPontosBatch(params: {
       if (isProcessedStatus(existing.status_processamento, existing.status)) {
         if (!hasPunchDifference(existing, rec)) {
           ignoradosDuplicados++;
+          chavesDuplicadas.push(rec.chave_importacao);
         } else {
           correcoesPendentes.push({
             tipo: 'CORRECAO_POS_PROCESSAMENTO',
@@ -614,12 +623,14 @@ export async function ingestPontosBatch(params: {
       const sameKey = existing.chave_importacao === rec.chave_importacao;
       if (!hasPunchDifference(existing, rec) && sameColab && sameKey) {
         ignoradosDuplicados++;
+        chavesDuplicadas.push(rec.chave_importacao);
         continue;
       }
 
       toUpdate.push({ id: existing.id, rec, existingSnapshot: existing });
     } else {
       toInsert.push(sanitizeDbPayload(rec));
+      chavesInseridas.push(rec.chave_importacao);
     }
   }
 
@@ -675,6 +686,7 @@ export async function ingestPontosBatch(params: {
     if (rpcResult) {
       if (rpcResult.status === 'ATUALIZADO') {
         totalAtualizados++;
+        chavesAtualizadas.push(item.rec.chave_importacao);
       } else if (rpcResult.status === 'INGESTAO_SUSPENSA') {
         throw new Error(`INGESTAO_SUSPENSA: ${rpcResult.message || 'Ingestão de pontos suspensa pelo administrador.'}`);
       } else if (rpcResult.status === 'MUTACAO_ESTRUTURAL_INVALIDA' || rpcResult.status === 'DIVERGENCIA_EMPRESA' || rpcResult.status === 'DIVERGENCIA_COMPETENCIA') {
@@ -784,5 +796,8 @@ export async function ingestPontosBatch(params: {
     ignorados_duplicados: ignoradosDuplicados,
     correcoes_pendentes: correcoesPendentes,
     bloqueados_fechamento: bloqueadosFechamento,
+    chavesInseridas,
+    chavesAtualizadas,
+    chavesDuplicadas,
   };
 }

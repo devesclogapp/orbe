@@ -744,6 +744,9 @@ export function reconciliarContagensAposIngestao(params: {
     ignorados_duplicados: number;
     correcoes_pendentes: Array<{ tipo: string; chave_importacao: string }>;
     bloqueados_fechamento: number;
+    chavesInseridas?: string[];
+    chavesAtualizadas?: string[];
+    chavesDuplicadas?: string[];
   };
 }): {
   contagemFinal: ReconciliacaoContagem;
@@ -762,21 +765,64 @@ export function reconciliarContagensAposIngestao(params: {
     }
   }
 
-  let remainingInseridos = ingestionResult.inseridos;
-  let remainingAtualizados = ingestionResult.atualizados;
-  let remainingDuplicados = ingestionResult.ignorados_duplicados;
+  let chaveNaoMapeadaDetectada = false;
+  let contagemTamanhoInconsistente = false;
 
-  for (const rec of registrosParaSalvar) {
-    if (!chaveToIngestStatus.has(rec.chave_importacao)) {
-      if (remainingInseridos > 0) {
-        chaveToIngestStatus.set(rec.chave_importacao, 'inserido');
-        remainingInseridos--;
-      } else if (remainingAtualizados > 0) {
-        chaveToIngestStatus.set(rec.chave_importacao, 'atualizado');
-        remainingAtualizados--;
-      } else if (remainingDuplicados > 0) {
-        chaveToIngestStatus.set(rec.chave_importacao, 'duplicado');
-        remainingDuplicados--;
+  // 1. Mapeamento determinístico direto por chave_importacao quando fornecido pelo motor de ingestão
+  if (
+    ingestionResult.chavesInseridas ||
+    ingestionResult.chavesAtualizadas ||
+    ingestionResult.chavesDuplicadas
+  ) {
+    const arrInseridas = ingestionResult.chavesInseridas ?? [];
+    const arrAtualizadas = ingestionResult.chavesAtualizadas ?? [];
+    const arrDuplicadas = ingestionResult.chavesDuplicadas ?? [];
+
+    // Validar coerência entre os contadores agregados e o tamanho dos arrays de chaves
+    if (
+      arrInseridas.length !== ingestionResult.inseridos ||
+      arrAtualizadas.length !== ingestionResult.atualizados ||
+      arrDuplicadas.length !== ingestionResult.ignorados_duplicados
+    ) {
+      contagemTamanhoInconsistente = true;
+    }
+
+    for (const key of arrInseridas) {
+      chaveToIngestStatus.set(key, 'inserido');
+    }
+    for (const key of arrAtualizadas) {
+      chaveToIngestStatus.set(key, 'atualizado');
+    }
+    for (const key of arrDuplicadas) {
+      chaveToIngestStatus.set(key, 'duplicado');
+    }
+
+    // Se uma chave de registrosParaSalvar não foi classificada em nenhum array nem correções pendentes
+    for (const rec of registrosParaSalvar) {
+      if (!chaveToIngestStatus.has(rec.chave_importacao)) {
+        chaveNaoMapeadaDetectada = true;
+      }
+    }
+  } else {
+    // Fallback legado baseado em contadores sequenciais caso o chamador não forneça os arrays de chaves
+    let remainingInseridos = ingestionResult.inseridos;
+    let remainingAtualizados = ingestionResult.atualizados;
+    let remainingDuplicados = ingestionResult.ignorados_duplicados;
+
+    for (const rec of registrosParaSalvar) {
+      if (!chaveToIngestStatus.has(rec.chave_importacao)) {
+        if (remainingInseridos > 0) {
+          chaveToIngestStatus.set(rec.chave_importacao, 'inserido');
+          remainingInseridos--;
+        } else if (remainingAtualizados > 0) {
+          chaveToIngestStatus.set(rec.chave_importacao, 'atualizado');
+          remainingAtualizados--;
+        } else if (remainingDuplicados > 0) {
+          chaveToIngestStatus.set(rec.chave_importacao, 'duplicado');
+          remainingDuplicados--;
+        } else {
+          chaveNaoMapeadaDetectada = true;
+        }
       }
     }
   }
@@ -784,8 +830,15 @@ export function reconciliarContagensAposIngestao(params: {
   // Atualizar outcomes dos itens primários que estavam como 'inserido' provisório
   for (const outcome of itemOutcomes) {
     if (outcome.estado === 'inserido' && outcome.chave_importacao) {
-      const finalEst = chaveToIngestStatus.get(outcome.chave_importacao) || 'inserido';
-      outcome.estado = finalEst;
+      const finalEst = chaveToIngestStatus.get(outcome.chave_importacao);
+      if (finalEst) {
+        outcome.estado = finalEst;
+      } else {
+        // Se a chave não estiver mapeada, marca inconsistente e aciona divergência
+        outcome.estado = 'inconsistente';
+        outcome.motivo = 'Resultado da ingestão indeterminado para a chave do registro de ponto.';
+        chaveNaoMapeadaDetectada = true;
+      }
     }
   }
 
@@ -805,7 +858,10 @@ export function reconciliarContagensAposIngestao(params: {
   }
 
   const somaFinal = Object.values(contagemFinal).reduce((a, b) => a + b, 0);
-  const divergenciaDetectada = somaFinal !== itemOutcomes.length;
+  const divergenciaDetectada =
+    somaFinal !== itemOutcomes.length ||
+    chaveNaoMapeadaDetectada ||
+    contagemTamanhoInconsistente;
 
   return {
     contagemFinal,

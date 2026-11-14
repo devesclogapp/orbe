@@ -919,4 +919,284 @@ describe('FIX-RHID-IDENTIDADE-01: Identificação, Ambiguidade, Reconciliação 
       }
     });
   });
+
+  describe('Ponto 5: Atribuição de Estado por Chave Real na Reconciliação Pós-Ingestão (Defeito de Auditoria)', () => {
+    it('Lote misto com posições alternadas: ponto existente na posição 0 e ponto novo na posição 1 recebem status exatos baseados na chave real', () => {
+      // Simula dois itens onde o item 0 tem chave_existente e o item 1 tem chave_nova
+      const chaveExistente = 'key_existente_pos_0';
+      const chaveNova = 'key_nova_pos_1';
+
+      const itemOutcomes: ItemOutcome[] = [
+        {
+          index: 0,
+          estado: 'inserido', // estado provisório antes da ingestão
+          chave_importacao: chaveExistente,
+          matched_colab_id: 'colab-1',
+          matched_by: 'cpf',
+          motivo: 'Identificado com sucesso',
+        },
+        {
+          index: 1,
+          estado: 'inserido', // estado provisório antes da ingestão
+          chave_importacao: chaveNova,
+          matched_colab_id: 'colab-2',
+          matched_by: 'cpf',
+          motivo: 'Identificado com sucesso',
+        },
+      ];
+
+      const registrosParaSalvar: PontoIngestionRecord[] = [
+        {
+          tenant_id: TENANT_ID,
+          colaborador_id: 'colab-1',
+          empresa_id: 'emp-1',
+          data: '2026-11-14',
+          chave_importacao: chaveExistente,
+          origem: 'rhid',
+        },
+        {
+          tenant_id: TENANT_ID,
+          colaborador_id: 'colab-2',
+          empresa_id: 'emp-1',
+          data: '2026-11-14',
+          chave_importacao: chaveNova,
+          origem: 'rhid',
+        },
+      ];
+
+      // Resultado real da ingestão onde o item 0 (chaveExistente) foi considerado duplicado
+      // e o item 1 (chaveNova) foi inserido no banco
+      const ingestionResult = {
+        inseridos: 1,
+        atualizados: 0,
+        ignorados_duplicados: 1,
+        correcoes_pendentes: [],
+        bloqueados_fechamento: 0,
+        chavesInseridas: [chaveNova],
+        chavesDuplicadas: [chaveExistente],
+        chavesAtualizadas: [],
+      };
+
+      const { contagemFinal, somaFinal, divergenciaDetectada } = reconciliarContagensAposIngestao({
+        itemOutcomes,
+        registrosParaSalvar,
+        ingestionResult,
+      });
+
+      // Validações determinísticas:
+      // O item do índice 0 DEVE ser 'duplicado' (porque sua chave_importacao está em chavesDuplicadas)
+      expect(itemOutcomes[0].estado).toBe('duplicado');
+      // O item do índice 1 DEVE ser 'inserido' (porque sua chave_importacao está em chavesInseridas)
+      expect(itemOutcomes[1].estado).toBe('inserido');
+
+      // Totais e divergência
+      expect(contagemFinal.inserido).toBe(1);
+      expect(contagemFinal.duplicado).toBe(1);
+      expect(somaFinal).toBe(2);
+      expect(divergenciaDetectada).toBe(false);
+    });
+
+    it('Lote misto complexo (duplicado, atualizado, inserido, bloqueado) com chaves em posições arbitrárias', () => {
+      const keys = ['k_dup_0', 'k_upd_1', 'k_ins_2', 'k_bloq_3'];
+
+      const itemOutcomes: ItemOutcome[] = keys.map((k, idx) => ({
+        index: idx,
+        estado: 'inserido',
+        chave_importacao: k,
+        matched_colab_id: `colab-${idx}`,
+        matched_by: 'cpf',
+        motivo: 'Identificado',
+      }));
+
+      const registrosParaSalvar: PontoIngestionRecord[] = keys.map((k, idx) => ({
+        tenant_id: TENANT_ID,
+        colaborador_id: `colab-${idx}`,
+        empresa_id: 'emp-1',
+        data: '2026-11-14',
+        chave_importacao: k,
+        origem: 'rhid',
+      }));
+
+      const ingestionResult = {
+        inseridos: 1,
+        atualizados: 1,
+        ignorados_duplicados: 1,
+        correcoes_pendentes: [
+          { tipo: 'COMPETENCIA_FECHADA', chave_importacao: 'k_bloq_3' }
+        ],
+        bloqueados_fechamento: 1,
+        chavesInseridas: ['k_ins_2'],
+        chavesAtualizadas: ['k_upd_1'],
+        chavesDuplicadas: ['k_dup_0'],
+      };
+
+      const { contagemFinal, somaFinal, divergenciaDetectada } = reconciliarContagensAposIngestao({
+        itemOutcomes,
+        registrosParaSalvar,
+        ingestionResult,
+      });
+
+      expect(itemOutcomes[0].estado).toBe('duplicado');
+      expect(itemOutcomes[1].estado).toBe('atualizado');
+      expect(itemOutcomes[2].estado).toBe('inserido');
+      expect(itemOutcomes[3].estado).toBe('bloqueado');
+
+      expect(contagemFinal.duplicado).toBe(1);
+      expect(contagemFinal.atualizado).toBe(1);
+      expect(contagemFinal.inserido).toBe(1);
+      expect(contagemFinal.bloqueado).toBe(1);
+      expect(somaFinal).toBe(4);
+      expect(divergenciaDetectada).toBe(false);
+    });
+
+    it('Compatibilidade com ingestão legada (sem chaves explícitas no retorno): mantém fallback sequencial', () => {
+      const itemOutcomes: ItemOutcome[] = [
+        {
+          index: 0,
+          estado: 'inserido',
+          chave_importacao: 'k1',
+          matched_colab_id: 'c1',
+          matched_by: 'cpf',
+          motivo: 'Identificado',
+        },
+        {
+          index: 1,
+          estado: 'inserido',
+          chave_importacao: 'k2',
+          matched_colab_id: 'c2',
+          matched_by: 'cpf',
+          motivo: 'Identificado',
+        },
+      ];
+
+      const registrosParaSalvar: PontoIngestionRecord[] = [
+        {
+          tenant_id: TENANT_ID,
+          colaborador_id: 'c1',
+          empresa_id: 'emp-1',
+          data: '2026-11-14',
+          chave_importacao: 'k1',
+          origem: 'rhid',
+        },
+        {
+          tenant_id: TENANT_ID,
+          colaborador_id: 'c2',
+          empresa_id: 'emp-1',
+          data: '2026-11-14',
+          chave_importacao: 'k2',
+          origem: 'rhid',
+        },
+      ];
+
+      const legacyResult = {
+        inseridos: 1,
+        atualizados: 0,
+        ignorados_duplicados: 1,
+        correcoes_pendentes: [],
+        bloqueados_fechamento: 0,
+      };
+
+      const { contagemFinal, somaFinal } = reconciliarContagensAposIngestao({
+        itemOutcomes,
+        registrosParaSalvar,
+        ingestionResult: legacyResult,
+      });
+
+      expect(somaFinal).toBe(2);
+      expect(contagemFinal.inserido).toBe(1);
+      expect(contagemFinal.duplicado).toBe(1);
+    });
+
+    it('Ajuste 1: chave não encontrada em nenhum array nem em correções pendentes marca divergenciaDetectada = true e item inconsistente', () => {
+      const itemOutcomes: ItemOutcome[] = [
+        {
+          index: 0,
+          estado: 'inserido',
+          chave_importacao: 'chave_fantasma_sumiu_da_ingestao',
+          matched_colab_id: 'c1',
+          matched_by: 'cpf',
+          motivo: 'Identificado',
+        },
+      ];
+
+      const registrosParaSalvar: PontoIngestionRecord[] = [
+        {
+          tenant_id: TENANT_ID,
+          colaborador_id: 'c1',
+          empresa_id: 'emp-1',
+          data: '2026-11-14',
+          chave_importacao: 'chave_fantasma_sumiu_da_ingestao',
+          origem: 'rhid',
+        },
+      ];
+
+      // Ingestão retornou 0 em tudo e arrays vazios (a chave sumiu / não foi processada)
+      const ingestionResult = {
+        inseridos: 0,
+        atualizados: 0,
+        ignorados_duplicados: 0,
+        correcoes_pendentes: [],
+        bloqueados_fechamento: 0,
+        chavesInseridas: [],
+        chavesAtualizadas: [],
+        chavesDuplicadas: [],
+      };
+
+      const { contagemFinal, divergenciaDetectada } = reconciliarContagensAposIngestao({
+        itemOutcomes,
+        registrosParaSalvar,
+        ingestionResult,
+      });
+
+      // Não deve assumir 'inserido': deve marcar inconsistente e acusar divergência!
+      expect(itemOutcomes[0].estado).toBe('inconsistente');
+      expect(contagemFinal.inconsistente).toBe(1);
+      expect(contagemFinal.inserido).toBe(0);
+      expect(divergenciaDetectada).toBe(true);
+    });
+
+    it('Ajuste 2: divergência quando tamanho dos arrays de chaves não bate com contadores agregados', () => {
+      const itemOutcomes: ItemOutcome[] = [
+        {
+          index: 0,
+          estado: 'inserido',
+          chave_importacao: 'k1',
+          matched_colab_id: 'c1',
+          matched_by: 'cpf',
+          motivo: 'Identificado',
+        },
+      ];
+
+      const registrosParaSalvar: PontoIngestionRecord[] = [
+        {
+          tenant_id: TENANT_ID,
+          colaborador_id: 'c1',
+          empresa_id: 'emp-1',
+          data: '2026-11-14',
+          chave_importacao: 'k1',
+          origem: 'rhid',
+        },
+      ];
+
+      // Ingestão informa inseridos: 2, mas chavesInseridas tem apenas 1 chave (divergência interna)
+      const ingestionResult = {
+        inseridos: 2,
+        atualizados: 0,
+        ignorados_duplicados: 0,
+        correcoes_pendentes: [],
+        bloqueados_fechamento: 0,
+        chavesInseridas: ['k1'], // length 1 != 2
+        chavesAtualizadas: [],
+        chavesDuplicadas: [],
+      };
+
+      const { divergenciaDetectada } = reconciliarContagensAposIngestao({
+        itemOutcomes,
+        registrosParaSalvar,
+        ingestionResult,
+      });
+
+      expect(divergenciaDetectada).toBe(true);
+    });
+  });
 });
