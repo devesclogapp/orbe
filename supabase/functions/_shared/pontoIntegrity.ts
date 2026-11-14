@@ -390,9 +390,69 @@ function extractShiftFromObservacoes(observacoes: unknown): string | null {
   return null;
 }
 
-function sanitizeDbPayload(record: PontoIngestionRecord): Record<string, unknown> {
-  const { jornada_discriminator: _discard, ...dbFields } = record;
-  return dbFields;
+export const VALID_REGISTROS_PONTO_COLUMNS = new Set<string>([
+  'id',
+  'tenant_id',
+  'empresa_id',
+  'colaborador_id',
+  'data',
+  'competencia',
+  'entrada',
+  'saida_almoco',
+  'retorno_almoco',
+  'saida',
+  'origem',
+  'origem_dado',
+  'status',
+  'status_processamento',
+  'nome_colaborador',
+  'matricula_colaborador',
+  'cpf_colaborador',
+  'cargo_colaborador',
+  'empresa_nome',
+  'horas_trabalhadas',
+  'hora_extra',
+  'falta',
+  'atraso',
+  'observacoes',
+  'inconsistencias',
+  'inconsistencias_count',
+  'is_teste',
+  'chave_importacao',
+  'periodo',
+  'tipo_dia',
+  'lote_id',
+  'valor_dia',
+  'cliente_id',
+  'processado_em',
+  'horas_calculadas',
+  'saldo_dia',
+  'valor_hora',
+  'valor_extras',
+  'jornada_calculada',
+  'valor_hora_extra',
+  'valor_atraso',
+  'valor_falta',
+  'minutos_atraso',
+  'minutos_extra',
+  'horas_extras_detalhadas',
+  'saldo_acumulado_minutos',
+  'ciclo_id',
+  'semana_operacional',
+  'regra_aplicada',
+]);
+
+export function sanitizeDbPayload(record: PontoIngestionRecord): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    // Descarta explicitamente campos de controle em memória
+    if (key === 'importacao_id' || key === 'jornada_discriminator') continue;
+    // Garante que apenas colunas válidas no schema de registros_ponto sejam enviadas
+    if (VALID_REGISTROS_PONTO_COLUMNS.has(key)) {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
 }
 
 /**

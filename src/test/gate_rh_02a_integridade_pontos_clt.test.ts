@@ -3,6 +3,8 @@ import { createHash } from 'crypto';
 import {
   buildCanonicalPontoKey,
   ingestPontosBatch,
+  sanitizeDbPayload,
+  VALID_REGISTROS_PONTO_COLUMNS,
   type PontoIngestionRecord,
 } from '../../supabase/functions/_shared/pontoIntegrity';
 
@@ -934,5 +936,87 @@ describe('GATE-RH-02A — Integridade e Concorrência de Pontos CLT (Suíte Comp
         ],
       }),
     ).rejects.toThrow(/MUTACAO_INVALIDA/);
+  });
+
+  describe('FIX-RELEASE-01: Sanitização de Payload e Prevenção de Schema Mismatch', () => {
+    it('16. sanitizeDbPayload remove explicitamente importacao_id e campos desconhecidos', () => {
+      const dirtyRecord: PontoIngestionRecord = {
+        tenant_id: 'tenant-123',
+        empresa_id: 'emp-123',
+        colaborador_id: 'colab-123',
+        data: '2026-11-13',
+        competencia: '2026-11',
+        entrada: '08:00:00',
+        saida_almoco: '12:00:00',
+        retorno_almoco: '13:00:00',
+        saida: '17:00:00',
+        origem: 'api',
+        status: 'Pendente',
+        status_processamento: 'PENDENTE_PROCESSAMENTO',
+        nome_colaborador: 'Colaborador Teste',
+        chave_importacao: 'hash-123',
+        importacao_id: '1e67cc4d-2076-4bd4-969d-83914a841981', // campo inexistente na tabela registros_ponto
+        jornada_discriminator: 'TURNO_1', // campo em memória
+        campo_inexistente_aleatorio: 'valor_invalido', // campo aleatório
+      };
+
+      const sanitized = sanitizeDbPayload(dirtyRecord);
+
+      expect(sanitized).not.toHaveProperty('importacao_id');
+      expect(sanitized).not.toHaveProperty('jornada_discriminator');
+      expect(sanitized).not.toHaveProperty('campo_inexistente_aleatorio');
+
+      // Campos canônicos válidos devem ser preservados
+      expect(sanitized).toHaveProperty('tenant_id', 'tenant-123');
+      expect(sanitized).toHaveProperty('empresa_id', 'emp-123');
+      expect(sanitized).toHaveProperty('colaborador_id', 'colab-123');
+      expect(sanitized).toHaveProperty('data', '2026-11-13');
+      expect(sanitized).toHaveProperty('entrada', '08:00:00');
+      expect(sanitized).toHaveProperty('chave_importacao', 'hash-123');
+
+      // Garantir que todos os campos restantes pertencem à whitelist de colunas de registros_ponto
+      for (const key of Object.keys(sanitized)) {
+        expect(VALID_REGISTROS_PONTO_COLUMNS.has(key)).toBe(true);
+      }
+    });
+
+    it('17. ingestPontosBatch insere registros sem vazar importacao_id para o banco', async () => {
+      const { supabase, db } = createMockSupabase();
+
+      const result = await ingestPontosBatch({
+        supabase,
+        tenantId: 'tenant-123',
+        importacaoId: '1e67cc4d-2076-4bd4-969d-83914a841981',
+        records: [
+          {
+            tenant_id: 'tenant-123',
+            empresa_id: 'emp-123',
+            colaborador_id: 'colab-123',
+            data: '2026-11-13',
+            competencia: '2026-11',
+            entrada: '08:00:00',
+            saida_almoco: null,
+            retorno_almoco: null,
+            saida: '17:00:00',
+            origem: 'api',
+            status: 'Pendente',
+            status_processamento: 'PENDENTE_PROCESSAMENTO',
+            nome_colaborador: 'Colaborador Teste',
+            chave_importacao: 'chave-safe-insert',
+            importacao_id: '1e67cc4d-2076-4bd4-969d-83914a841981',
+            jornada_discriminator: 'D1',
+          },
+        ],
+      });
+
+      expect(result.inseridos).toBe(1);
+      expect(db.registros_ponto.length).toBe(1);
+
+      const insertedRow = db.registros_ponto[0];
+      expect(insertedRow.chave_importacao).toBe('chave-safe-insert');
+      expect(insertedRow).not.toHaveProperty('importacao_id');
+      expect(insertedRow).not.toHaveProperty('jornada_discriminator');
+      expect(insertedRow.data).toBe('2026-11-13');
+    });
   });
 });
