@@ -2,7 +2,22 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { crypto } from "https://deno.land/std@0.168.0/crypto/mod.ts"
 import { EmpresaResolver } from "../_shared/EmpresaResolver.ts"
-import { buildCanonicalPontoKey, ingestPontosBatch, validatePontoIngestAuth, type PontoIngestionRecord } from "../_shared/pontoIntegrity.ts"
+import {
+  buildCanonicalPontoKey,
+  ingestPontosBatch,
+  validatePontoIngestAuth,
+} from "../_shared/pontoIntegrity.ts"
+import {
+  aplicarEmpresasCriadas,
+  buildRhidIdentityMaps,
+  cleanMatricula,
+  parseCpfInput,
+  processRhidItems,
+  reconciliarContagensAposIngestao,
+  tratarFalhaCriacaoColaborador,
+  normalizeText,
+  type RhidColaboradorLookup,
+} from "../_shared/rhidIdentity.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -17,23 +32,6 @@ async function sha256Hex(message: string): Promise<string> {
     .map(b => b.toString(16).padStart(2, "0"))
     .join("");
 }
-
-const normalizeText = (value: string) =>
-  value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, " ");
-
-const normalizeCompanyText = (value: string) => {
-  const normalized = normalizeText(value);
-  return normalized
-    .replace(/\b(ltda|me|eireli)\b/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-};
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -66,6 +64,7 @@ serve(async (req) => {
 
     const payload = JSON.parse(bodyStr);
     const schemaVersion = payload.schema_version ?? 1; 
+    const dryRun = Boolean(payload.dry_run);
 
     let explicitTenantId = req.headers.get('x-tenant-id') || payload.tenant_id || null;
 
@@ -87,68 +86,54 @@ serve(async (req) => {
       });
     }
 
-    // --- Resolver Tenant ---
+    // --- Resolver Tenant (Requisito 1: Estrito por Header ou Payload, sem inferência por matrícula/CNPJ) ---
     if (!explicitTenantId) {
-      for (const item of items) {
-         if (item.pessoa_matricula) {
-            const { data: col } = await supabase.from('colaboradores')
-               .select('tenant_id')
-               .eq('matricula', item.pessoa_matricula)
-               .not('tenant_id', 'is', null)
-               .limit(1).maybeSingle();
-            if (col?.tenant_id) { explicitTenantId = col.tenant_id; break; }
-         }
-      }
-      if (!explicitTenantId) {
-         for (const item of items) {
-             const cnpj = item.empresa_cnpj || item.cnpj;
-             if (cnpj) {
-                const numCnpj = String(cnpj).replace(/\D/g, '');
-                const { data: emp } = await supabase.from('empresas')
-                  .select('tenant_id').eq('cnpj', numCnpj).not('tenant_id', 'is', null).limit(1).maybeSingle();
-                if (emp?.tenant_id) { explicitTenantId = emp.tenant_id; break; }
-             }
-         }
-      }
+      return new Response(JSON.stringify({
+        error: "MissingTenantId",
+        message: "Identificador do tenant obrigatório (forneça o header x-tenant-id ou o campo tenant_id no payload)."
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     const finalTenantId = explicitTenantId;
-    if (!finalTenantId) {
-       return new Response(JSON.stringify({ error: "Missing tenant_id." }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
 
-    // 1. Criar registro do Workflow na historico_importacoes
-    const { data: historico, error: histError } = await supabase
-      .from('historico_importacoes')
-      .insert({
-        tenant_id: finalTenantId,
-        origem: 'api', // n8n ou rhid
-        workflow: 'importar-pontos-rhid',
-        nome_arquivo: `payload_api_${Date.now()}.json`,
-        quantidade_recebida: items.length,
-        status: 'VALIDANDO'
-      })
-      .select('id')
-      .single();
-    if (histError) console.error("[ERROR] ao criar histórico:", histError);
-    const importacaoId = historico?.id;
+    // 1. Criar registro do Workflow na historico_importacoes (Apenas se NÃO for dry_run)
+    let importacaoId: string | null = null;
+    if (!dryRun) {
+      const { data: historico, error: histError } = await supabase
+        .from('historico_importacoes')
+        .insert({
+          tenant_id: finalTenantId,
+          origem: 'api',
+          workflow: 'importar-pontos-rhid',
+          nome_arquivo: `payload_api_${Date.now()}.json`,
+          quantidade_recebida: items.length,
+          status: 'VALIDANDO'
+        })
+        .select('id')
+        .single();
+      if (histError) console.error("[ERROR] ao criar histórico:", histError);
+      importacaoId = historico?.id ?? null;
+    }
 
     // 2. Extrair conjuntos chaves para busca otimizada de Colaboradores
     const cpfs = new Set<string>();
     const matriculas = new Set<string>();
     const nomes = new Set<string>();
-    const rhidPersonIds = new Set<string>();
 
     for (const item of items) {
-      if (item.cpf) cpfs.add(String(item.cpf).replace(/\D/g, ''));
-      if (item.pessoa_matricula) matriculas.add(String(item.pessoa_matricula).trim());
+      const c = parseCpfInput(item.cpf ?? item.pessoa_cpf);
+      if (c.isValid && c.cleaned) cpfs.add(c.cleaned);
+      const m = cleanMatricula(item.pessoa_matricula);
+      if (m) matriculas.add(m);
       if (item.pessoa_nome) nomes.add(normalizeText(item.pessoa_nome));
-      if (item.rhid_person_id) rhidPersonIds.add(String(item.rhid_person_id));
     }
 
-    // Otimização: buscar colaboradores apenas relevantes ao invés do tenant inteiro
-    let colabQuery = supabase.from('colaboradores').select('id, nome, matricula, cpf, empresa_id').eq('tenant_id', finalTenantId);
-    let colabFilter = [];
+    // Otimização: buscar colaboradores do tenant com filtros relevantes
+    let colabQuery = supabase.from('colaboradores').select('id, nome, matricula, cpf, empresa_id, tenant_id').eq('tenant_id', finalTenantId);
+    let colabFilter: string[] = [];
     if (cpfs.size > 0) colabFilter.push(`cpf.in.(${Array.from(cpfs).join(',')})`);
     if (matriculas.size > 0) colabFilter.push(`matricula.in.(${Array.from(matriculas).join(',')})`);
     if (nomes.size > 0) colabFilter.push(`nome.in.(${Array.from(nomes).map(n => '"' + n + '"').join(',')})`);
@@ -156,152 +141,125 @@ serve(async (req) => {
       colabQuery = colabQuery.or(colabFilter.join(','));
     }
 
-    const { data: dbColabs } = await colabQuery;
-
-    const colabMap = new Map();
-    if (dbColabs) {
-       dbColabs.forEach(c => {
-         // O banco não tem rhid_person_id ainda, então o match é feito por CPF, matricula, nome
-         if (c.cpf) colabMap.set(`CPF_${String(c.cpf).replace(/\D/g, '')}`, c);
-         if (c.matricula) colabMap.set(`MAT_${String(c.matricula).trim()}`, c);
-         if (c.nome) colabMap.set(`NOME_${normalizeText(c.nome)}`, c);
-       });
+    const { data: dbColabs, error: dbColabsErr } = await colabQuery;
+    if (dbColabsErr) {
+      console.error("[ERROR] Falha ao consultar colaboradores:", dbColabsErr.message);
+      throw new Error(`Falha ao consultar colaboradores: ${dbColabsErr.message}`);
     }
 
-    // 3. Buscar Empresas do Tenant para Self-Healing estruturado
+    const identityMaps = buildRhidIdentityMaps((dbColabs || []) as RhidColaboradorLookup[]);
+
+    // 3. Resolver de Empresas (estritamente cache em memória durante o processamento pré-escrita)
     const resolver = new EmpresaResolver(supabase, finalTenantId, 'api');
     await resolver.loadCache();
 
-    let cltsCriados = 0;
-    const registrosMap = new Map();
-    
-    let quantidadeIgnorada = 0;
-    let quantidadeInconsistente = 0;
+    // Na fase de reconciliação pré-escrita, NENHUMA empresa é criada no banco (consulta estritamente via cache)
+    const resolveEmpresaFn = async (rawName: string): Promise<string | null> => {
+      return resolver.findCached(rawName);
+    };
 
-    // --- PASSO PRINCIPAL ---
-    for (const item of items) {
-        // Validação mínima de Payload
-        if (!item.data || !item.pessoa_nome) {
-            quantidadeIgnorada++;
-            continue;
-        }
+    // 4. Executar Identificação Pura e Reconciliação Determinística via rhidIdentity
+    const batchResult = await processRhidItems({
+      tenantId: finalTenantId,
+      items,
+      identityMaps,
+      resolveEmpresaId: resolveEmpresaFn,
+      sha256Hex,
+      schemaVersion,
+      importacaoId,
+      dryRun,
+    });
 
-        // Resolvendo Empresa (Fallback normalizado pelo Resolver)
-        const rawCmpName = item.empresa_nome || item.empresa || "Empresa Desconhecida API";
-        const matchedEmpresaId = await resolver.resolveOrCreate(rawCmpName);
+    // REQUISITO 2: ABORTO PRÉ-ESCRITA (Fail-Fast)
+    // Se a reconciliação pré-escrita detectar divergência matemática entre a soma dos estados
+    // e o total recebido, abortar IMEDIATAMENTE antes de qualquer insert de colaboradores,
+    // empresas ou registros_ponto no banco.
+    // (Apenas o registro inicial em historico_importacoes com status 'ERRO' persiste para fins de auditoria)
+    if (batchResult.divergenciaDetectada) {
+      const errMsg = `DIVERGENCIA_PRE_ESCRITA: soma dos estados (${batchResult.somaEstados}) != recebidos (${items.length}). Ingestão abortada sem qualquer criação de empresas, colaboradores ou pontos no banco.`;
+      console.error(`[CRITICAL] ${errMsg}`);
 
-        // Identificação Colaborador no Fallback rigoroso
-        const matQuery = item.pessoa_matricula ? `MAT_${String(item.pessoa_matricula).trim()}` : null;
-        const rawCpf = item.cpf || item.pessoa_cpf;
-        const cpfQuery = rawCpf ? `CPF_${String(rawCpf).replace(/\D/g, '')}` : null;
-        const nomeQuery = item.pessoa_nome ? `NOME_${normalizeText(item.pessoa_nome)}` : null;
+      if (importacaoId && !dryRun) {
+        await supabase.from('historico_importacoes')
+          .update({
+            status: 'ERRO',
+            erro_processamento: errMsg,
+            finalizado_em: new Date().toISOString(),
+          })
+          .eq('id', importacaoId);
+      }
 
-        let matchedColab = null;
-        let matchedBy = null;
-
-        if (cpfQuery && colabMap.has(cpfQuery)) { matchedColab = colabMap.get(cpfQuery); matchedBy = 'cpf'; }
-        else if (matQuery && colabMap.has(matQuery)) { matchedColab = colabMap.get(matQuery); matchedBy = 'matricula'; }
-        else if (nomeQuery && colabMap.has(nomeQuery)) { matchedColab = colabMap.get(nomeQuery); matchedBy = 'nome'; }
-
-        // Self-Healing Colaborador
-        if (!matchedColab) {
-            // Apenas criar se tivermos um identificador forte!
-            const possuiIdentificadorForte = (cpfQuery || matQuery);
-            if (possuiIdentificadorForte) {
-                const { data: newCol } = await supabase.from('colaboradores')
-                  .insert({
-                    tenant_id: finalTenantId,
-                    empresa_id: matchedEmpresaId || null, 
-                    nome: item.pessoa_nome.trim(),
-                    cpf: rawCpf ? String(rawCpf).replace(/\D/g, '') : null,
-                    matricula: item.pessoa_matricula ? String(item.pessoa_matricula).trim() : null,
-                    tipo_colaborador: 'clt',
-                    regime_trabalho: 'CLT',
-                    modelo_calculo: 'CLT_MENSAL',
-                    tipo_contrato: 'mensal',
-                    status: 'pendente',
-                    status_cadastro: 'pendente_complemento',
-                    origem: 'api', // API / RHID
-                    origem_cadastro: 'ponto_importado',
-                    origem_detalhe: `Self-healing via Payload schema_version=${schemaVersion}`,
-                    cadastro_provisorio: true,
-                    permitir_lancamento_operacional: false
-                  })
-                  .select('id, nome, matricula, cpf, empresa_id').single();
-
-                if (newCol) {
-                    matchedColab = newCol;
-                    matchedBy = 'self_healing';
-                    cltsCriados++;
-                    if (cpfQuery) colabMap.set(cpfQuery, newCol);
-                    if (matQuery) colabMap.set(matQuery, newCol);
-                    if (nomeQuery) colabMap.set(nomeQuery, newCol);
-                }
-            } else {
-               quantidadeInconsistente++;
-            }
-        }
-
-        // Hashing Idempotente canônico (preserva CPF/matrícula do mesmo colaborador, empresa, data e turno)
-        const jornadaDiscriminator = item.jornada_id || item.turno || item.sequencia || item.escala || null;
-        const chaveImportacao = await buildCanonicalPontoKey({
-          tenantId: finalTenantId,
-          empresaId: matchedEmpresaId,
-          colaboradorId: matchedColab ? matchedColab.id : null,
-          cpf: rawCpf ? String(rawCpf).replace(/\D/g, '') : null,
-          matricula: item.pessoa_matricula ? String(item.pessoa_matricula).trim() : null,
-          nome: item.pessoa_nome,
-          data: item.data,
-          jornadaDiscriminator,
-        }, sha256Hex);
-
-        const pointBase: PontoIngestionRecord = {
-            tenant_id: finalTenantId,
-            importacao_id: importacaoId,
-            chave_importacao: chaveImportacao,
-            data: item.data,
-            competencia: item.data ? item.data.slice(0, 7) : null,
-            entrada: item.entrada ?? null,
-            saida_almoco: item.saida_almoco ?? null,
-            retorno_almoco: item.retorno_almoco ?? null,
-            saida: item.saida ?? null,
-            origem: 'api',
-            status: matchedColab ? 'Pendente' : 'Inconsistente',
-            status_processamento: matchedColab ? 'PENDENTE_PROCESSAMENTO' : 'INCONSISTENTE',
-            nome_colaborador: item.pessoa_nome,
-            matricula_colaborador: item.pessoa_matricula,
-            cpf_colaborador: rawCpf ? String(rawCpf).replace(/\D/g, '') : null,
-            empresa_nome: rawCmpName,
-            empresa_id: matchedEmpresaId,
-            colaborador_id: matchedColab ? matchedColab.id : null,
-            horas_trabalhadas: item.horas_trabalhadas || item.horas || null,
-            hora_extra: item.hora_extra || item.extras || null,
-            falta: item.falta || null,
-            atraso: item.atraso || null,
-            observacoes: item.observacoes || JSON.stringify({ matched_by: matchedBy, schema: schemaVersion, ...(jornadaDiscriminator ? { jornada_discriminator: jornadaDiscriminator } : {}) }),
-            inconsistencias: matchedColab ? null : "Registro recusou Self-Healing por falta de identificador forte (CPF/Matrícula).",
-            jornada_discriminator: jornadaDiscriminator,
-            ...(typeof item.is_teste === 'boolean' ? { is_teste: item.is_teste } : {}),
-        };
-
-        const existingRecord = registrosMap.get(chaveImportacao);
-        let mergedPoint = pointBase;
-        if (existingRecord) {
-             mergedPoint = {
-                 ...existingRecord,
-                 ...pointBase,
-                 entrada: pointBase.entrada || existingRecord.entrada,
-                 saida_almoco: pointBase.saida_almoco || existingRecord.saida_almoco,
-                 retorno_almoco: pointBase.retorno_almoco || existingRecord.retorno_almoco,
-                 saida: pointBase.saida || existingRecord.saida
-             };
-        }
-        registrosMap.set(chaveImportacao, mergedPoint);
+      return new Response(JSON.stringify({
+        error: "DivergenciaReconciliacao",
+        message: errMsg,
+        recebidos: items.length,
+        soma_reconciliada: batchResult.somaEstados,
+        resumo: batchResult.contagemPorEstado,
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    const registrosParaSalvar = Array.from(registrosMap.values());
+    let cltsCriadosCount = 0;
+    let registrosParaSalvarEfetivos = [...batchResult.registrosParaSalvar];
+    let contagemAposCriacao = { ...batchResult.contagemPorEstado };
 
-    // --- PASSO INGESTÃO CONTROLADA E IDEMPOTENTE ---
+    // ETAPA PÓS-VERIFICAÇÃO DE DIVERGÊNCIA:
+    // Criação controlada de empresas faltantes (apenas se passou no teste de divergência e não for dry_run)
+    if (!dryRun && batchResult.empresasQueSeriamCriadas.length > 0) {
+      const empresasCriadasMap = new Map<string, string>();
+      for (const empresaNome of batchResult.empresasQueSeriamCriadas) {
+        const createdEmpresaId = await resolver.resolveOrCreate(empresaNome);
+        if (createdEmpresaId) {
+          empresasCriadasMap.set(empresaNome, createdEmpresaId);
+        }
+      }
+
+      // Aplicação modular via rhidIdentity.ts: vincula empresa_id aos pontos e colaboradores
+      // e recalcula a chave_importacao e merged_into_key nos registros e itemOutcomes
+      await aplicarEmpresasCriadas({
+        tenantId: finalTenantId,
+        empresasCriadasMap,
+        registrosParaSalvar: registrosParaSalvarEfetivos,
+        novosColaboradoresParaCriar: batchResult.novosColaboradoresParaCriar,
+        itemOutcomes: batchResult.itemOutcomes,
+        sha256Hex,
+      });
+    }
+
+    // REQUISITO 1: SELF-HEALING COM VÍNCULO DETERMINÍSTICO & FAIL-SAFE EM FALHA DE INSERT
+    // O id de cada colaborador provisório já foi pré-gerado em batchResult.novosColaboradoresParaCriar
+    // e associado deterministicamente aos registros_ponto e itemOutcomes.
+    // Se a inserção de um colaborador falhar, os pontos dele NÃO podem ser gravados: vão para inconsistente!
+    if (!dryRun && batchResult.novosColaboradoresParaCriar.length > 0) {
+      for (const colPayload of batchResult.novosColaboradoresParaCriar) {
+        const { error: createColErr } = await supabase
+          .from('colaboradores')
+          .insert(colPayload);
+
+        if (createColErr) {
+          console.error(`[ERROR] Falha ao persistir self-healing para colaborador ${colPayload.nome} (id: ${colPayload.id}):`, createColErr.message);
+          
+          // Descartar pontos deste colaborador da gravação e classificar itens como inconsistente
+          const failResult = tratarFalhaCriacaoColaborador({
+            failedColabId: colPayload.id,
+            motivoErro: createColErr.message,
+            registrosParaSalvar: registrosParaSalvarEfetivos,
+            itemOutcomes: batchResult.itemOutcomes,
+          });
+
+          registrosParaSalvarEfetivos = failResult.registrosRestantes;
+          contagemAposCriacao = failResult.contagemAtualizada;
+        } else {
+          cltsCriadosCount++;
+        }
+      }
+    } else if (dryRun) {
+      cltsCriadosCount = batchResult.novosColaboradoresParaCriar.length;
+    }
+
+    // 5. Ingestão no Banco de registros_ponto (Apenas se NÃO for dry_run e houver registros elegíveis)
     let ingestionResult = {
       inseridos: 0,
       atualizados: 0,
@@ -310,77 +268,139 @@ serve(async (req) => {
       bloqueados_fechamento: 0,
     };
 
-    try {
-      ingestionResult = await ingestPontosBatch({
-        supabase,
-        tenantId: finalTenantId,
-        importacaoId: importacaoId ?? null,
-        records: registrosParaSalvar,
-      });
-    } catch (ingestErr: any) {
-      console.error("[ERROR] Erro na ingestão controlada de registros_ponto: ", ingestErr.message);
-      if (importacaoId) {
-        await supabase.from('historico_importacoes')
-          .update({
-            status: 'ERRO',
-            erro_processamento: ingestErr.message,
-            finalizado_em: new Date().toISOString(),
-          })
-          .eq('id', importacaoId);
+    if (!dryRun && registrosParaSalvarEfetivos.length > 0) {
+      try {
+        ingestionResult = await ingestPontosBatch({
+          supabase,
+          tenantId: finalTenantId,
+          importacaoId: importacaoId ?? null,
+          records: registrosParaSalvarEfetivos,
+        });
+      } catch (ingestErr: any) {
+        console.error("[ERROR] Erro na ingestão controlada de registros_ponto: ", ingestErr.message);
+        if (importacaoId) {
+          await supabase.from('historico_importacoes')
+            .update({
+              status: 'ERRO',
+              erro_processamento: ingestErr.message,
+              finalizado_em: new Date().toISOString(),
+            })
+            .eq('id', importacaoId);
+        }
+        throw ingestErr;
       }
-      throw ingestErr;
     }
 
-    const inseridos_ou_atualizados = ingestionResult.inseridos + ingestionResult.atualizados;
+    // 6. Reconciliação Final de Contagens
+    let contagemFinal = contagemAposCriacao;
+    let somaFinal = Object.values(contagemFinal).reduce((a, b) => a + b, 0);
+    let divergenciaDetectada = somaFinal !== items.length;
 
-    // 4. Finalizar Lote (historico_importacoes)
-    if (importacaoId) {
-       const totalInconsistentesFinal = quantidadeInconsistente + ingestionResult.correcoes_pendentes.length;
-       const finalStatus = totalInconsistentesFinal > 0 ? 'INCONSISTENTE' : 'PROCESSADO';
-       
-       await supabase.from('historico_importacoes')
-          .update({
-            status: finalStatus,
-            quantidade_registros: items.length, // total recebido
-            quantidade_importada: inseridos_ou_atualizados,
-            quantidade_inconsistencias: totalInconsistentesFinal,
-            quantidade_ignorada: quantidadeIgnorada + ingestionResult.ignorados_duplicados,
-            processado_em: new Date().toISOString(),
-            finalizado_em: new Date().toISOString(),
-            logs: { 
-               mensagem: "Requisição finalizada.", 
-               clts_autocriados: cltsCriados, 
-               empresas_criadas: resolver.empresasCriadas,
-               esquema_utilizado: schemaVersion,
-               inseridos: ingestionResult.inseridos,
-               atualizados: ingestionResult.atualizados,
-               ignorados_duplicados: ingestionResult.ignorados_duplicados,
-               bloqueados_fechamento: ingestionResult.bloqueados_fechamento,
-               correcoes_pendentes: ingestionResult.correcoes_pendentes,
-            }
-          })
-          .eq('id', importacaoId);
+    if (!dryRun) {
+      const reconciliacaoPos = reconciliarContagensAposIngestao({
+        itemOutcomes: batchResult.itemOutcomes,
+        registrosParaSalvar: registrosParaSalvarEfetivos,
+        ingestionResult,
+      });
+      contagemFinal = reconciliacaoPos.contagemFinal;
+      somaFinal = reconciliacaoPos.somaFinal;
+      divergenciaDetectada = reconciliacaoPos.divergenciaDetectada;
     }
 
+    if (divergenciaDetectada) {
+      console.error(`[CRITICAL] Divergência na reconciliação final: soma dos estados (${somaFinal}) != recebidos (${items.length})`);
+    }
+
+    // 7. Finalizar Lote (historico_importacoes) — Apenas se NÃO for dry_run
+    if (importacaoId && !dryRun) {
+      const totalInconsistentesFinal = contagemFinal.inconsistente + contagemFinal.conflito + ingestionResult.correcoes_pendentes.length;
+      
+      let finalStatus: 'PROCESSADO' | 'INCONSISTENTE' | 'ERRO' = totalInconsistentesFinal > 0 ? 'INCONSISTENTE' : 'PROCESSADO';
+      if (divergenciaDetectada) {
+        finalStatus = 'ERRO';
+      }
+
+      await supabase.from('historico_importacoes')
+        .update({
+          status: finalStatus,
+          quantidade_registros: items.length,
+          quantidade_importada: contagemFinal.inserido + contagemFinal.atualizado,
+          quantidade_inconsistencias: totalInconsistentesFinal,
+          quantidade_ignorada: contagemFinal.ignorado + contagemFinal.duplicado,
+          erro_processamento: divergenciaDetectada ? `DIVERGENCIA_RECONCILIACAO: soma dos estados (${somaFinal}) difere dos recebidos (${items.length}).` : null,
+          processado_em: new Date().toISOString(),
+          finalizado_em: new Date().toISOString(),
+          logs: { 
+            mensagem: dryRun ? "Execução simulada (dry-run)." : "Requisição finalizada.", 
+            dry_run: dryRun,
+            clts_autocriados: cltsCriadosCount, 
+            empresas_criadas: resolver.empresasCriadas,
+            esquema_utilizado: schemaVersion,
+            reconciliacao: contagemFinal,
+            conflitos_detalhados: batchResult.conflitosDetalhados,
+            mesclados_detalhados: batchResult.mescladosDetalhados,
+            correcoes_pendentes: ingestionResult.correcoes_pendentes,
+          }
+        })
+        .eq('id', importacaoId);
+    }
+
+    // REQUISITO 3: COMPATIBILIDADE RETROATIVA TOTAL NO RESUMO
+    // Mantém todos os campos antigos esperados pelo ERP e testes legados,
+    // integrando os novos campos analíticos sem quebra de contrato.
+    const importadosVazados = contagemFinal.inserido + contagemFinal.atualizado;
+    const totalIgnorados = contagemFinal.ignorado + contagemFinal.duplicado;
+    const totalInconsistentes = contagemFinal.inconsistente + contagemFinal.conflito + ingestionResult.correcoes_pendentes.length;
+
+    const resumoCompativel = {
+      // --- Campos Clássicos / Legados (preservados integralmente) ---
+      recebidos: items.length,
+      importados_vazados: importadosVazados,
+      inseridos: contagemFinal.inserido,
+      atualizados: contagemFinal.atualizado,
+      ignorados: totalIgnorados,
+      ignorados_duplicados: contagemFinal.duplicado,
+      inconsistentes: totalInconsistentes,
+      correcoes_pendentes: ingestionResult.correcoes_pendentes.length,
+      bloqueados_fechamento: contagemFinal.bloqueado,
+      clts_criados: cltsCriadosCount,
+      empresas_criadas: resolver.empresasCriadas,
+      schema: schemaVersion,
+
+      // --- Novos Campos Analíticos (FIX-RHID-IDENTIDADE-01) ---
+      soma_reconciliada: somaFinal,
+      divergencia_detectada: divergenciaDetectada,
+      mesclados: contagemFinal.mesclado,
+      conflitos: contagemFinal.conflito,
+      mesclados_detalhados: batchResult.mescladosDetalhados,
+      conflitos_detalhados: batchResult.conflitosDetalhados,
+
+      // REQUISITO 4: DRY RUN — listar empresas que seriam criadas se findCached retornou nulo
+      ...(dryRun ? { empresas_que_seriam_criadas: batchResult.empresasQueSeriamCriadas } : {}),
+    };
+
+    // 8. Resposta HTTP estruturada (com rastreabilidade por item)
     return new Response(JSON.stringify({
-       success: true,
-       message: "Importação concluída. Consulte o importacao_id para relatórios logísticos.",
-       importacao_id: importacaoId,
-       resumo: {
-          recebidos: items.length,
-          importados_vazados: inseridos_ou_atualizados,
-          inseridos: ingestionResult.inseridos,
-          atualizados: ingestionResult.atualizados,
-          ignorados: quantidadeIgnorada + ingestionResult.ignorados_duplicados,
-          ignorados_duplicados: ingestionResult.ignorados_duplicados,
-          inconsistentes: quantidadeInconsistente + ingestionResult.correcoes_pendentes.length,
-          correcoes_pendentes: ingestionResult.correcoes_pendentes.length,
-          bloqueados_fechamento: ingestionResult.bloqueados_fechamento,
-          clts_criados: cltsCriados,
-          empresas_criadas: resolver.empresasCriadas,
-          schema: schemaVersion
-       }
-    }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      success: !divergenciaDetectada,
+      dry_run: dryRun,
+      message: dryRun
+        ? "Simulação dry-run concluída sem qualquer escrita no banco de dados."
+        : "Importação concluída. Consulte o importacao_id para relatórios logísticos.",
+      importacao_id: importacaoId,
+      resumo: resumoCompativel,
+      item_destinos: batchResult.itemOutcomes.map(o => ({
+        index: o.index,
+        estado: o.estado,
+        matched_colab_id: o.matched_colab_id,
+        matched_by: o.matched_by,
+        chave_importacao: o.chave_importacao,
+        merged_into_key: o.merged_into_key,
+        motivo: o.motivo,
+      })),
+    }), {
+      status: divergenciaDetectada ? 500 : 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
 
   } catch (err: any) {
     console.error("[CRITICAL] Falha geral na Edge Function:", err.message);

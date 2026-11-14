@@ -63,6 +63,13 @@ export class EmpresaResolver {
   }
 
   /**
+   * Alias for resolveParams for semantic consistency with caching.
+   */
+  findCached(rawCmpName: string | null): string | null {
+    return this.resolveParams(rawCmpName);
+  }
+
+  /**
    * Creates a provisory company (homologated behavior of RHID).
    */
   async criarEmpresaProvisoria(rawCmpName: string): Promise<string | null> {
